@@ -11,7 +11,7 @@ startCommand:
   commandFunction: |-
     (config) => ({
       command: 'node',
-      args: ['./mcp-server/index.js'],
+      args: ['./index.js'],
       env: {
         PRIVACYSCRUBBER_KEY: config.PRIVACYSCRUBBER_KEY || ''
       }
