@@ -27,5 +27,13 @@
     "cursor"
   ],
   "author": "Ilya Sibiryakov (Brand Me Web)",
-  "license": "MIT"
+  "license": "MIT",
+  "homepage": "https://privacyscrubber.com/pii-mcp/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moxno/privacyscrubber-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/moxno/privacyscrubber-mcp/issues"
+  }
 }
