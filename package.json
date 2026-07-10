@@ -1,0 +1,31 @@
+{
+  "name": "@privacyscrubber/mcp-server",
+  "version": "1.0.1",
+  "description": "Zero-Trust Data Sanitization (ZTDS) MCP Server for AI IDEs and Claude Desktop. Locally scrubs PII, secrets, and credentials before sending context to LLMs.",
+  "main": "index.js",
+  "type": "module",
+  "bin": {
+    "mcp-server": "index.js",
+    "privacyscrubber-mcp": "index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.6.0"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "privacy",
+    "security",
+    "pii-redactor",
+    "secrets-scanner",
+    "zero-trust",
+    "ztds",
+    "claude-desktop",
+    "cursor"
+  ],
+  "author": "Ilya Sibiryakov (Brand Me Web)",
+  "license": "MIT"
+}
