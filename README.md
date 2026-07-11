@@ -1,24 +1,42 @@
 # @privacyscrubber/mcp-server
 
+[![NPM Version](https://img.shields.io/npm/v/@privacyscrubber/mcp-server?color=blue)](https://www.npmjs.com/package/@privacyscrubber/mcp-server)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Smithery Compatible](https://smithery.ai/badge/@privacyscrubber/mcp-server)](https://smithery.ai/server/@privacyscrubber/mcp-server)
+[![Security: 100% Local](https://img.shields.io/badge/Security-100%25%20Local-emerald)](https://privacyscrubber.com)
+[![Parity: 100% Core Match](https://img.shields.io/badge/Parity-100%25%20Core%20Match-blueviolet)](https://privacyscrubber.com)
+
 **Zero-Trust Data Sanitization (ZTDS) Model Context Protocol (MCP) Server.**
-Locally scrubs PII, secrets, credentials, and custom patterns from files and text contexts before sending them to LLMs.
+Locally scrubs PII, secrets, credentials, and custom regex rules from files and text contexts before they reach remote LLM providers.
 
 ---
 
-## 🔒 Security & Privacy Guarantees
+## 🔒 Zero-Trust Data Flow
 
-*   **100% Offline / Local Execution:** All PII detection, regex matching, and tokenization happen entirely inside your local machine's RAM. No prompt context or file data is ever sent to any remote servers.
-*   **Volatile In-Memory Mapping:** The token replacement map (`sessionMap`) is kept in volatile RAM only. It is never persisted to disk, cookies, or database storage.
-*   **Support for Reverse-Scrubbing (Reveal):** Replaces tokens in LLM responses back with original values securely inside your local context.
+All sensitive parameters, identifiers, and variables are intercepted locally inside your machine's RAM. They are replaced by tokens (e.g. `[EMAIL_1]`) before being sent to the AI. Once the AI responds, the tokens are safely swapped back to original values in your local context.
+
+```text
+[Raw Input / Files] ──> [MCP sanitize_text] ──> [Masked Tokens] ──> [LLM API]
+                               │                                       │
+                        (In-Memory Map)                             (Result)
+                               │                                       │
+[Original Output] <─── [MCP reveal_text] <─────────────────────────────┘
+```
 
 ---
 
-## 🚀 Installation & Usage
+## 🚀 Installation
 
-### 1. Instant Run with NPX
-You can run the MCP server directly using `npx`:
+### 1. Install via Smithery
+To automatically configure and run with your preferred client, install using Smithery:
 ```bash
-npx @privacyscrubber/mcp-server
+npx -y @smithery/cli install @privacyscrubber/mcp-server --write-to-clients
+```
+
+### 2. Instant Run with NPX
+Run the server directly without local installation:
+```bash
+npx -y @privacyscrubber/mcp-server
 ```
 
 ---
@@ -26,7 +44,7 @@ npx @privacyscrubber/mcp-server
 ## ⚙️ Client Integrations
 
 ### Claude Desktop
-Add the server configuration to your Claude Desktop config file:
+Add this to your Claude Desktop config file:
 *   **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 *   **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
@@ -37,7 +55,7 @@ Add the server configuration to your Claude Desktop config file:
       "command": "npx",
       "args": ["-y", "@privacyscrubber/mcp-server"],
       "env": {
-        "PRIVACYSCRUBBER_KEY": "YOUR_OPTIONAL_PRO_OR_TEAMS_KEY"
+        "PRIVACYSCRUBBER_KEY": "YOUR_OPTIONAL_PRO_LICENSE_KEY"
       }
     }
   }
@@ -45,24 +63,87 @@ Add the server configuration to your Claude Desktop config file:
 ```
 
 ### Cursor / Windsurf
-1. Open settings (Settings -> Features -> MCP).
+1. Navigate to Settings -> Features -> MCP.
 2. Add new MCP server:
     *   **Name:** `privacyscrubber`
     *   **Type:** `command`
     *   **Command:** `npx -y @privacyscrubber/mcp-server`
-3. If you have a PRO key, add `PRIVACYSCRUBBER_KEY` as an environment variable in your system shell or configure it locally.
+3. Optional: Set `PRIVACYSCRUBBER_KEY` as an environment variable in your system shell.
 
 ---
 
-## 🛠️ Provided Tools
+## 🛠️ Provided Tools & JSON-RPC Specifications
 
-1.  `sanitize_text` — Sanitizes a raw string using the selected detection profile.
-2.  `reveal_text` — Detokenizes a response containing PII tokens back to the original text.
-3.  `sanitize_file` — Reads a local file, sanitizes its contents, and outputs the safe version. Supports plain text files (source code, logs, CSV, JSON, markdown) and Microsoft Word `.docx` documents (up to 10MB).
+### 1. `sanitize_text`
+Redacts PII, secrets, API keys, and credentials from a text block and populates the volatile local replacement mapping.
+
+*   **Arguments:**
+    *   `text` (string, required): The raw content or logs to sanitize.
+    *   `profile` (string, optional): Gated industry detection profile (e.g., 'General', 'Dev', 'Medical', 'Legal', 'Compliance'). Defaults to 'General'.
+*   **JSON-RPC Call Example:**
+    ```json
+    {
+      "method": "tools/call",
+      "params": {
+        "name": "sanitize_text",
+        "arguments": {
+          "text": "Contact me at dev-key-1234 or jane.doe@company.com",
+          "profile": "General"
+        }
+      }
+    }
+    ```
+*   **Response Example:**
+    ```json
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "Contact me at [SECRET_1] or [EMAIL_1]"
+        }
+      ]
+    }
+    ```
+
+### 2. `reveal_text`
+Detokenizes the AI response back to the original values locally.
+
+*   **Arguments:**
+    *   `text` (string, required): The response from the LLM containing tokenized placeholders.
+*   **JSON-RPC Call Example:**
+    ```json
+    {
+      "method": "tools/call",
+      "params": {
+        "name": "reveal_text",
+        "arguments": {
+          "text": "Please reach out to [EMAIL_1] regarding the update."
+        }
+      }
+    }
+    ```
+*   **Response Example:**
+    ```json
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "Please reach out to jane.doe@company.com regarding the update."
+        }
+      ]
+    }
+    ```
+
+### 3. `sanitize_file`
+Reads a local file, extracts text, sanitizes it, and returns the redacted template for LLM analysis.
+*   **Supported Formats:** Plain text (source code, logs, CSV, JSON, markdown) and Microsoft Word (`.docx`) documents.
+*   **Arguments:**
+    *   `filePath` (string, required): Absolute file path to read and sanitize.
+    *   `profile` (string, optional): The industry detection profile.
 
 ---
 
-## 🌐 Chrome Extension & Web Client
+## 🌐 Browser Extension & Web Client
 
 Looking for real-time protection directly inside your web browser?
 *   **Chrome Extension:** Get the [PrivacyScrubber Chrome Extension](https://chromewebstore.google.com/detail/privacyscrubber-%E2%80%94-pii-red/pimoejgefeilajmmbpghifdmhdlkgjol) to sanitize prompts directly inside ChatGPT, Claude, and Gemini in real-time.
@@ -70,5 +151,5 @@ Looking for real-time protection directly inside your web browser?
 
 ---
 
-## 📄 License & Commercial Key
-Standard use includes the **Free Tier** (limits to the `General` PII profile). To unlock 22+ specialized industry profiles (DevOps, Medical, Legal, Finance) and custom regex rules, acquire a license at [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing).
+## 📄 License & Commercial Upgrade
+Standard use is free under the **Free Tier** (limits to the `General` PII profile). To unlock 22+ specialized industry profiles (DevOps, Medical, Legal, Finance) and custom regex rules, acquire a commercial license at [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing).
