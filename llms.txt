@@ -1,0 +1,37 @@
+# PrivacyScrubber MCP Server
+
+> Zero-Trust Data Sanitization (ZTDS) Model Context Protocol (MCP) Server. Locally scrubs PII, secrets, credentials, and custom patterns from text and files before they reach remote LLM APIs.
+
+## Main URL
+- Repository: https://github.com/moxno/privacyscrubber-mcp
+- Web sandbox: https://privacyscrubber.com/
+- Chrome extension: https://chromewebstore.google.com/detail/privacyscrubber-%E2%80%94-pii-red/pimoejgefeilajmmbpghifdmhdlkgjol
+
+## Provided Tools
+
+The server runs locally in StdIO transport and exposes three tools:
+
+### sanitize_text
+Scrubs PII (names, emails, phones, locations), API keys, and passwords from input text.
+- Inputs:
+  - `text` (string, required): Raw text block or log segment to sanitize.
+  - `profile` (string, optional): Gated industry detection profile (e.g. 'General', 'Dev', 'Medical', 'Legal', 'Compliance'). Defaults to 'General'.
+- Output: Masked template string containing placeholders (e.g. `[EMAIL_1]`).
+
+### reveal_text
+Detokenizes AI responses by restoring original PII values locally in-memory.
+- Inputs:
+  - `text` (string, required): Response from the LLM containing tokens like `[EMAIL_1]`.
+- Output: Detokenized restored string.
+
+### sanitize_file
+Reads a local file, checks format compatibility, extracts raw text, and redacts PII.
+- Supported Formats: Source code files, CSV, JSON, markdown, text logs, and Microsoft Word (`.docx`) documents.
+- Binary formats (like PDF, ZIP) are automatically rejected with a redirection notice to prevent corrupting inputs.
+- Inputs:
+  - `filePath` (string, required): Absolute local file path.
+  - `profile` (string, optional): Industry detection profile.
+- Output: Sanitized file text template.
+
+## Environment Variables
+- `PRIVACYSCRUBBER_KEY` (string, optional): License key to unlock advanced industry detection profiles. If not set, the server runs on the Free tier and defaults all sanitizations to the 'General' profile.
