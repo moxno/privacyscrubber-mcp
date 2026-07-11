@@ -58,7 +58,15 @@ Add the server configuration to your Claude Desktop config file:
 
 1.  `sanitize_text` — Sanitizes a raw string using the selected detection profile.
 2.  `reveal_text` — Detokenizes a response containing PII tokens back to the original text.
-3.  `sanitize_file` — Reads a local file, sanitizes its contents, and outputs the safe version (supports up to 10MB).
+3.  `sanitize_file` — Reads a local file, sanitizes its contents, and outputs the safe version. Supports plain text files (source code, logs, CSV, JSON, markdown) and Microsoft Word `.docx` documents (up to 10MB).
+
+---
+
+## 🌐 Chrome Extension & Web Client
+
+Looking for real-time protection directly inside your web browser?
+*   **Chrome Extension:** Get the [PrivacyScrubber Chrome Extension](https://chromewebstore.google.com/detail/privacyscrubber-%E2%80%94-pii-red/pimoejgefeilajmmbpghifdmhdlkgjol) to sanitize prompts directly inside ChatGPT, Claude, and Gemini in real-time.
+*   **Web Sandbox:** Use the zero-server browser sanitization tools at [PrivacyScrubber Homepage](https://privacyscrubber.com/).
 
 ---
 

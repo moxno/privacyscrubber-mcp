@@ -113,6 +113,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             }
           },
           required: ["text"]
+        },
+        outputSchema: {
+          type: "object",
+          properties: {
+            text: {
+              type: "string",
+              description: "The sanitized text output."
+            }
+          },
+          required: ["text"]
+        },
+        annotations: {
+          priority: 1.0,
+          audience: ["developer", "user"]
         }
       },
       {
@@ -127,6 +141,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             }
           },
           required: ["text"]
+        },
+        outputSchema: {
+          type: "object",
+          properties: {
+            text: {
+              type: "string",
+              description: "The detokenized text with original values restored."
+            }
+          },
+          required: ["text"]
+        },
+        annotations: {
+          priority: 1.0,
+          audience: ["developer", "user"]
         }
       },
       {
@@ -135,7 +163,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         inputSchema: {
           type: "object",
           properties: {
-            filePath: {
+            file_path: {
               type: "string",
               description: "Absolute path to the file to sanitize."
             },
@@ -144,7 +172,21 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               description: "The detection profile to use. Available: 'General' (Free), or PRO profiles: 'Dev' (Engineering/Code), 'Medical', 'Pharma', 'Legal', 'Compliance', 'CCPA', 'Finance', 'Bizops', 'Sales', 'WealthMgmt', 'Insurance', 'Accounting', 'HR', 'Security', 'Marketing', 'Support', 'RealEstate', 'Agents', 'Academic', 'Creative', 'Tech', 'Personal'. Defaults to 'General'."
             }
           },
-          required: ["filePath"]
+          required: ["file_path"]
+        },
+        outputSchema: {
+          type: "object",
+          properties: {
+            text: {
+              type: "string",
+              description: "The sanitized content of the file."
+            }
+          },
+          required: ["text"]
+        },
+        annotations: {
+          priority: 1.0,
+          audience: ["developer", "user"]
         }
       }
     ]
@@ -169,7 +211,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "text",
-              text: `⚠️ [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}\nTo unlock 22+ advanced industry profiles, custom regex, and unlimited logs protection, set PRIVACYSCRUBBER_KEY to your PRO license key.\nGet a key at: https://privacyscrubber.com/pricing\n\n--- Sanitized Output (General Profile) ---\n`
+              text: `⚠️ [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}\nTo unlock 22+ advanced industry profiles, custom regex, and unlimited logs protection, set PRIVACYSCRUBBER_KEY to your PRO license key.\nGet a key at: https://privacyscrubber.com/pricing\nBrowser Extension: https://chromewebstore.google.com/detail/privacyscrubber-%E2%80%94-pii-red/pimoejgefeilajmmbpghifdmhdlkgjol\n\n--- Sanitized Output (General Profile) ---\n`
             },
             {
               type: "text",
@@ -204,7 +246,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     if (name === "sanitize_file") {
-      const { filePath, profile = "General" } = args;
+      const rawPath = args.file_path || args.filePath;
+      if (!rawPath) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: "Error: Missing required parameter 'file_path'."
+            }
+          ]
+        };
+      }
+      const { profile = "General" } = args;
+      const filePath = rawPath;
       
       const resolvedPath = path.resolve(filePath);
       if (!fs.existsSync(resolvedPath)) {
@@ -246,7 +301,71 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      const content = fs.readFileSync(resolvedPath, "utf8");
+      if (resolvedPath.toLowerCase().endsWith(".docx")) {
+        try {
+          const mammoth = require('mammoth');
+          const result = await mammoth.extractRawText({ path: resolvedPath });
+          const content = result.value;
+          const targetProfile = profile.trim();
+          const isAdvanced = targetProfile.toLowerCase() !== "general";
+          const license = checkLicenseStatus();
+
+          let prefix = "";
+          let finalProfile = targetProfile;
+
+          if (isAdvanced && !license.isPro) {
+            const reason = license.error ? ` (${license.error})` : "";
+            prefix = `⚠️ [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}\nGet a PRO key at: https://privacyscrubber.com/pricing\nBrowser Extension: https://chromewebstore.google.com/detail/privacyscrubber-%E2%80%94-pii-red/pimoejgefeilajmmbpghifdmhdlkgjol\n\n`;
+            finalProfile = "General";
+          }
+
+          const sanitized = performSanitization(content, finalProfile);
+          return {
+            content: [
+              {
+                type: "text",
+                text: `${prefix}${sanitized}`
+              }
+            ]
+          };
+        } catch (docxError) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: `Error: Failed to parse DOCX file: ${docxError.message}`
+              }
+            ]
+          };
+        }
+      }
+
+      const buffer = fs.readFileSync(resolvedPath);
+      
+      // Check for null bytes in the first 8KB to detect binary files
+      let isBinary = false;
+      const checkLen = Math.min(buffer.length, 8000);
+      for (let i = 0; i < checkLen; i++) {
+        if (buffer[i] === 0) {
+          isBinary = true;
+          break;
+        }
+      }
+
+      if (isBinary) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: `Error: Binary file format detected. The local MCP server only supports plain text files (e.g., source code, logs, CSV, markdown, JSON). To sanitize complex formats like PDF or DOCX, please use the web interface at: https://privacyscrubber.com/`
+            }
+          ]
+        };
+      }
+
+      const content = buffer.toString("utf8");
       const targetProfile = profile.trim();
       const isAdvanced = targetProfile.toLowerCase() !== "general";
       const license = checkLicenseStatus();
@@ -256,7 +375,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       if (isAdvanced && !license.isPro) {
         const reason = license.error ? ` (${license.error})` : "";
-        prefix = `⚠️ [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}\nGet a PRO key at: https://privacyscrubber.com/pricing\n\n`;
+        prefix = `⚠️ [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}\nGet a PRO key at: https://privacyscrubber.com/pricing\nBrowser Extension: https://chromewebstore.google.com/detail/privacyscrubber-%E2%80%94-pii-red/pimoejgefeilajmmbpghifdmhdlkgjol\n\n`;
         finalProfile = "General";
       }
 

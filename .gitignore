@@ -2,3 +2,4 @@ node_modules/
 bundle.mcpb
 *.mcpb
 .DS_Store
+mcp-publisher
