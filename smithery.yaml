@@ -13,7 +13,7 @@ startCommand:
       command: 'node',
       args: ['./index.js'],
       env: {
-        PRIVACYSCRUBBER_KEY: config.PRIVACYSCRUBBER_KEY || ''
+        PRIVACYSCRUBBER_KEY: (config && config.PRIVACYSCRUBBER_KEY) || ''
       }
     })
 exampleConfig:
