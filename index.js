@@ -83,8 +83,8 @@ function checkLicenseStatus() {
 // Create the MCP server
 const server = new Server(
   {
-    name: "privacyscrubber-mcp",
-    version: "1.0.0",
+    name: "privacyscrubber/pii-masking-mcp",
+    version: "1.0.3",
   },
   {
     capabilities: {
