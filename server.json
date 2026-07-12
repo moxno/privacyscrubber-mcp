@@ -1,17 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.moxno/privacyscrubber-mcp",
+  "name": "privacyscrubber/pii-masking-mcp",
   "description": "Zero-Trust PII & secrets sanitizer. Locally scrubs data in-memory before sending context to LLMs.",
   "repository": {
     "url": "https://github.com/moxno/privacyscrubber-mcp",
     "source": "github"
   },
-  "version": "1.0.2",
+  "version": "1.0.3",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@privacyscrubber/mcp-server",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "transport": {
         "type": "stdio"
       },

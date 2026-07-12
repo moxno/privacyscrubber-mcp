@@ -1,6 +1,6 @@
 {
   "name": "@privacyscrubber/mcp-server",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "mcpName": "io.github.moxno/privacyscrubber-mcp",
   "description": "Zero-Trust Data Sanitization (ZTDS) MCP Server for AI IDEs and Claude Desktop. Locally scrubs PII, secrets, and credentials before sending context to LLMs.",
   "main": "index.js",
@@ -8,6 +8,15 @@
   "publishConfig": {
     "access": "public"
   },
+  "files": [
+    "index.js",
+    "scrubber-core.cjs",
+    "smithery.yaml",
+    "server.json",
+    "manifest.json",
+    "bundle.mcpb",
+    ".well-known"
+  ],
   "bin": {
     "mcp-server": "index.js",
     "privacyscrubber-mcp": "index.js"
