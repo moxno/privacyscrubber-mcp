@@ -1,6 +1,6 @@
 {
   "serverInfo": {
-    "name": "io.github.moxno/privacyscrubber-mcp",
+    "name": "privacyscrubber/pii-masking-mcp",
     "version": "1.0.2"
   },
   "tools": [
