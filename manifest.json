@@ -18,6 +18,20 @@
       }
     }
   },
+  "tools": [
+    {
+      "name": "sanitize_text",
+      "description": "Locally scrubs PII, secrets, and credentials (like API keys, passwords, emails, phones, names) from code, logs, or text. Replaces them with safe placeholders (e.g., [EMAIL_1], [API_KEY_1]). Keep your data secure before passing it to any LLM."
+    },
+    {
+      "name": "reveal_text",
+      "description": "Replaces masked tokens (e.g., [EMAIL_1], [API_KEY_1]) in the LLM's response back with the original private data from the local volatile RAM-only session map."
+    },
+    {
+      "name": "sanitize_file",
+      "description": "Reads a local file, sanitizes its contents using the selected profile, and outputs the safe version for AI analysis. Securely keeps original identifiers in memory."
+    }
+  ],
   "user_config": {
     "PRIVACYSCRUBBER_KEY": {
       "type": "string",
