@@ -1,6 +1,13 @@
 # Smithery.ai configuration for PrivacyScrubber MCP Server
 startCommand:
   type: "stdio"
+  configSchema:
+    type: "object"
+    properties:
+      PRIVACYSCRUBBER_KEY:
+        type: "string"
+        title: "PrivacyScrubber License Key"
+        description: "Optional PRO or TEAMS license key. Leave blank to run on the Free tier."
   commandFunction: |-
     (config) => ({
       command: 'node',
@@ -9,4 +16,5 @@ startCommand:
         PRIVACYSCRUBBER_KEY: (config && config.PRIVACYSCRUBBER_KEY) || ''
       }
     })
-exampleConfig: {}
+exampleConfig:
+  PRIVACYSCRUBBER_KEY: ""
