@@ -195,7 +195,82 @@ async function runMcpSession() {
       console.log("⚠️ Skipped DOCX test case: fixture file not found in main project path.");
     }
 
-    console.log("\n🎉 All deep integration tests passed successfully!");
+    console.log("\n--> Spawning second MCP process WITH SPOOF SIMULATION (invalid key)...");
+    
+    // Spawn with empty key (invalid/free)
+    const mcpProcess2 = spawn('node', [indexScript], {
+      env: {
+        ...process.env,
+        PRIVACYSCRUBBER_KEY: "" // empty key
+      }
+    });
+
+    let buffer2 = '';
+    const pendingRequests2 = new Map();
+    let nextId2 = 1;
+
+    mcpProcess2.stdout.on('data', (data) => {
+      buffer2 += data.toString();
+      let newlineIndex;
+      while ((newlineIndex = buffer2.indexOf('\n')) !== -1) {
+        const line = buffer2.substring(0, newlineIndex).trim();
+        buffer2 = buffer2.substring(newlineIndex + 1);
+        if (line) {
+          try {
+            const response = JSON.parse(line);
+            if (response.id && pendingRequests2.has(response.id)) {
+              const resolve = pendingRequests2.get(response.id);
+              pendingRequests2.delete(response.id);
+              resolve(response);
+            }
+          } catch (e) {}
+        }
+      }
+    });
+
+    const sendRequest2 = (method, params) => {
+      return new Promise((resolve) => {
+        const id = nextId2++;
+        pendingRequests2.set(id, resolve);
+        mcpProcess2.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
+      });
+    };
+
+    // 1. Initialize second process
+    await sendRequest2('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
+
+    // 2. Call sanitize_text with 'creative' profile and no key
+    console.log("--> Calling 'sanitize_text' with 'creative' profile on invalid key...");
+    const bypassResponse = await sendRequest2('tools/call', {
+      name: 'sanitize_text',
+      arguments: {
+        text: 'This draft is EMBARGOED',
+        profile: 'creative'
+      }
+    });
+
+    const content = bypassResponse.result?.content;
+    console.log("<-- Server returned content array length:", content?.length);
+    
+    // We expect 2 text segments: the warning message and the sanitized text (General fallback)
+    const warningText = content?.[0]?.text || "";
+    const scrubbedText = content?.[1]?.text || content?.[0]?.text || "";
+    
+    console.log("<-- Warning text:", warningText.trim().substring(0, 100) + "...");
+    console.log("<-- Scrubbed output text:", scrubbedText.trim());
+
+    if (!warningText.includes("Advanced profile 'creative' is locked")) {
+      throw new Error("Outer layer bypass check failed: did not output key lock warning.");
+    }
+    
+    if (!scrubbedText.includes("EMBARGOED")) {
+      throw new Error("Core hardening failed: EMBARGOED was sanitized using creative rules on an invalid key!");
+    }
+    
+    console.log("✅ Core hardening verified: advanced rules successfully blocked on invalid key.");
+    mcpProcess2.kill();
+
+    console.log("\n🎉 All deep integration and hardening tests passed successfully!");
     mcpProcess.kill();
     process.exit(0);
 
