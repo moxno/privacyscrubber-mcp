@@ -1,8 +1,8 @@
-# PrivacyScrubber MCP Server v1.0.2
+# PrivacyScrubber MCP Server v1.0.3
 
 Zero-Trust Data Sanitization (ZTDS) Model Context Protocol (MCP) server for local PII and secrets masking.
 
-## What's New in v1.0.2
+## What's New in v1.0.3
 - **Robust Configuration Parsing**: Protected Smithery integration hooks from undefined configuration objects, ensuring reliable initialization across all MCP clients (Claude Desktop, Cursor, Windsurf).
 - **Microsoft Word (.docx) Support**: Enhanced the `sanitize_file` tool to parse and redact sensitive information from Word documents locally.
 - **Unified Branding & Metadata**: Corrected repository fields and aligned server identity across NPM, Smithery, and Glama registries.
