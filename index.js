@@ -84,7 +84,7 @@ function checkLicenseStatus() {
 const server = new Server(
   {
     name: "privacyscrubber/pii-masking-mcp",
-    version: "1.0.3",
+    version: "1.0.4",
   },
   {
     capabilities: {
