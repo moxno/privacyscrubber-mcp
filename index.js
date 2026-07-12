@@ -113,20 +113,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             }
           },
           required: ["text"]
-        },
-        outputSchema: {
-          type: "object",
-          properties: {
-            text: {
-              type: "string",
-              description: "The sanitized text output."
-            }
-          },
-          required: ["text"]
-        },
-        annotations: {
-          priority: 1.0,
-          audience: ["developer", "user"]
         }
       },
       {
@@ -141,20 +127,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             }
           },
           required: ["text"]
-        },
-        outputSchema: {
-          type: "object",
-          properties: {
-            text: {
-              type: "string",
-              description: "The detokenized text with original values restored."
-            }
-          },
-          required: ["text"]
-        },
-        annotations: {
-          priority: 1.0,
-          audience: ["developer", "user"]
         }
       },
       {
@@ -173,20 +145,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             }
           },
           required: ["file_path"]
-        },
-        outputSchema: {
-          type: "object",
-          properties: {
-            text: {
-              type: "string",
-              description: "The sanitized content of the file."
-            }
-          },
-          required: ["text"]
-        },
-        annotations: {
-          priority: 1.0,
-          audience: ["developer", "user"]
         }
       }
     ]
