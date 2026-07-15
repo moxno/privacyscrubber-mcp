@@ -1,6 +1,6 @@
 {
   "name": "@privacyscrubber/mcp-server",
-  "version": "1.6.6",
+  "version": "1.6.7",
   "mcpName": "io.github.moxno/privacyscrubber-mcp",
   "description": "Zero-Trust Data Sanitization (ZTDS) MCP Server for AI IDEs and Claude Desktop. Locally scrubs PII, secrets, and credentials before sending context to LLMs.",
   "main": "index.js",

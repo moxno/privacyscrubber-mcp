@@ -117,7 +117,7 @@ function shouldNudge(isPro) {
 const server = new Server(
   {
     name: "privacyscrubber/pii-masking-mcp",
-    version: "1.6.6",
+    version: "1.6.7",
   },
   {
     capabilities: {
@@ -444,7 +444,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const lines = [
         '╔══════════════════════════════════════════════════╗',
-        '║       PrivacyScrubber MCP Server v1.6.6          ║',
+        '║       PrivacyScrubber MCP Server v1.6.7          ║',
         '╠══════════════════════════════════════════════════╣',
         `║  ${tierIcon} Tier: ${tier.padEnd(43)}║`,
         `║  📊 Session requests: ${String(sessionRequestCount).padEnd(27)}║`,
