@@ -157,8 +157,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   try {
     if (name === "sanitize_text") {
-      const { text, profile = "General" } = args;
-      const targetProfile = profile.trim();
+      const { text, profile = "General" } = args || {};
+      if (text === undefined || text === null) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: "Error: Missing required parameter 'text'. Provide the string to sanitize." }]
+        };
+      }
+      if (typeof text !== "string") {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Error: Parameter 'text' must be a string, got '${typeof text}'. Stringify objects before passing.` }]
+        };
+      }
+      const targetProfile = (profile || "General").trim();
 
       // Check tier gating for advanced profiles
       const isAdvanced = targetProfile.toLowerCase() !== "general";
@@ -184,7 +196,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     if (name === "reveal_text") {
-      const { text } = args;
+      const { text } = args || {};
+      if (text === undefined || text === null) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: "Error: Missing required parameter 'text'. Provide the AI response containing placeholders to restore." }]
+        };
+      }
+      if (typeof text !== "string") {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Error: Parameter 'text' must be a string, got '${typeof text}'.` }]
+        };
+      }
       const restored = PrivacyScrubberCore.unscrubText(text, sessionMap);
       return {
         content: [
