@@ -12,6 +12,14 @@ const indexScript = path.resolve(__dirname, 'index.js');
 async function runMcpSession() {
   console.log("Starting MCP Server process...");
   
+  // Set up local privacyscrubber.json for custom rules testing
+  const configPath = path.resolve(process.cwd(), 'privacyscrubber.json');
+  fs.writeFileSync(configPath, JSON.stringify({
+    customRules: [
+      { pattern: "SECRET_TEST_PAT", label: "TEST_SECRET" }
+    ]
+  }), 'utf8');
+
   // Set license key to valid PRO key for advanced test
   const validKey = "eyJ0eXBlIjoicHJvIiwiZXhwaXJlcyI6MjA5OTA2MjE3NCwiaXNzdWVkQXQiOjE3ODM3MDIxNzQsIm5vbmNlIjoiMmI4MTllN2ZmM2ZmOTFmYiJ9.ZmhaKDGf9vG0nTH0nyOy3EInsuUmzjBOk9IOyiqzt6Y5s3UG+2yRExuKBoeXWymbpJt3NIJNM9sVxxl+lcop5wqbi2LNtPY4MuwBRA7pO4nn3Bes5R0lxLbEYVE8Iiw3zbfK4uVYQ53BJ7El6JCeFKPJ5WbKUsPLsjb1Lr2iQzW3ODOMaM5jKdgAGcNpuWQ373D7SW7I03Jec9kvP5hL7j3u4DV8ZzuQFzy2Nh+uMH54suydg2sNIpxrRQyxpGv7rZjTO1KT+xzzqnjqX4Pein0e6GrC5E4JUEggADtXPFMKW5SEiWzeeirB5RUPMO/F927S5fFuOYHAfuar2FqErA==";
   
@@ -120,6 +128,22 @@ async function runMcpSession() {
     }
     console.log("✅ Reveal text success.");
 
+    // 4.5. Test custom rules loading (PRO key)
+    console.log("--> Calling 'sanitize_text' with custom rules on valid key...");
+    const customRulesResponse = await sendRequest('tools/call', {
+      name: 'sanitize_text',
+      arguments: {
+        text: "My key is SECRET_TEST_PAT",
+        profile: "General"
+      }
+    });
+    const customSanitizedText = customRulesResponse.result?.content?.[0]?.text;
+    console.log("<-- Custom Rules Output:", customSanitizedText);
+    if (!customSanitizedText.includes("[TEST_SECRET_1]")) {
+      throw new Error("Custom rule was not applied under valid PRO license key.");
+    }
+    console.log("✅ Custom rules loading success (PRO).");
+
     // 5. Test sanitize_file (text file)
     const tempFile = path.resolve(__dirname, 'temp-test-file.txt');
     fs.writeFileSync(tempFile, "API Key: secret-key-value-12345\nUser: jane.smith@company.com", "utf8");
@@ -197,7 +221,6 @@ async function runMcpSession() {
 
     console.log("\n--> Spawning second MCP process WITH SPOOF SIMULATION (invalid key)...");
     
-    // Spawn with empty key (invalid/free)
     const mcpProcess2 = spawn('node', [indexScript], {
       env: {
         ...process.env,
@@ -206,8 +229,14 @@ async function runMcpSession() {
     });
 
     let buffer2 = '';
+    let stderr2 = '';
     const pendingRequests2 = new Map();
     let nextId2 = 1;
+
+    mcpProcess2.stderr.on('data', (data) => {
+      console.log(`[Server 2 Stderr debug]: ${data.toString().trim()}`);
+      stderr2 += data.toString();
+    });
 
     mcpProcess2.stdout.on('data', (data) => {
       buffer2 += data.toString();
@@ -252,15 +281,13 @@ async function runMcpSession() {
     const content = bypassResponse.result?.content;
     console.log("<-- Server returned content array length:", content?.length);
     
-    // We expect 2 text segments: the warning message and the sanitized text (General fallback)
-    const warningText = content?.[0]?.text || "";
-    const scrubbedText = content?.[1]?.text || content?.[0]?.text || "";
+    const scrubbedText = content?.[0]?.text || "";
     
-    console.log("<-- Warning text:", warningText.trim().substring(0, 100) + "...");
+    console.log("<-- Server Stderr captured:", stderr2.trim());
     console.log("<-- Scrubbed output text:", scrubbedText.trim());
 
-    if (!warningText.includes("Advanced profile 'creative' is locked")) {
-      throw new Error("Outer layer bypass check failed: did not output key lock warning.");
+    if (!stderr2.includes("Advanced profile 'creative' is locked")) {
+      throw new Error("Outer layer bypass check failed: did not output key lock warning to stderr.");
     }
     
     if (!scrubbedText.includes("EMBARGOED")) {
@@ -268,15 +295,64 @@ async function runMcpSession() {
     }
     
     console.log("✅ Core hardening verified: advanced rules successfully blocked on invalid key.");
+
+    // 3. Test character limit truncation (Free tier)
+    console.log("--> Calling 'sanitize_text' with 50,005 chars on invalid key...");
+    const longText = ".".repeat(50005);
+    const truncateResponse = await sendRequest2('tools/call', {
+      name: 'sanitize_text',
+      arguments: {
+        text: longText,
+        profile: 'General'
+      }
+    });
+    const truncatedResult = truncateResponse.result?.content?.[0]?.text || "";
+    console.log("<-- Truncated text length:", truncatedResult.length);
+    if (truncatedResult.length !== 50000) {
+      throw new Error(`Expected text length of 50000 after truncation, but got ${truncatedResult.length}`);
+    }
+    if (!stderr2.includes("Input truncated to 50000 characters")) {
+      throw new Error("Truncation warning not found in stderr.");
+    }
+    console.log("✅ Character limit truncation success.");
+
+    // 4. Test custom rules ignored with warning (Free tier)
+    console.log("--> Calling 'sanitize_text' with custom rules on invalid key...");
+    const customRulesFreeResponse = await sendRequest2('tools/call', {
+      name: 'sanitize_text',
+      arguments: {
+        text: "My key is SECRET_TEST_PAT",
+        profile: "General"
+      }
+    });
+    const customFreeSanitizedText = customRulesFreeResponse.result?.content?.[0]?.text || "";
+    console.log("<-- Custom Rules Free Output:", customFreeSanitizedText);
+    if (customFreeSanitizedText.includes("[TEST_SECRET")) {
+      throw new Error("Custom rules were applied on free tier without a valid key!");
+    }
+    // Give stderr stream time to flush
+    await new Promise(r => setTimeout(r, 1000));
+    if (!stderr2.includes("Custom rules detected in privacyscrubber.json, but are ignored")) {
+      throw new Error(`Custom rules warning not found in stderr. Captured stderr was: [${stderr2}]`);
+    }
+    console.log("✅ Custom rules gating success (Free).");
+
     mcpProcess2.kill();
 
     console.log("\n🎉 All deep integration and hardening tests passed successfully!");
     mcpProcess.kill();
+    if (fs.existsSync(configPath)) {
+      fs.unlinkSync(configPath);
+    }
     process.exit(0);
 
   } catch (error) {
     console.error("❌ Test failed:", error.message);
     mcpProcess.kill();
+    const configPath = path.resolve(process.cwd(), 'privacyscrubber.json');
+    if (fs.existsSync(configPath)) {
+      fs.unlinkSync(configPath);
+    }
     process.exit(1);
   }
 }

@@ -6,12 +6,12 @@
     "url": "https://github.com/moxno/privacyscrubber-mcp",
     "source": "github"
   },
-  "version": "1.0.4",
+  "version": "1.6.6",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@privacyscrubber/mcp-server",
-      "version": "1.0.4",
+      "version": "1.6.6",
       "transport": {
         "type": "stdio"
       },

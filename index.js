@@ -84,7 +84,7 @@ function checkLicenseStatus() {
 const server = new Server(
   {
     name: "privacyscrubber/pii-masking-mcp",
-    version: "1.0.4",
+    version: "1.6.6",
   },
   {
     capabilities: {
@@ -163,23 +163,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // Check tier gating for advanced profiles
       const isAdvanced = targetProfile.toLowerCase() !== "general";
       const license = checkLicenseStatus();
+      let finalProfile = targetProfile;
+
       if (isAdvanced && !license.isPro) {
         const reason = license.error ? ` (${license.error})` : "";
-        return {
-          content: [
-            {
-              type: "text",
-              text: `⚠️ [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}\nTo unlock 22+ advanced industry profiles, custom regex, and unlimited logs protection, set PRIVACYSCRUBBER_KEY to your PRO license key.\nGet a key at: https://privacyscrubber.com/pricing\nBrowser Extension: https://chromewebstore.google.com/detail/privacyscrubber-%E2%80%94-pii-red/pimoejgefeilajmmbpghifdmhdlkgjol\n\n--- Sanitized Output (General Profile) ---\n`
-            },
-            {
-              type: "text",
-              text: performSanitization(text, "General")
-            }
-          ]
-        };
+        process.stderr.write(`⚠️ [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}\nGet a PRO key at: https://privacyscrubber.com/pricing\n`);
+        finalProfile = "General";
       }
 
-      const sanitized = performSanitization(text, targetProfile);
+      const processedText = truncateIfFree(text, license.isPro);
+      const sanitized = performSanitization(processedText, finalProfile);
       return {
         content: [
           {
@@ -268,21 +261,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const isAdvanced = targetProfile.toLowerCase() !== "general";
           const license = checkLicenseStatus();
 
-          let prefix = "";
           let finalProfile = targetProfile;
 
           if (isAdvanced && !license.isPro) {
             const reason = license.error ? ` (${license.error})` : "";
-            prefix = `⚠️ [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}\nGet a PRO key at: https://privacyscrubber.com/pricing\nBrowser Extension: https://chromewebstore.google.com/detail/privacyscrubber-%E2%80%94-pii-red/pimoejgefeilajmmbpghifdmhdlkgjol\n\n`;
+            process.stderr.write(`⚠️ [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}\nGet a PRO key at: https://privacyscrubber.com/pricing\n`);
             finalProfile = "General";
           }
 
-          const sanitized = performSanitization(content, finalProfile);
+          const processedContent = truncateIfFree(content, license.isPro);
+          const sanitized = performSanitization(processedContent, finalProfile);
           return {
             content: [
               {
                 type: "text",
-                text: `${prefix}${sanitized}`
+                text: sanitized
               }
             ]
           };
@@ -328,21 +321,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const isAdvanced = targetProfile.toLowerCase() !== "general";
       const license = checkLicenseStatus();
 
-      let prefix = "";
       let finalProfile = targetProfile;
 
       if (isAdvanced && !license.isPro) {
         const reason = license.error ? ` (${license.error})` : "";
-        prefix = `⚠️ [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}\nGet a PRO key at: https://privacyscrubber.com/pricing\nBrowser Extension: https://chromewebstore.google.com/detail/privacyscrubber-%E2%80%94-pii-red/pimoejgefeilajmmbpghifdmhdlkgjol\n\n`;
+        process.stderr.write(`⚠️ [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}\nGet a PRO key at: https://privacyscrubber.com/pricing\n`);
         finalProfile = "General";
       }
 
-      const sanitized = performSanitization(content, finalProfile);
+      const processedContent = truncateIfFree(content, license.isPro);
+      const sanitized = performSanitization(processedContent, finalProfile);
       return {
         content: [
           {
             type: "text",
-            text: `${prefix}${sanitized}`
+            text: sanitized
           }
         ]
       };
@@ -370,9 +363,45 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
+function loadCustomRules() {
+  const license = checkLicenseStatus();
+  
+  let configPath = path.resolve(process.cwd(), 'privacyscrubber.json');
+
+  if (!fs.existsSync(configPath)) {
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+    if (homeDir) {
+      configPath = path.resolve(homeDir, 'privacyscrubber.json');
+    }
+  }
+
+  if (fs.existsSync(configPath)) {
+    try {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      const rules = config.customRules || [];
+      if (rules.length > 0) {
+        if (license.isPro) {
+          return rules.map(r => ({
+            pattern: r.pattern || r.regex || "",
+            label: (r.label || r.category || "CUSTOM").toUpperCase(),
+            regex: r.pattern || r.regex || "",
+            category: (r.label || r.category || "CUSTOM").toUpperCase()
+          })).filter(r => r.pattern);
+        } else {
+          process.stderr.write("⚠️ [PrivacyScrubber] Custom rules detected in privacyscrubber.json, but are ignored in the Free Tier. Set PRIVACYSCRUBBER_KEY to your PRO license key.\n");
+        }
+      }
+    } catch (e) {
+      process.stderr.write(`Error parsing privacyscrubber.json: ${e.message}\n`);
+    }
+  }
+  return [];
+}
+
 // Run helper
 function performSanitization(text, profile) {
-  const result = PrivacyScrubberCore.scrubText(text, [], {}, profile, sessionMap);
+  const customRules = loadCustomRules();
+  const result = PrivacyScrubberCore.scrubText(text, customRules, {}, profile, sessionMap);
   
   // Update our volatile map with new matches
   if (result.tokenMap) {
@@ -382,6 +411,15 @@ function performSanitization(text, profile) {
   }
 
   return result.scrubbedText;
+}
+
+function truncateIfFree(text, isPro) {
+  const MAX_FREE_CHARS = 50000;
+  if (!isPro && text.length > MAX_FREE_CHARS) {
+    process.stderr.write(`⚠️ [PrivacyScrubber] Input truncated to ${MAX_FREE_CHARS} characters (Free Tier Limit). Set PRIVACYSCRUBBER_KEY to your PRO license key for unlimited size.\n`);
+    return text.substring(0, MAX_FREE_CHARS);
+  }
+  return text;
 }
 
 // Start the server transport
