@@ -91,8 +91,11 @@ async function runMcpSession() {
     console.log(`<-- Tools list received. Total tools: ${tools.length}`);
     tools.forEach(t => console.log(`  - Tool: ${t.name} (${t.description.substring(0, 60)}...)`));
 
-    if (tools.length !== 3) {
-      throw new Error(`Expected 3 tools, got ${tools.length}`);
+    if (tools.length !== 4) {
+      throw new Error(`Expected 4 tools, got ${tools.length}`);
+    }
+    if (!tools.find(t => t.name === 'check_status')) {
+      throw new Error('check_status tool is missing from tools list');
     }
 
     // 3. Test sanitize_text (General profile)
@@ -218,6 +221,20 @@ async function runMcpSession() {
     } else {
       console.log("⚠️ Skipped DOCX test case: fixture file not found in main project path.");
     }
+
+    // 8. Test check_status tool
+    console.log("---> Calling 'check_status'...");
+    const statusResponse = await sendRequest('tools/call', { name: 'check_status', arguments: {} });
+    const statusText = statusResponse.result?.content?.[0]?.text || '';
+    console.log('<-- check_status output:\n' + statusText);
+    if (!statusText.includes('PrivacyScrubber MCP') || !statusText.includes('privacyscrubber.com')) {
+      throw new Error('check_status output is missing required fields (header or URL)');
+    }
+    const hasTier = statusText.includes('FREE') || statusText.includes('PRO');
+    if (!hasTier) {
+      throw new Error('check_status output is missing tier indicator');
+    }
+    console.log('✅ check_status tool success.');
 
     console.log("\n--> Spawning second MCP process WITH SPOOF SIMULATION (invalid key)...");
     

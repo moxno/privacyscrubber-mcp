@@ -80,6 +80,39 @@ function checkLicenseStatus() {
   }
 }
 
+// ── Session request counter (volatile in-memory) ─────────────────────────────
+let sessionRequestCount = 0;
+const UPSELL_EVERY_N = 10; // show upsell nudge every N free-tier requests
+
+// Build a clean upsell content block visible to the agent / user
+function buildUpsellBlock(reason) {
+  const count = sessionRequestCount;
+  let lines = [
+    '─────────────────────────────────────────────',
+    '⚡ PrivacyScrubber PRO — Upgrade your AI setup',
+    '─────────────────────────────────────────────',
+  ];
+  if (reason) lines.push(`ℹ️  ${reason}`);
+  lines.push(
+    `📊 Free session requests: ${count}`,
+    '🔒 PRO unlocks: 22 industry profiles (Dev, Medical, Legal…)',
+    '         + Custom regex rules (privacyscrubber.json)',
+    '         + Unlimited input size',
+    '',
+    '💳 PRO Lifetime: $110  →  https://privacyscrubber.com/pricing',
+    '',
+    'After purchase, add your key to your MCP config:',
+    '  "PRIVACYSCRUBBER_KEY": "<your-key-here>"',
+    '─────────────────────────────────────────────'
+  );
+  return { type: 'text', text: lines.join('\n') };
+}
+
+// Decide if we should attach a soft periodic nudge (every N requests, free tier)
+function shouldNudge(isPro) {
+  return !isPro && sessionRequestCount > 0 && sessionRequestCount % UPSELL_EVERY_N === 0;
+}
+
 // Create the MCP server
 const server = new Server(
   {
@@ -146,6 +179,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ["file_path"]
         }
+      },
+      {
+        name: "check_status",
+        description: "Returns the current PrivacyScrubber MCP tier, session usage, available profiles, and PRO upgrade instructions. Call this to see your license status or get setup help.",
+        inputSchema: {
+          type: "object",
+          properties: {},
+          required: []
+        }
       }
     ]
   };
@@ -176,21 +218,33 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const isAdvanced = targetProfile.toLowerCase() !== "general";
       const license = checkLicenseStatus();
       let finalProfile = targetProfile;
+      const extraBlocks = [];
+
+      sessionRequestCount++;
 
       if (isAdvanced && !license.isPro) {
         const reason = license.error ? ` (${license.error})` : "";
         process.stderr.write(`⚠️ [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}\nGet a PRO key at: https://privacyscrubber.com/pricing\n`);
         finalProfile = "General";
+        extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' requires PRO. Using 'General' as fallback.`));
       }
 
-      const processedText = truncateIfFree(text, license.isPro);
+      const { processedText, wasTruncated } = truncateIfFree(text, license.isPro);
+      if (wasTruncated) {
+        extraBlocks.push(buildUpsellBlock(`Input was truncated to 50,000 characters (Free Tier limit).`));
+      }
+
       const sanitized = performSanitization(processedText, finalProfile);
+
+      // Periodic soft nudge every N free-tier requests (no trigger event needed)
+      if (!license.isPro && extraBlocks.length === 0 && sessionRequestCount % UPSELL_EVERY_N === 0) {
+        extraBlocks.push(buildUpsellBlock(null));
+      }
+
       return {
         content: [
-          {
-            type: "text",
-            text: sanitized
-          }
+          { type: "text", text: sanitized },
+          ...extraBlocks
         ]
       };
     }
@@ -286,32 +340,36 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const license = checkLicenseStatus();
 
           let finalProfile = targetProfile;
+          const extraBlocks = [];
+
+          sessionRequestCount++;
 
           if (isAdvanced && !license.isPro) {
             const reason = license.error ? ` (${license.error})` : "";
             process.stderr.write(`⚠️ [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}\nGet a PRO key at: https://privacyscrubber.com/pricing\n`);
             finalProfile = "General";
+            extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' requires PRO. Using 'General' as fallback.`));
           }
 
-          const processedContent = truncateIfFree(content, license.isPro);
+          const { processedText: processedContent, wasTruncated } = truncateIfFree(content, license.isPro);
+          if (wasTruncated) extraBlocks.push(buildUpsellBlock(`File content was truncated to 50,000 characters (Free Tier limit).`));
+
           const sanitized = performSanitization(processedContent, finalProfile);
+
+          if (!license.isPro && extraBlocks.length === 0 && sessionRequestCount % UPSELL_EVERY_N === 0) {
+            extraBlocks.push(buildUpsellBlock(null));
+          }
+
           return {
             content: [
-              {
-                type: "text",
-                text: sanitized
-              }
+              { type: "text", text: sanitized },
+              ...extraBlocks
             ]
           };
         } catch (docxError) {
           return {
             isError: true,
-            content: [
-              {
-                type: "text",
-                text: `Error: Failed to parse DOCX file: ${docxError.message}`
-              }
-            ]
+            content: [{ type: "text", text: `Error: Failed to parse DOCX file: ${docxError.message}` }]
           };
         }
       }
@@ -346,43 +404,93 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const license = checkLicenseStatus();
 
       let finalProfile = targetProfile;
+      const extraBlocks = [];
+
+      sessionRequestCount++;
 
       if (isAdvanced && !license.isPro) {
         const reason = license.error ? ` (${license.error})` : "";
         process.stderr.write(`⚠️ [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}\nGet a PRO key at: https://privacyscrubber.com/pricing\n`);
         finalProfile = "General";
+        extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' requires PRO. Using 'General' as fallback.`));
       }
 
-      const processedContent = truncateIfFree(content, license.isPro);
-      const sanitized = performSanitization(processedContent, finalProfile);
+      const { processedText: processedContent2, wasTruncated: wasTruncated2 } = truncateIfFree(content, license.isPro);
+      if (wasTruncated2) extraBlocks.push(buildUpsellBlock(`File content was truncated to 50,000 characters (Free Tier limit).`));
+
+      const sanitized = performSanitization(processedContent2, finalProfile);
+
+      if (!license.isPro && extraBlocks.length === 0 && sessionRequestCount % UPSELL_EVERY_N === 0) {
+        extraBlocks.push(buildUpsellBlock(null));
+      }
+
       return {
         content: [
-          {
-            type: "text",
-            text: sanitized
-          }
+          { type: "text", text: sanitized },
+          ...extraBlocks
         ]
+      };
+    }
+
+    if (name === "check_status") {
+      const license = checkLicenseStatus();
+      const tier = license.isPro ? 'PRO' : 'FREE';
+      const tierIcon = license.isPro ? '✅' : '🔓';
+      const profileList = license.isPro
+        ? 'All 23 profiles active (General, Dev, Medical, Legal, Finance, HR…)'
+        : 'General only — PRO unlocks 22 industry profiles';
+      const rulesStatus = license.isPro ? '✅ Active (privacyscrubber.json)' : '🔒 Locked — requires PRO';
+      const sizeLimit = license.isPro ? 'Unlimited' : '50,000 characters per request';
+
+      const lines = [
+        '╔══════════════════════════════════════════════════╗',
+        '║       PrivacyScrubber MCP Server v1.6.6          ║',
+        '╠══════════════════════════════════════════════════╣',
+        `║  ${tierIcon} Tier: ${tier.padEnd(43)}║`,
+        `║  📊 Session requests: ${String(sessionRequestCount).padEnd(27)}║`,
+        `║  📁 Input size limit: ${sizeLimit.padEnd(27)}║`,
+        '╠══════════════════════════════════════════════════╣',
+        `║  🏷️  Profiles: ${profileList.substring(0,35).padEnd(35)}║`,
+        `║  📋 Custom rules: ${rulesStatus.padEnd(31)}║`,
+        '╠══════════════════════════════════════════════════╣',
+      ];
+
+      if (license.isPro) {
+        lines.push(
+          '║  ✅ PRO is active. All features unlocked.         ║',
+          '║     To regenerate your key or manage billing:     ║',
+          '║     https://privacyscrubber.com/pricing           ║'
+        );
+      } else {
+        lines.push(
+          '║  💳 Upgrade to PRO — $110 Lifetime                ║',
+          '║     https://privacyscrubber.com/pricing           ║',
+          '╠══════════════════════════════════════════════════╣',
+          '║  After purchase, add your key to MCP config:     ║',
+          '║                                                  ║',
+          '║  Claude Desktop / Cursor / Windsurf:             ║',
+          '║  "PRIVACYSCRUBBER_KEY": "<your-key-here>"        ║',
+          '║                                                  ║',
+          '║  Full setup guide:                               ║',
+          '║  https://privacyscrubber.com/features/mcp/       ║'
+        );
+      }
+
+      lines.push('╚══════════════════════════════════════════════════╝');
+
+      return {
+        content: [{ type: "text", text: lines.join('\n') }]
       };
     }
 
     return {
       isError: true,
-      content: [
-        {
-          type: "text",
-          text: `Unknown tool: ${name}`
-        }
-      ]
+      content: [{ type: "text", text: `Unknown tool: ${name}` }]
     };
   } catch (error) {
     return {
       isError: true,
-      content: [
-        {
-          type: "text",
-          text: `Error executing tool: ${error.message}`
-        }
-      ]
+      content: [{ type: "text", text: `Error executing tool: ${error.message}` }]
     };
   }
 });
@@ -441,9 +549,9 @@ function truncateIfFree(text, isPro) {
   const MAX_FREE_CHARS = 50000;
   if (!isPro && text.length > MAX_FREE_CHARS) {
     process.stderr.write(`⚠️ [PrivacyScrubber] Input truncated to ${MAX_FREE_CHARS} characters (Free Tier Limit). Set PRIVACYSCRUBBER_KEY to your PRO license key for unlimited size.\n`);
-    return text.substring(0, MAX_FREE_CHARS);
+    return { processedText: text.substring(0, MAX_FREE_CHARS), wasTruncated: true };
   }
-  return text;
+  return { processedText: text, wasTruncated: false };
 }
 
 // Start the server transport
