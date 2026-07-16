@@ -1,0 +1,9 @@
+{
+  "$schema": "https://glama.ai/mcp/schemas/server.json",
+  "maintainers": ["moxno"],
+  "name": "privacyscrubber-mcp",
+  "description": "Zero-Trust local PII masking and prompt sanitization for Claude Desktop and Cursor",
+  "type": "mcp_server",
+  "status": "stable",
+  "keywords": ["mcp", "security", "privacy", "pii-redactor", "zero-trust"]
+}
