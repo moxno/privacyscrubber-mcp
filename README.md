@@ -149,11 +149,23 @@ Looking for real-time protection directly inside your web browser?
 *   **Chrome Extension:** Get the [PrivacyScrubber Chrome Extension](https://chromewebstore.google.com/detail/privacyscrubber-%E2%80%94-pii-red/pimoejgefeilajmmbpghifdmhdlkgjol) to sanitize prompts directly inside ChatGPT, Claude, and Gemini in real-time.
 *   **Web Sandbox:** Use the zero-server browser sanitization tools at [PrivacyScrubber Homepage](https://privacyscrubber.com/).
 
----
-
 ## 📄 License & Commercial Upgrade
 
-Standard use is free under the **Free Tier** (limits to the `General` PII profile). To unlock 22+ specialized industry profiles (DevOps, Medical, Legal, Finance) and custom regex rules, acquire a commercial license at [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing).
+By default, the server runs under the **Free Tier** (restricted to 50,000 characters per request and the basic `General` PII profile). To unlock advanced engineering, medical, legal, and financial PII profiles, as well as team-wide custom rules, you can purchase a commercial license.
+
+### Feature Comparison
+
+| Feature | Free Tier | PRO Tier | TEAMS Tier |
+| :--- | :--- | :--- | :--- |
+| **Volatile Tokenization** | ✅ Yes | ✅ Yes | ✅ Yes |
+| **Standard PII Masking** | ✅ Yes | ✅ Yes | ✅ Yes |
+| **Max Character Length** | 50,000 chars | ♾️ Unlimited | ♾️ Unlimited |
+| **Industry Profiles** | General Only | 22+ Profiles | 22+ Profiles |
+| **Custom Regex Rules** | ❌ Locked | ♾️ Unlimited | ♾️ Unlimited |
+| **Team Rules Sync (GPO)** | ❌ No | ❌ No | ✅ Yes (Shared Link) |
+| **Licensing Cost** | $0 | **$110 Lifetime** | **$99/mo Flat Rate** |
+
+👉 **[Acquire a PRO / TEAMS License Key at privacyscrubber.com/pricing](https://privacyscrubber.com/pricing)**
 
 ---
 
