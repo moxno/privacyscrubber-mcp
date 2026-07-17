@@ -239,6 +239,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         extraBlocks.push(buildUpsellBlock(`Input was truncated to 50,000 characters (Free Tier limit).`));
       }
 
+      if (!license.isPro) {
+        const detected = detectSecrets(processedText);
+        if (detected.length > 0) {
+          process.stderr.write(`⚠️ [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile). Upgrade at https://privacyscrubber.com/pricing\n`);
+          extraBlocks.push(buildUpsellBlock(`API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).`));
+        }
+      }
+
       const sanitized = performSanitization(processedText, finalProfile);
 
       // Periodic soft nudge every N free-tier requests (no trigger event needed)
@@ -359,6 +367,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const { processedText: processedContent, wasTruncated } = truncateIfFree(content, license.isPro);
           if (wasTruncated) extraBlocks.push(buildUpsellBlock(`File content was truncated to 50,000 characters (Free Tier limit).`));
 
+          if (!license.isPro) {
+            const detected = detectSecrets(processedContent);
+            if (detected.length > 0) {
+              process.stderr.write(`⚠️ [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile). Upgrade at https://privacyscrubber.com/pricing\n`);
+              extraBlocks.push(buildUpsellBlock(`API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).`));
+            }
+          }
+
           const sanitized = performSanitization(processedContent, finalProfile);
 
           if (!license.isPro && extraBlocks.length === 0 && sessionRequestCount % UPSELL_EVERY_N === 0) {
@@ -422,6 +438,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const { processedText: processedContent2, wasTruncated: wasTruncated2 } = truncateIfFree(content, license.isPro);
       if (wasTruncated2) extraBlocks.push(buildUpsellBlock(`File content was truncated to 50,000 characters (Free Tier limit).`));
+
+      if (!license.isPro) {
+        const detected = detectSecrets(processedContent2);
+        if (detected.length > 0) {
+          process.stderr.write(`⚠️ [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile). Upgrade at https://privacyscrubber.com/pricing\n`);
+          extraBlocks.push(buildUpsellBlock(`API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).`));
+        }
+      }
 
       const sanitized = performSanitization(processedContent2, finalProfile);
 
@@ -536,10 +560,58 @@ function loadCustomRules() {
 }
 
 // Run helper
+function detectSecrets(text) {
+  const DEVOPS_SECRETS_DETECTOR = [
+    { name: 'AWS Credentials', regex: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA)[A-Z0-9]{16}\b/g },
+    { name: 'JSON Web Token (JWT)', regex: /\beyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b/g },
+    { name: 'API Token/Key (GitHub/Slack/NPM)', regex: /\b(?:ghp|gho|ghu|ghs|ghr|glpat|npm|xox[baprs])[-_][A-Za-z0-9_]{10,}\b/g },
+    { name: 'Stripe API Key', regex: /\b(?:[rs]k)_(?:test|live)_[a-zA-Z0-9]{24,}\b/g },
+    { name: 'Database/API Secret', regex: /\b(DB|POSTGRES|REDIS|MYSQL|AWS|SECRET|PASSWORD|TOKEN|API|KEY)[A-Z0-9_]*\s*[:=]\s*[^ \t\r\n"']{8,}\b/gi }
+  ];
+  
+  const detected = [];
+  DEVOPS_SECRETS_DETECTOR.forEach(detector => {
+    detector.regex.lastIndex = 0;
+    if (detector.regex.test(text)) {
+      detected.push(detector.name);
+    }
+  });
+  return detected;
+}
+
 function performSanitization(text, profile) {
   const customRules = loadCustomRules();
   const result = PrivacyScrubberCore.scrubText(text, customRules, {}, profile, sessionMap);
   
+  const license = checkLicenseStatus();
+  if (!license.isPro && result.tokenMap) {
+    const DEVOPS_SECRETS_DETECTOR = [
+      { name: 'AWS Credentials', regex: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA)[A-Z0-9]{16}\b/g },
+      { name: 'JSON Web Token (JWT)', regex: /\beyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b/g },
+      { name: 'API Token/Key (GitHub/Slack/NPM)', regex: /\b(?:ghp|gho|ghu|ghs|ghr|glpat|npm|xox[baprs])[-_][A-Za-z0-9_]{10,}\b/g },
+      { name: 'Stripe API Key', regex: /\b(?:[rs]k)_(?:test|live)_[a-zA-Z0-9]{24,}\b/g },
+      { name: 'Database/API Secret', regex: /\b(DB|POSTGRES|REDIS|MYSQL|AWS|SECRET|PASSWORD|TOKEN|API|KEY)[A-Z0-9_]*\s*[:=]\s*[^ \t\r\n"']{8,}\b/gi }
+    ];
+
+    Object.entries(result.tokenMap).forEach(([token, original]) => {
+      let isSecret = false;
+      for (const detector of DEVOPS_SECRETS_DETECTOR) {
+        detector.regex.lastIndex = 0;
+        if (detector.regex.test(original)) {
+          isSecret = true;
+          break;
+        }
+      }
+      
+      if (isSecret) {
+        // Restore raw secret in output text
+        result.scrubbedText = result.scrubbedText.replace(token, original);
+        // Exclude secret from tokenMap
+        delete result.tokenMap[token];
+      }
+    });
+  }
+
   // Update our volatile map with new matches
   if (result.tokenMap) {
     Object.entries(result.tokenMap).forEach(([token, original]) => {
