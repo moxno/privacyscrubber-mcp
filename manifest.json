@@ -1,8 +1,8 @@
 {
   "manifest_version": "0.3",
   "name": "privacyscrubber/pii-masking-mcp",
-  "version": "1.6.7",
-  "description": "Zero-Trust Data Sanitization (ZTDS) MCP Server for AI IDEs and Claude Desktop. Locally scrubs PII, secrets, and credentials before sending context to LLMs.",
+  "version": "1.6.8",
+  "description": "CISO-Approved Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Windsurf, and Claude Desktop. Prevent API leaks and comply with HIPAA/SOC 2 locally.",
   "author": {
     "name": "PrivacyScrubber",
     "email": "legal@privacyscrubber.com"

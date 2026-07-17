@@ -6,8 +6,8 @@
 [![Security: 100% Local](https://img.shields.io/badge/Security-100%25%20Local-emerald)](https://privacyscrubber.com)
 [![Parity: 100% Core Match](https://img.shields.io/badge/Parity-100%25%20Core%20Match-blueviolet)](https://privacyscrubber.com)
 
-**Zero-Trust Data Sanitization (ZTDS) Model Context Protocol (MCP) Server.**
-Locally scrubs PII, secrets, credentials, and custom regex rules from files and text contexts before they reach remote LLM providers.
+**CISO-Approved Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Windsurf, and Claude Desktop.**
+Locally scrubs PII, secrets, credentials, and custom regex rules from files and text contexts before they reach remote LLM providers to prevent API leaks and ensure HIPAA/SOC 2 compliance at the developer endpoint.
 
 ---
 
