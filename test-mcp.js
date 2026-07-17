@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const scrubberCorePath = path.resolve(__dirname, './scrubber-core.cjs');
+const scrubberCorePath = path.resolve(__dirname, '../chrome-extension/scrubber-core.js');
 const mcpServerIndex = path.resolve(__dirname, 'index.js');
 
 console.log("Loading modules for verification test...");

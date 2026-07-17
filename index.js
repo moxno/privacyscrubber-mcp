@@ -24,6 +24,11 @@ const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Version is sourced from mcp-server/package.json.
+// build.js syncs mcp-server/package.json from root package.json on every build.
+// Never hardcode the version — bump package.json at root instead.
+const MCP_VERSION = require('./package.json').version;
+
 // Import the production core engine with 100% parity
 const scrubberCorePath = path.resolve(__dirname, './scrubber-core.cjs');
 const PrivacyScrubberCore = require(scrubberCorePath);
@@ -117,7 +122,7 @@ function shouldNudge(isPro) {
 const server = new Server(
   {
     name: "privacyscrubber/pii-masking-mcp",
-    version: "1.6.7",
+    version: MCP_VERSION,
   },
   {
     capabilities: {
@@ -444,7 +449,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const lines = [
         '╔══════════════════════════════════════════════════╗',
-        '║       PrivacyScrubber MCP Server v1.6.7          ║',
+        `║       PrivacyScrubber MCP Server v${MCP_VERSION.padEnd(10)}          ║`,
         '╠══════════════════════════════════════════════════╣',
         `║  ${tierIcon} Tier: ${tier.padEnd(43)}║`,
         `║  📊 Session requests: ${String(sessionRequestCount).padEnd(27)}║`,
