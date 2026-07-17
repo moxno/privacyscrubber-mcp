@@ -396,7 +396,133 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       const buffer = fs.readFileSync(resolvedPath);
-      
+
+      const isPdf = resolvedPath.toLowerCase().endsWith(".pdf");
+      const isExcel = resolvedPath.toLowerCase().endsWith(".xlsx") || resolvedPath.toLowerCase().endsWith(".xls");
+
+      if (isPdf || isExcel) {
+        const license = checkLicenseStatus();
+        if (!license.isPro) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: `Error: PDF and Excel file sanitization is a PRO feature. Set PRIVACYSCRUBBER_KEY to your PRO license key to unlock local document parsing. Get a key at: https://privacyscrubber.com/pricing`
+              }
+            ]
+          };
+        }
+
+        if (isPdf) {
+          try {
+            const pdf = require('pdf-parse');
+            const data = await pdf(buffer);
+            const content = data.text;
+            const targetProfile = profile.trim();
+            const isAdvanced = targetProfile.toLowerCase() !== "general";
+
+            let finalProfile = targetProfile;
+            const extraBlocks = [];
+
+            sessionRequestCount++;
+
+            if (isAdvanced && !license.isPro) {
+              const reason = license.error ? ` (${license.error})` : "";
+              process.stderr.write(`⚠️ [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}\nGet a PRO key at: https://privacyscrubber.com/pricing\n`);
+              finalProfile = "General";
+              extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' requires PRO. Using 'General' as fallback.`));
+            }
+
+            const { processedText: processedContent, wasTruncated } = truncateIfFree(content, license.isPro);
+            if (wasTruncated) extraBlocks.push(buildUpsellBlock(`File content was truncated to 50,000 characters (Free Tier limit).`));
+
+            if (!license.isPro) {
+              const detected = detectSecrets(processedContent);
+              if (detected.length > 0) {
+                process.stderr.write(`⚠️ [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile). Upgrade at https://privacyscrubber.com/pricing\n`);
+                extraBlocks.push(buildUpsellBlock(`API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).`));
+              }
+            }
+
+            const sanitized = performSanitization(processedContent, finalProfile);
+
+            if (!license.isPro && extraBlocks.length === 0 && sessionRequestCount % UPSELL_EVERY_N === 0) {
+              extraBlocks.push(buildUpsellBlock(null));
+            }
+
+            return {
+              content: [
+                { type: "text", text: sanitized },
+                ...extraBlocks
+              ]
+            };
+          } catch (pdfError) {
+            return {
+              isError: true,
+              content: [{ type: "text", text: `Error: Failed to parse PDF file: ${pdfError.message}` }]
+            };
+          }
+        }
+
+        if (isExcel) {
+          try {
+            const XLSX = require('xlsx');
+            const workbook = XLSX.read(buffer, { type: 'buffer' });
+            let content = '';
+            workbook.SheetNames.forEach(sheetName => {
+              const worksheet = workbook.Sheets[sheetName];
+              content += `--- Sheet: ${sheetName} ---\n`;
+              content += XLSX.utils.sheet_to_csv(worksheet) + '\n';
+            });
+
+            const targetProfile = profile.trim();
+            const isAdvanced = targetProfile.toLowerCase() !== "general";
+
+            let finalProfile = targetProfile;
+            const extraBlocks = [];
+
+            sessionRequestCount++;
+
+            if (isAdvanced && !license.isPro) {
+              const reason = license.error ? ` (${license.error})` : "";
+              process.stderr.write(`⚠️ [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}\nGet a PRO key at: https://privacyscrubber.com/pricing\n`);
+              finalProfile = "General";
+              extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' requires PRO. Using 'General' as fallback.`));
+            }
+
+            const { processedText: processedContent, wasTruncated } = truncateIfFree(content, license.isPro);
+            if (wasTruncated) extraBlocks.push(buildUpsellBlock(`File content was truncated to 50,000 characters (Free Tier limit).`));
+
+            if (!license.isPro) {
+              const detected = detectSecrets(processedContent);
+              if (detected.length > 0) {
+                process.stderr.write(`⚠️ [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile). Upgrade at https://privacyscrubber.com/pricing\n`);
+                extraBlocks.push(buildUpsellBlock(`API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).`));
+              }
+            }
+
+            const sanitized = performSanitization(processedContent, finalProfile);
+
+            if (!license.isPro && extraBlocks.length === 0 && sessionRequestCount % UPSELL_EVERY_N === 0) {
+              extraBlocks.push(buildUpsellBlock(null));
+            }
+
+            return {
+              content: [
+                { type: "text", text: sanitized },
+                ...extraBlocks
+              ]
+            };
+          } catch (xlsxError) {
+            return {
+              isError: true,
+              content: [{ type: "text", text: `Error: Failed to parse Excel file: ${xlsxError.message}` }]
+            };
+          }
+        }
+      }
+
       // Check for null bytes in the first 8KB to detect binary files
       let isBinary = false;
       const checkLen = Math.min(buffer.length, 8000);
@@ -413,7 +539,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "text",
-              text: `Error: Binary file format detected. The local MCP server only supports plain text files (e.g., source code, logs, CSV, markdown, JSON). To sanitize complex formats like PDF or DOCX, please use the web interface at: https://privacyscrubber.com/`
+              text: `Error: Binary file format detected. The local MCP server only supports plain text files (e.g., source code, logs, CSV, markdown, JSON) and premium document formats (PDF, DOCX, XLSX). To sanitize PDF or Excel files, please upgrade to PRO or use the web interface.`
             }
           ]
         };

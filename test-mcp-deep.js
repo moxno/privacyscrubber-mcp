@@ -2,7 +2,9 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 
+const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -222,6 +224,63 @@ async function runMcpSession() {
       console.log("⚠️ Skipped DOCX test case: fixture file not found in main project path.");
     }
 
+    // 7.1. Test sanitize_file (PDF file parsing support - PRO)
+    const pdfSource = '/Users/ilya/Desktop/PrivacyScrubber/PrivacyScrubber_Zero_Trust_Data_Sanitization.pdf';
+    const pdfDest = path.resolve(__dirname, 'fixture-test.pdf');
+    if (fs.existsSync(pdfSource)) {
+      fs.copyFileSync(pdfSource, pdfDest);
+      console.log(`--> Calling 'sanitize_file' on PDF document: ${pdfDest}`);
+      const pdfResponse = await sendRequest('tools/call', {
+        name: 'sanitize_file',
+        arguments: {
+          filePath: pdfDest,
+          profile: 'General'
+        }
+      });
+      fs.unlinkSync(pdfDest);
+
+      const pdfText = pdfResponse.result?.content?.[0]?.text;
+      console.log("<-- PDF Sanitized text preview (first 150 chars):", pdfText?.substring(0, 150) + "...");
+      if (!pdfText || pdfResponse.result?.isError || pdfText.includes("Error") || pdfText.length < 50) {
+        throw new Error("PDF document parsing failed or returned invalid text content.");
+      }
+      console.log("✅ Sanitize PDF document success.");
+    } else {
+      console.log("⚠️ Skipped PDF test case: fixture file not found.");
+    }
+
+    // 7.2. Test sanitize_file (Excel file parsing support - PRO)
+    // We dynamically generate xlsx using require to ensure we have a valid format
+    const xlsx = require('xlsx');
+    const tempXlsx = path.resolve(__dirname, 'temp-test-doc.xlsx');
+    const ws = xlsx.utils.aoa_to_sheet([
+      ["Name", "Email", "Phone"],
+      ["Alice Smith", "alice@company.com", "555-0199"]
+    ]);
+    const wb = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(wb, ws, "Sheet1");
+    xlsx.writeFile(wb, tempXlsx);
+
+    console.log(`--> Calling 'sanitize_file' on Excel workbook: ${tempXlsx}`);
+    const xlsxResponse = await sendRequest('tools/call', {
+      name: 'sanitize_file',
+      arguments: {
+        filePath: tempXlsx,
+        profile: 'General'
+      }
+    });
+    fs.unlinkSync(tempXlsx);
+
+    const xlsxText = xlsxResponse.result?.content?.[0]?.text;
+    console.log("<-- Excel Sanitized text preview:\n", xlsxText);
+    if (!xlsxText || xlsxResponse.result?.isError || xlsxText.includes("Error")) {
+      throw new Error("Excel document parsing failed or returned invalid text content.");
+    }
+    if (xlsxText.includes("Alice Smith") || xlsxText.includes("alice@company.com")) {
+      throw new Error("Excel sanitization failed to redact credentials.");
+    }
+    console.log("✅ Sanitize Excel document success.");
+
     // 8. Test check_status tool
     console.log("---> Calling 'check_status'...");
     const statusResponse = await sendRequest('tools/call', { name: 'check_status', arguments: {} });
@@ -353,6 +412,30 @@ async function runMcpSession() {
       throw new Error(`Custom rules warning not found in stderr. Captured stderr was: [${stderr2}]`);
     }
     console.log("✅ Custom rules gating success (Free).");
+
+    // 4.1. Test PDF gating on Free tier
+    console.log("--> Calling 'sanitize_file' on PDF document on Free tier...");
+    const pdfSourceFree = '/Users/ilya/Desktop/PrivacyScrubber/PrivacyScrubber_Zero_Trust_Data_Sanitization.pdf';
+    const pdfDestFree = path.resolve(__dirname, 'fixture-free-test.pdf');
+    if (fs.existsSync(pdfSourceFree)) {
+      fs.copyFileSync(pdfSourceFree, pdfDestFree);
+      const pdfFreeResponse = await sendRequest2('tools/call', {
+        name: 'sanitize_file',
+        arguments: {
+          filePath: pdfDestFree,
+          profile: 'General'
+        }
+      });
+      fs.unlinkSync(pdfDestFree);
+
+      const isPdfError = pdfFreeResponse.result?.isError || pdfFreeResponse.error;
+      const pdfErrorText = pdfFreeResponse.result?.content?.[0]?.text || pdfFreeResponse.error?.message;
+      console.log("<-- PDF Free Response status:", isPdfError, "| message:", pdfErrorText);
+      if (!isPdfError || !pdfErrorText.includes("PDF and Excel file sanitization is a PRO feature")) {
+        throw new Error("Failed to block PDF file parsing on Free tier.");
+      }
+      console.log("✅ PDF gating verified on Free tier.");
+    }
 
     mcpProcess2.kill();
 
