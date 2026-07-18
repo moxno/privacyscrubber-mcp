@@ -39,6 +39,15 @@ PrivacyScrubberCore.init();
 // Volatile in-memory token map
 const sessionMap = {};
 
+// ANSI terminal color helpers
+const colors = {
+  yellowBold: '\x1b[1;33m',
+  yellow: '\x1b[33m',
+  cyan: '\x1b[36m',
+  redBold: '\x1b[1;31m',
+  reset: '\x1b[0m'
+};
+
 // Hardcoded public key for offline cryptographic verification
 const PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw3f37srO402PU4++Baf8
@@ -238,7 +247,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       if (isAdvanced && !license.isPro) {
         const reason = license.error ? ` (${license.error})` : "";
-        process.stderr.write(`⚠️ [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}\nGet a PRO key at: https://privacyscrubber.com/pricing\n`);
+        process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}${colors.reset}\n${colors.cyan}👉  Get a PRO key at: https://privacyscrubber.com/pricing${colors.reset}\n`);
         finalProfile = "General";
         extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' requires PRO. Using 'General' as fallback.`));
       }
@@ -251,7 +260,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (!license.isPro) {
         const detected = detectSecrets(processedText);
         if (detected.length > 0) {
-          process.stderr.write(`⚠️ [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile). Upgrade at https://privacyscrubber.com/pricing\n`);
+          process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).${colors.reset}\n${colors.cyan}👉  Upgrade at: https://privacyscrubber.com/pricing${colors.reset}\n`);
           extraBlocks.push(buildUpsellBlock(`API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).`));
         }
       }
@@ -368,7 +377,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
           if (isAdvanced && !license.isPro) {
             const reason = license.error ? ` (${license.error})` : "";
-            process.stderr.write(`⚠️ [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}\nGet a PRO key at: https://privacyscrubber.com/pricing\n`);
+            process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}${colors.reset}\n${colors.cyan}👉  Get a PRO key at: https://privacyscrubber.com/pricing${colors.reset}\n`);
             finalProfile = "General";
             extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' requires PRO. Using 'General' as fallback.`));
           }
@@ -379,7 +388,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           if (!license.isPro) {
             const detected = detectSecrets(processedContent);
             if (detected.length > 0) {
-              process.stderr.write(`⚠️ [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile). Upgrade at https://privacyscrubber.com/pricing\n`);
+              process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).${colors.reset}\n${colors.cyan}👉  Upgrade at: https://privacyscrubber.com/pricing${colors.reset}\n`);
               extraBlocks.push(buildUpsellBlock(`API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).`));
             }
           }
@@ -495,7 +504,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
             if (isAdvanced && !license.isPro) {
               const reason = license.error ? ` (${license.error})` : "";
-              process.stderr.write(`⚠️ [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}\nGet a PRO key at: https://privacyscrubber.com/pricing\n`);
+              process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}${colors.reset}\n${colors.cyan}👉  Get a PRO key at: https://privacyscrubber.com/pricing${colors.reset}\n`);
               finalProfile = "General";
               extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' requires PRO. Using 'General' as fallback.`));
             }
@@ -506,7 +515,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             if (!license.isPro) {
               const detected = detectSecrets(processedContent);
               if (detected.length > 0) {
-                process.stderr.write(`⚠️ [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile). Upgrade at https://privacyscrubber.com/pricing\n`);
+                process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).${colors.reset}\n${colors.cyan}👉  Upgrade at: https://privacyscrubber.com/pricing${colors.reset}\n`);
                 extraBlocks.push(buildUpsellBlock(`API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).`));
               }
             }
@@ -566,7 +575,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       if (isAdvanced && !license.isPro) {
         const reason = license.error ? ` (${license.error})` : "";
-        process.stderr.write(`⚠️ [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}\nGet a PRO key at: https://privacyscrubber.com/pricing\n`);
+        process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}${colors.reset}\n${colors.cyan}👉  Get a PRO key at: https://privacyscrubber.com/pricing${colors.reset}\n`);
         finalProfile = "General";
         extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' requires PRO. Using 'General' as fallback.`));
       }
@@ -577,7 +586,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (!license.isPro) {
         const detected = detectSecrets(processedContent2);
         if (detected.length > 0) {
-          process.stderr.write(`⚠️ [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile). Upgrade at https://privacyscrubber.com/pricing\n`);
+          process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).${colors.reset}\n${colors.cyan}👉  Upgrade at: https://privacyscrubber.com/pricing${colors.reset}\n`);
           extraBlocks.push(buildUpsellBlock(`API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).`));
         }
       }
@@ -725,7 +734,7 @@ function loadCustomRules() {
             category: (r.label || r.category || "CUSTOM").toUpperCase()
           })).filter(r => r.pattern);
         } else {
-          process.stderr.write("⚠️ [PrivacyScrubber] Custom rules detected in privacyscrubber.json, but are ignored in the Free Tier. Set PRIVACYSCRUBBER_KEY to your PRO license key.\n");
+          process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] Custom rules detected in privacyscrubber.json, but are ignored in the Free Tier.${colors.reset}\n${colors.cyan}👉  Set PRIVACYSCRUBBER_KEY to your PRO license key.${colors.reset}\n`);
         }
       }
     } catch (e) {
@@ -801,7 +810,7 @@ function performSanitization(text, profile) {
 function truncateIfFree(text, isPro) {
   const MAX_FREE_CHARS = 50000;
   if (!isPro && text.length > MAX_FREE_CHARS) {
-    process.stderr.write(`⚠️ [PrivacyScrubber] Input truncated to ${MAX_FREE_CHARS} characters (Free Tier Limit). Set PRIVACYSCRUBBER_KEY to your PRO license key for unlimited size.\n`);
+    process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] Input truncated to ${MAX_FREE_CHARS} characters (Free Tier Limit).${colors.reset}\n${colors.cyan}👉  Set PRIVACYSCRUBBER_KEY to your PRO license key for unlimited size.${colors.reset}\n`);
     return { processedText: text.substring(0, MAX_FREE_CHARS), wasTruncated: true };
   }
   return { processedText: text, wasTruncated: false };
