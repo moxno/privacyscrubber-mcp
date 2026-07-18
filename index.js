@@ -44,6 +44,7 @@ const colors = {
   yellowBold: '\x1b[1;33m',
   yellow: '\x1b[33m',
   cyan: '\x1b[36m',
+  greenBold: '\x1b[1;32m',
   redBold: '\x1b[1;31m',
   reset: '\x1b[0m'
 };
@@ -881,7 +882,10 @@ function truncateIfFree(text, isPro) {
 
 // Start the server transport
 const transport = new StdioServerTransport();
-server.connect(transport).catch((error) => {
+server.connect(transport).then(() => {
+  process.stderr.write(`${colors.greenBold}✅ PrivacyScrubber ZTDS MCP Server started successfully.${colors.reset}\n`);
+  process.stderr.write(`${colors.cyan}⭐ Star us on GitHub: https://github.com/moxno/privacyscrubber-mcp${colors.reset}\n`);
+}).catch((error) => {
   console.error("Failed to connect MCP server transport:", error);
   process.exit(1);
 });
