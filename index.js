@@ -186,6 +186,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
+        name: "create_default_config",
+        description: "Creates a default 'privacyscrubber.json' configuration file in the active workspace root directory if one does not exist. Includes template structures for custom regex rules and exclusion bypass patterns.",
+        inputSchema: {
+          type: "object",
+          properties: {},
+          required: []
+        }
+      },
+      {
         name: "check_status",
         description: "Returns the current PrivacyScrubber MCP tier, session usage, available profiles, and PRO upgrade instructions. Call this to see your license status or get setup help.",
         inputSchema: {
@@ -585,6 +594,47 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           ...extraBlocks
         ]
       };
+    }
+
+    if (name === "create_default_config") {
+      const configPath = path.resolve(process.cwd(), 'privacyscrubber.json');
+      if (fs.existsSync(configPath)) {
+        return {
+          content: [{
+            type: "text",
+            text: `ℹ️  Configuration file 'privacyscrubber.json' already exists in the active workspace root directory:\n   ${configPath}\nNo changes were made.`
+          }]
+        };
+      }
+
+      const defaultTemplate = {
+        "_comment": "PrivacyScrubber local configuration. Add custom rules and restart your MCP client (Cursor/Windsurf). Details: https://privacyscrubber.com/docs/config",
+        "customRules": [
+          {
+            "pattern": "my-secret-pattern-\\d+",
+            "label": "CUSTOM_TAG",
+            "_comment": "pattern must be a valid Javascript regex string. label is the tag replacement (e.g. CUSTOM_TAG)"
+          }
+        ]
+      };
+
+      try {
+        fs.writeFileSync(configPath, JSON.stringify(defaultTemplate, null, 2) + '\n', 'utf8');
+        return {
+          content: [{
+            type: "text",
+            text: `✅ Configuration file 'privacyscrubber.json' successfully created in your workspace root:\n   ${configPath}\n\nRestart your MCP client (e.g. Cursor or Claude Desktop) to load the config rules.`
+          }]
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{
+            type: "text",
+            text: `Error: Failed to write configuration file: ${err.message}`
+          }]
+        };
+      }
     }
 
     if (name === "check_status") {

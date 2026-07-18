@@ -93,11 +93,14 @@ async function runMcpSession() {
     console.log(`<-- Tools list received. Total tools: ${tools.length}`);
     tools.forEach(t => console.log(`  - Tool: ${t.name} (${t.description.substring(0, 60)}...)`));
 
-    if (tools.length !== 4) {
-      throw new Error(`Expected 4 tools, got ${tools.length}`);
+    if (tools.length !== 5) {
+      throw new Error(`Expected 5 tools, got ${tools.length}`);
     }
     if (!tools.find(t => t.name === 'check_status')) {
       throw new Error('check_status tool is missing from tools list');
+    }
+    if (!tools.find(t => t.name === 'create_default_config')) {
+      throw new Error('create_default_config tool is missing from tools list');
     }
 
     // 3. Test sanitize_text (General profile)
@@ -295,6 +298,31 @@ async function runMcpSession() {
     }
     console.log('✅ check_status tool success.');
 
+    // 8.5. Test create_default_config tool
+    console.log("--> Calling 'create_default_config'...");
+    const testConfigPath = path.resolve(process.cwd(), 'privacyscrubber.json');
+    if (fs.existsSync(testConfigPath)) {
+      fs.unlinkSync(testConfigPath);
+    }
+    const createConfigResponse = await sendRequest('tools/call', { name: 'create_default_config', arguments: {} });
+    const createConfigText = createConfigResponse.result?.content?.[0]?.text || '';
+    console.log('<-- create_default_config output:\n' + createConfigText);
+    if (!createConfigText.includes('successfully created') || !fs.existsSync(testConfigPath)) {
+      throw new Error('create_default_config failed to create file or returned wrong output');
+    }
+    console.log('✅ create_default_config tool success (create phase).');
+
+    // Call it again to test warning message
+    console.log("--> Calling 'create_default_config' again...");
+    const createConfigResponse2 = await sendRequest('tools/call', { name: 'create_default_config', arguments: {} });
+    const createConfigText2 = createConfigResponse2.result?.content?.[0]?.text || '';
+    console.log('<-- create_default_config output 2:\n' + createConfigText2);
+    if (!createConfigText2.includes('already exists') || createConfigResponse2.result?.isError) {
+      throw new Error('create_default_config failed to show warning when file exists');
+    }
+    fs.unlinkSync(testConfigPath);
+    console.log('✅ create_default_config tool success (warning phase).');
+
     console.log("\n--> Spawning second MCP process WITH SPOOF SIMULATION (invalid key)...");
     
     const mcpProcess2 = spawn('node', [indexScript], {
@@ -394,6 +422,11 @@ async function runMcpSession() {
 
     // 4. Test custom rules ignored with warning (Free tier)
     console.log("--> Calling 'sanitize_text' with custom rules on invalid key...");
+    fs.writeFileSync(testConfigPath, JSON.stringify({
+      customRules: [
+        { pattern: "SECRET_TEST_PAT", label: "TEST_SECRET" }
+      ]
+    }), 'utf8');
     const customRulesFreeResponse = await sendRequest2('tools/call', {
       name: 'sanitize_text',
       arguments: {
