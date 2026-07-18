@@ -48,6 +48,15 @@ const colors = {
   reset: '\x1b[0m'
 };
 
+// Secrets detection patterns — defined once here, shared by detectSecrets() and performSanitization()
+const DEVOPS_SECRETS_DETECTOR = [
+  { name: 'AWS Credentials', regex: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA)[A-Z0-9]{16}\b/g },
+  { name: 'JSON Web Token (JWT)', regex: /\beyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b/g },
+  { name: 'API Token/Key (GitHub/Slack/NPM)', regex: /\b(?:ghp|gho|ghu|ghs|ghr|glpat|npm|xox[baprs])[-_][A-Za-z0-9_]{10,}\b/g },
+  { name: 'Stripe API Key', regex: /\b(?:[rs]k)_(?:test|live)_[a-zA-Z0-9]{24,}\b/g },
+  { name: 'Database/API Secret', regex: /\b(DB|POSTGRES|REDIS|MYSQL|AWS|SECRET|PASSWORD|TOKEN|API|KEY)[A-Z0-9_]*\s*[:=]\s*[^ \t\r\n"']{8,}\b/gi }
+];
+
 // Hardcoded public key for offline cryptographic verification
 const PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw3f37srO402PU4++Baf8
@@ -294,6 +303,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [{ type: "text", text: `Error: Parameter 'text' must be a string, got '${typeof text}'.` }]
         };
       }
+
+      // Warn early if session has no tokens — reveal would be a no-op
+      if (Object.keys(sessionMap).length === 0) {
+        return {
+          content: [{
+            type: "text",
+            text: `⚠️  Session map is empty — no tokens to restore. Call 'sanitize_text' or 'sanitize_file' first to build the token map, then pass the AI's response here.`
+          }]
+        };
+      }
+
       const restored = PrivacyScrubberCore.unscrubText(text, sessionMap);
       return {
         content: [
@@ -447,7 +467,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
             if (isAdvanced && !license.isPro) {
               const reason = license.error ? ` (${license.error})` : "";
-              process.stderr.write(`⚠️ [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}\nGet a PRO key at: https://privacyscrubber.com/pricing\n`);
+              process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}${colors.reset}\n${colors.cyan}👉  Get a PRO key at: https://privacyscrubber.com/pricing${colors.reset}\n`);
               finalProfile = "General";
               extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' requires PRO. Using 'General' as fallback.`));
             }
@@ -458,7 +478,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             if (!license.isPro) {
               const detected = detectSecrets(processedContent);
               if (detected.length > 0) {
-                process.stderr.write(`⚠️ [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile). Upgrade at https://privacyscrubber.com/pricing\n`);
+                process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).${colors.reset}\n${colors.cyan}👉  Upgrade at: https://privacyscrubber.com/pricing${colors.reset}\n`);
                 extraBlocks.push(buildUpsellBlock(`API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).`));
               }
             }
@@ -802,18 +822,11 @@ function loadCustomRules() {
   return [];
 }
 
-// Run helper
+// Secrets scanner — uses the module-level DEVOPS_SECRETS_DETECTOR constant
 function detectSecrets(text) {
-  const DEVOPS_SECRETS_DETECTOR = [
-    { name: 'AWS Credentials', regex: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA)[A-Z0-9]{16}\b/g },
-    { name: 'JSON Web Token (JWT)', regex: /\beyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b/g },
-    { name: 'API Token/Key (GitHub/Slack/NPM)', regex: /\b(?:ghp|gho|ghu|ghs|ghr|glpat|npm|xox[baprs])[-_][A-Za-z0-9_]{10,}\b/g },
-    { name: 'Stripe API Key', regex: /\b(?:[rs]k)_(?:test|live)_[a-zA-Z0-9]{24,}\b/g },
-    { name: 'Database/API Secret', regex: /\b(DB|POSTGRES|REDIS|MYSQL|AWS|SECRET|PASSWORD|TOKEN|API|KEY)[A-Z0-9_]*\s*[:=]\s*[^ \t\r\n"']{8,}\b/gi }
-  ];
-  
   const detected = [];
   DEVOPS_SECRETS_DETECTOR.forEach(detector => {
+    // Reset lastIndex before every test — global regex retains state across calls
     detector.regex.lastIndex = 0;
     if (detector.regex.test(text)) {
       detected.push(detector.name);
@@ -828,14 +841,9 @@ function performSanitization(text, profile) {
   
   const license = checkLicenseStatus();
   if (!license.isPro && result.tokenMap) {
-    const DEVOPS_SECRETS_DETECTOR = [
-      { name: 'AWS Credentials', regex: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA)[A-Z0-9]{16}\b/g },
-      { name: 'JSON Web Token (JWT)', regex: /\beyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b/g },
-      { name: 'API Token/Key (GitHub/Slack/NPM)', regex: /\b(?:ghp|gho|ghu|ghs|ghr|glpat|npm|xox[baprs])[-_][A-Za-z0-9_]{10,}\b/g },
-      { name: 'Stripe API Key', regex: /\b(?:[rs]k)_(?:test|live)_[a-zA-Z0-9]{24,}\b/g },
-      { name: 'Database/API Secret', regex: /\b(DB|POSTGRES|REDIS|MYSQL|AWS|SECRET|PASSWORD|TOKEN|API|KEY)[A-Z0-9_]*\s*[:=]\s*[^ \t\r\n"']{8,}\b/gi }
-    ];
-
+    // Re-scan each masked token's original value against the shared detector.
+    // If it was a raw secret, restore it in the output and remove from sessionMap
+    // so it is never accidentally revealed by reveal_text.
     Object.entries(result.tokenMap).forEach(([token, original]) => {
       let isSecret = false;
       for (const detector of DEVOPS_SECRETS_DETECTOR) {
@@ -845,11 +853,8 @@ function performSanitization(text, profile) {
           break;
         }
       }
-      
       if (isSecret) {
-        // Restore raw secret in output text
         result.scrubbedText = result.scrubbedText.replace(token, original);
-        // Exclude secret from tokenMap
         delete result.tokenMap[token];
       }
     });
