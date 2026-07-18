@@ -296,6 +296,9 @@ async function runMcpSession() {
     if (!hasTier) {
       throw new Error('check_status output is missing tier indicator');
     }
+    if (!statusText.includes('Config file:') || !statusText.includes('Metrics:')) {
+      throw new Error('check_status output is missing Config file or Metrics fields');
+    }
     console.log('✅ check_status tool success.');
 
     // 8.5. Test create_default_config tool

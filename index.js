@@ -653,8 +653,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const profileList = license.isPro
         ? 'All 23 profiles active (General, Dev, Medical, Legal, Finance, HR…)'
         : 'General only — PRO unlocks 22 industry profiles';
-      const rulesStatus = license.isPro ? '✅ Active (privacyscrubber.json)' : '🔒 Locked — requires PRO';
       const sizeLimit = license.isPro ? 'Unlimited' : '50,000 characters per request';
+
+      const configPath = resolveConfigPath();
+      let rulesStatus = '';
+      let configPathSnippet = 'Not found';
+
+      if (fs.existsSync(configPath)) {
+        const localPath = path.resolve(process.cwd(), 'privacyscrubber.json');
+        if (configPath === localPath) {
+          configPathSnippet = './privacyscrubber.json';
+        } else {
+          configPathSnippet = '~/privacyscrubber.json';
+        }
+
+        if (license.isPro) {
+          const rulesCount = loadCustomRules().length;
+          rulesStatus = `✅ Active (${rulesCount} rule${rulesCount !== 1 ? 's' : ''})`;
+        } else {
+          rulesStatus = '🔒 Ignored (requires PRO)';
+        }
+      } else {
+        rulesStatus = 'Not found';
+      }
+
+      const metricsSummary = getSessionMetricsSummary();
 
       const lines = [
         '╔══════════════════════════════════════════════════╗',
@@ -666,6 +689,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         '╠══════════════════════════════════════════════════╣',
         `║  🏷️  Profiles: ${profileList.substring(0,35).padEnd(35)}║`,
         `║  📋 Custom rules: ${rulesStatus.padEnd(31)}║`,
+        `║  ⚙️  Config file: ${configPathSnippet.padEnd(31)}║`,
+        `║  📈 Metrics: ${metricsSummary.substring(0,36).padEnd(36)}║`,
         '╠══════════════════════════════════════════════════╣',
       ];
 
@@ -709,17 +734,50 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-function loadCustomRules() {
-  const license = checkLicenseStatus();
-  
+function resolveConfigPath() {
   let configPath = path.resolve(process.cwd(), 'privacyscrubber.json');
-
   if (!fs.existsSync(configPath)) {
     const homeDir = process.env.HOME || process.env.USERPROFILE || '';
     if (homeDir) {
       configPath = path.resolve(homeDir, 'privacyscrubber.json');
     }
   }
+  return configPath;
+}
+
+function getSessionMetricsSummary() {
+  const counts = {};
+  Object.keys(sessionMap).forEach(token => {
+    const match = token.match(/^\[([A-Z_]+)_\d+\]$/);
+    if (match) {
+      const type = match[1];
+      counts[type] = (counts[type] || 0) + 1;
+    }
+  });
+  
+  if (Object.keys(counts).length === 0) {
+    return '0 entities masked';
+  }
+  
+  const parts = [];
+  if (counts.NAME) parts.push(`${counts.NAME} Name${counts.NAME > 1 ? 's' : ''}`);
+  if (counts.EMAIL) parts.push(`${counts.EMAIL} Email${counts.EMAIL > 1 ? 's' : ''}`);
+  if (counts.PHONE) parts.push(`${counts.PHONE} Phone${counts.PHONE > 1 ? 's' : ''}`);
+  if (counts.ID) parts.push(`${counts.ID} ID${counts.ID > 1 ? 's' : ''}`);
+  if (counts.CUSTOM) parts.push(`${counts.CUSTOM} Custom${counts.CUSTOM > 1 ? 's' : ''}`);
+  
+  Object.entries(counts).forEach(([type, count]) => {
+    if (!['NAME', 'EMAIL', 'PHONE', 'ID', 'CUSTOM'].includes(type)) {
+      parts.push(`${count} ${type}${count > 1 ? 's' : ''}`);
+    }
+  });
+  
+  return parts.join(', ');
+}
+
+function loadCustomRules() {
+  const license = checkLicenseStatus();
+  const configPath = resolveConfigPath();
 
   if (fs.existsSync(configPath)) {
     try {
