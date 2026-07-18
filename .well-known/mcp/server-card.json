@@ -1,7 +1,7 @@
 {
   "serverInfo": {
     "name": "privacyscrubber/pii-masking-mcp",
-    "version": "1.6.7"
+    "version": "1.6.8"
   },
   "tools": [
     {
@@ -16,7 +16,7 @@
           },
           "profile": {
             "type": "string",
-            "description": "The detection profile to use. Available: 'General' (Free), or PRO profiles. Defaults to 'General'."
+            "description": "The detection profile to use. Available: 'General' (Free), or PRO profiles: 'Dev' (Engineering/Code), 'Medical', 'Pharma', 'Legal', 'Compliance', 'CCPA', 'Finance', 'Bizops', 'Sales', 'WealthMgmt', 'Insurance', 'Accounting', 'HR', 'Security', 'Marketing', 'Support', 'RealEstate', 'Agents', 'Academic', 'Creative', 'Tech', 'Personal'. Defaults to 'General'."
           }
         },
         "required": ["text"]
@@ -48,10 +48,28 @@
           },
           "profile": {
             "type": "string",
-            "description": "The detection profile to use. Available: 'General' (Free), or PRO profiles. Defaults to 'General'."
+            "description": "The detection profile to use. Available: 'General' (Free), or PRO profiles: 'Dev' (Engineering/Code), 'Medical', 'Pharma', 'Legal', 'Compliance', 'CCPA', 'Finance', 'Bizops', 'Sales', 'WealthMgmt', 'Insurance', 'Accounting', 'HR', 'Security', 'Marketing', 'Support', 'RealEstate', 'Agents', 'Academic', 'Creative', 'Tech', 'Personal'. Defaults to 'General'."
           }
         },
         "required": ["file_path"]
+      }
+    },
+    {
+      "name": "create_default_config",
+      "description": "Creates a default 'privacyscrubber.json' configuration file in the active workspace root directory if one does not exist. Includes template structures for custom regex rules and exclusion bypass patterns.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "check_status",
+      "description": "Returns the current PrivacyScrubber MCP tier, session usage, available profiles, and PRO upgrade instructions. Call this to see your license status or get setup help.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
       }
     }
   ],
