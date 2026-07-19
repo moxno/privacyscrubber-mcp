@@ -172,7 +172,8 @@ const customRules = loadCustomRules();
 const localSessionMap = {};
 
 function performSanitization(text) {
-  const result = PrivacyScrubberCore.scrubText(text, customRules, {}, profile, localSessionMap);
+  const normalizedProfile = (profile || "general").trim().toLowerCase();
+  const result = PrivacyScrubberCore.scrubText(text, customRules, {}, normalizedProfile, localSessionMap);
   const license = checkLicenseStatus();
   
   if (!license.isPro && result.tokenMap) {

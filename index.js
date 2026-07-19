@@ -645,6 +645,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             "label": "CUSTOM_TAG",
             "_comment": "pattern must be a valid Javascript regex string. label is the tag replacement (e.g. CUSTOM_TAG)"
           }
+        ],
+        "exclusions": [
+          "localhost",
+          "127.0.0.1",
+          "0.0.0.0",
+          "process.env",
+          "PORT",
+          "node_modules",
+          "PrivacyScrubber",
+          "console.log",
+          "console.error",
+          "utf-8",
+          "utf8"
         ]
       };
 
@@ -838,7 +851,8 @@ function detectSecrets(text) {
 
 function performSanitization(text, profile) {
   const customRules = loadCustomRules();
-  const result = PrivacyScrubberCore.scrubText(text, customRules, {}, profile, sessionMap);
+  const normalizedProfile = (profile || "general").trim().toLowerCase();
+  const result = PrivacyScrubberCore.scrubText(text, customRules, {}, normalizedProfile, sessionMap);
   
   const license = checkLicenseStatus();
   if (!license.isPro && result.tokenMap) {
