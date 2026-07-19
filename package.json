@@ -10,6 +10,7 @@
   },
   "files": [
     "index.js",
+    "pii-masking-run.js",
     "scrubber-core.cjs",
     "smithery.yaml",
     "server.json",
@@ -19,7 +20,8 @@
   ],
   "bin": {
     "mcp-server": "index.js",
-    "privacyscrubber-mcp": "index.js"
+    "privacyscrubber-mcp": "index.js",
+    "pii-masking-run": "pii-masking-run.js"
   },
   "scripts": {
     "start": "node index.js"
