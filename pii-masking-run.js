@@ -27,7 +27,7 @@ const cmdIndex = args.indexOf("--");
 
 if (args.includes("--version") || args.includes("-v")) {
   const pkgPath = path.resolve(__dirname, './package.json');
-  let version = '1.6.9';
+  let version = '1.7.0';
   try { version = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version; } catch (_) {}
   console.log(`pii-masking-run v${version} (PrivacyScrubber MCP)`);
   process.exit(0);
