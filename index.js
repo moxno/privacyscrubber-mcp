@@ -316,11 +316,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       const restored = PrivacyScrubberCore.unscrubText(text, sessionMap);
+      let restoredText = restored.restoredText;
+      // Deduplicate common double-prefixed schemas resulting from LLM prefix reconstruction
+      restoredText = restoredText.replace(/\b(mysql|postgresql|postgres|redis|mongodb|https?|ftp|ssh|git|aws):\/\/\1:\/\//gi, '$1://');
+
       return {
         content: [
           {
             type: "text",
-            text: restored.restoredText
+            text: restoredText
           }
         ]
       };
@@ -708,7 +712,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           rulesStatus = '🔒 Ignored (requires PRO)';
         }
       } else {
-        rulesStatus = 'Not found';
+        rulesStatus = 'None';
+        configPathSnippet = 'Run create_default_config';
       }
 
       const metricsSummary = getSessionMetricsSummary();
