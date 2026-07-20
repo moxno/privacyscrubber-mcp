@@ -301,6 +301,147 @@ async function runMcpSession() {
     }
     console.log('✅ check_status tool success.');
 
+    // 8.1. Test all 23 PII profiles and their parameters (DLP quality verification)
+    console.log("\n---> Running DLP quality verification across all 23 profiles...");
+    const profileTests = [
+      {
+        profile: 'General',
+        input: "Call Alice Vance at 555-0199 or email alice@vance.com",
+        excludes: ['Alice Vance', '555-0199', 'alice@vance.com']
+      },
+      {
+        profile: 'Dev',
+        input: "Production connection mysql://db_admin:P@ssw0rd2026!@10.0.4.15:3306/prod_db and secret sk-proj-49a2fb31c9a10293",
+        excludes: ['db_admin', 'P@ssw0rd2026!', 'sk-proj-49a2fb31c9a10293']
+      },
+      {
+        profile: 'Medical',
+        input: "Patient MRN-981200. Prescribed: Amoxicillin. NPI: 1902910291",
+        excludes: ['MRN-981200', '1902910291']
+      },
+      {
+        profile: 'Pharma',
+        input: "Subject ID SUBJ9012. Protocol ID IND-902. Lot Number LOT-8912.",
+        excludes: ['SUBJ9012', 'IND-902', 'LOT-8912']
+      },
+      {
+        profile: 'Legal',
+        input: "Case reference CASE-8912 and docket CV-26-8912.",
+        excludes: ['CASE-8912', 'CV-26-8912']
+      },
+      {
+        profile: 'Compliance',
+        input: "Audit report GDPR-AUDIT-2026 and DSAR-8912.",
+        excludes: ['GDPR-AUDIT-2026', 'DSAR-8912']
+      },
+      {
+        profile: 'CCPA',
+        input: "CCPA Driver License: DL-902192. Account ID: ACC902100.",
+        excludes: ['DL-902192', 'ACC902100']
+      },
+      {
+        profile: 'Finance',
+        input: "Card Number: 4111-2222-3333-4444 Routing: PORTFOLIO-12345.",
+        excludes: ['4111-2222-3333-4444', 'PORTFOLIO-12345']
+      },
+      {
+        profile: 'Bizops',
+        input: "Deal: DEAL-1234. Signed NDA-9021.",
+        excludes: ['DEAL-1234', 'NDA-9021']
+      },
+      {
+        profile: 'Sales',
+        input: "Opportunity OPPORTUNITY-12345. Current ARR $250K.",
+        excludes: ['OPPORTUNITY-12345', '$250K']
+      },
+      {
+        profile: 'WealthMgmt',
+        input: "Routing: 021000021. Net Worth: $14M.",
+        excludes: ['021000021', '$14M']
+      },
+      {
+        profile: 'Insurance',
+        input: "Claim #POL992109. VIN: 1FTFW1EF5GFA12345.",
+        excludes: ['POL992109', '1FTFW1EF5GFA12345']
+      },
+      {
+        profile: 'Accounting',
+        input: "EIN: 12-3456789. Tax Refund: $82450.",
+        excludes: ['12-3456789', '$82450']
+      },
+      {
+        profile: 'HR',
+        input: "EEID 12345. DOB: 11/12/1993.",
+        excludes: ['12345', '11/12/1993']
+      },
+      {
+        profile: 'Security',
+        input: "Vulnerability CVE-2026-9901 on IP 172.16.254.1.",
+        excludes: ['CVE-2026-9901', '172.16.254.1']
+      },
+      {
+        profile: 'Marketing',
+        input: "Lead: LEAD-90210. Campaign: CAMPAIGN-1234567890.",
+        excludes: ['LEAD-90210', 'CAMPAIGN-1234567890']
+      },
+      {
+        profile: 'Support',
+        input: "Ticket TICKET-12345. Zendesk: ZENDESK-9021.",
+        excludes: ['TICKET-12345', 'ZENDESK-9021']
+      },
+      {
+        profile: 'RealEstate',
+        input: "MLS 902100. GATE CODE 1234.",
+        excludes: ['902100', '1234']
+      },
+      {
+        profile: 'Agents',
+        input: "Vector VECTOR-90210210.",
+        excludes: ['VECTOR-90210210']
+      },
+      {
+        profile: 'Academic',
+        input: "Student STUDENT-89120. Policy: FERPA-90210.",
+        excludes: ['STUDENT-89120', 'FERPA-90210']
+      },
+      {
+        profile: 'Creative',
+        input: "This draft DRAFT-8912 is EMBARGOED.",
+        excludes: ['DRAFT-8912', 'EMBARGOED']
+      },
+      {
+        profile: 'Tech',
+        input: "Instance INSTANCE-ID-a092f1b0a92. Config: KUBECONFIG-PROD12.",
+        excludes: ['INSTANCE-ID-a092f1b0a92', 'KUBECONFIG-PROD12']
+      },
+      {
+        profile: 'Personal',
+        input: "PASSWORD: greenmonster. MOM: +1-312-555-0182.",
+        excludes: ['greenmonster', '+1-312-555-0182']
+      }
+    ];
+
+    for (const testCase of profileTests) {
+      const response = await sendRequest('tools/call', {
+        name: 'sanitize_text',
+        arguments: {
+          text: testCase.input,
+          profile: testCase.profile
+        }
+      });
+      const output = response.result?.content?.[0]?.text || '';
+      if (response.result?.isError || response.error) {
+        throw new Error(`Profile '${testCase.profile}' sanitization tool failed: ${JSON.stringify(response.error || response.result)}`);
+      }
+      for (const excluded of testCase.excludes) {
+        if (output.includes(excluded)) {
+          throw new Error(`Profile '${testCase.profile}' leaked sensitive value: "${excluded}". Output: "${output}"`);
+        }
+      }
+      console.log(`  ✓ Profile '${testCase.profile}': PASS (PII values correctly masked)`);
+    }
+    console.log("✅ DLP quality verification across all 23 profiles completed successfully.");
+
     // 8.5. Test create_default_config tool
     console.log("--> Calling 'create_default_config'...");
     const testConfigPath = path.resolve(process.cwd(), 'privacyscrubber.json');
@@ -475,7 +616,68 @@ async function runMcpSession() {
 
     mcpProcess2.kill();
 
-    console.log("\n🎉 All deep integration and hardening tests passed successfully!");
+    // ── pii-masking-run CLI regression tests ──────────────────────────────
+    console.log("\n---> Running pii-masking-run CLI regression tests...");
+    const cliScript = path.resolve(__dirname, 'pii-masking-run.js');
+
+    async function runCli(args, stdinData = null) {
+      return new Promise((resolve, reject) => {
+        const proc = spawn('node', [cliScript, ...args], { env: { ...process.env } });
+        let stdout = '';
+        let stderr = '';
+        proc.stdout.on('data', d => { stdout += d.toString(); });
+        proc.stderr.on('data', d => { stderr += d.toString(); });
+        if (stdinData) { proc.stdin.write(stdinData); proc.stdin.end(); }
+        proc.on('close', code => resolve({ stdout, stderr, code }));
+        proc.on('error', reject);
+      });
+    }
+
+    // CLI Test 1: Basic PII via echo
+    const cli1 = await runCli(['--', 'echo', 'Name: John Doe, Email: john.doe@example.com, Phone: +1-555-123-4567']);
+    if (!cli1.stdout.includes('[NAME_1]') || !cli1.stdout.includes('[EMAIL_1]') || !cli1.stdout.includes('[PHONE_1]')) {
+      throw new Error(`pii-masking-run Test 1 failed. Got: ${cli1.stdout}`);
+    }
+    console.log('<-- CLI Test 1 (Basic PII):', cli1.stdout.trim());
+    console.log('✅ pii-masking-run basic PII redaction pass.');
+
+    // CLI Test 2: Medical profile + SSN
+    const cli2 = await runCli(['--profile', 'Medical', '--', 'echo', 'Patient John Doe, SSN: 123-45-6789']);
+    if (!cli2.stdout.includes('[NAME_1]') || !cli2.stdout.includes('[ID_1]')) {
+      throw new Error(`pii-masking-run Test 2 (Medical) failed. Got: ${cli2.stdout}`);
+    }
+    console.log('<-- CLI Test 2 (Medical profile):', cli2.stdout.trim());
+    console.log('✅ pii-masking-run Medical profile pass.');
+
+    // CLI Test 3: Exit code passthrough (command exits 0)
+    const cli3 = await runCli(['--', 'node', '--version']);
+    if (cli3.code !== 0) {
+      throw new Error(`pii-masking-run Test 3 exit code failed. Got: ${cli3.code}`);
+    }
+    console.log('<-- CLI Test 3 (exit code passthrough): exit', cli3.code);
+    console.log('✅ pii-masking-run exit code passthrough pass.');
+
+    // CLI Test 4: Non-zero exit code passthrough — write temp script to avoid shell quoting in spawn
+    const exitScriptPath = path.resolve(__dirname, '_exit42.mjs');
+    fs.writeFileSync(exitScriptPath, 'process.exit(42);\n');
+    const cli4 = await runCli(['--', 'node', exitScriptPath]);
+    fs.unlinkSync(exitScriptPath);
+    if (cli4.code !== 42) {
+      throw new Error(`pii-masking-run Test 4 non-zero exit failed. Got: ${cli4.code}`);
+    }
+    console.log('<-- CLI Test 4 (non-zero exit passthrough): exit', cli4.code);
+    console.log('✅ pii-masking-run non-zero exit passthrough pass.');
+
+    // CLI Test 5: --version flag
+    const cli5 = await runCli(['--version']);
+    if (!cli5.stdout.trim() && !cli5.stderr.trim()) {
+      throw new Error('pii-masking-run --version produced no output.');
+    }
+    console.log('<-- CLI Test 5 (--version):', (cli5.stdout || cli5.stderr).trim());
+    console.log('✅ pii-masking-run --version pass.');
+
+    console.log("\n🎉 All deep integration, hardening, and CLI tests passed successfully!");
+    // ─────────────────────────────────────────────────────────────────────
     mcpProcess.kill();
     if (fs.existsSync(configPath)) {
       fs.unlinkSync(configPath);
