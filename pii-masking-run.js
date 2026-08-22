@@ -190,12 +190,12 @@ function performSanitization(text) {
       }
       if (isSecret) {
         hasSecrets = true;
-        result.scrubbedText = result.scrubbedText.replace(token, original);
+        result.scrubbedText = result.scrubbedText.replace(token, '[SECRET_BLOCKED_UPGRADE_TO_PRO]');
       }
     });
 
     if (hasSecrets) {
-      process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] Secrets/Keys detected in output. Redaction skipped (Requires PRO tier).${colors.reset}\n`);
+      process.stderr.write(`\x1b[1;31m🚫  [PrivacyScrubber] Secrets/Keys detected in output. Replaced with [SECRET_BLOCKED_UPGRADE_TO_PRO] to protect your data (Requires PRO tier).\x1b[0m\n`);
     }
   }
 

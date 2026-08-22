@@ -1,6 +1,6 @@
 {
   "name": "@privacyscrubber/mcp-server",
-  "version": "1.7.0",
+  "version": "2.0.0",
   "mcpName": "io.github.moxno/privacyscrubber-mcp",
   "description": "CISO-Approved Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Windsurf, and Claude Desktop. Prevent API leaks and comply with HIPAA/SOC 2 locally.",
   "main": "index.js",
@@ -10,8 +10,13 @@
   },
   "files": [
     "index.js",
+    "install.js",
     "pii-masking-run.js",
     "scrubber-core.cjs",
+    "ps-license-manager.js",
+    "ps-pii-engine.cjs",
+    "ps-pii-engine.js",
+    "config-schema.json",
     "smithery.yaml",
     "server.json",
     "manifest.json",
@@ -21,7 +26,8 @@
   "bin": {
     "mcp-server": "index.js",
     "privacyscrubber-mcp": "index.js",
-    "pii-masking-run": "pii-masking-run.js"
+    "pii-masking-run": "pii-masking-run.js",
+    "privacyscrubber-mcp-install": "install.js"
   },
   "scripts": {
     "start": "node index.js"
@@ -57,7 +63,7 @@
   ],
   "author": "Ilya Sibiryakov (BrandMeWeb)",
   "license": "MIT",
-  "homepage": "https://privacyscrubber.com/pii-mcp/",
+  "homepage": "https://privacyscrubber.com/pii-mcp/?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/moxno/privacyscrubber-mcp.git"

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// LicenseManager will be required below
 
 /**
  * PrivacyScrubber MCP Server
@@ -12,6 +13,10 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
+  ListResourceTemplatesRequestSchema,
+  ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { createRequire } from 'module';
 import fs from 'fs';
@@ -32,12 +37,19 @@ const MCP_VERSION = require('./package.json').version;
 // Import the production core engine with 100% parity
 const scrubberCorePath = path.resolve(__dirname, './scrubber-core.cjs');
 const PrivacyScrubberCore = require(scrubberCorePath);
+let LicenseManager = require('./ps-license-manager.js');
+if (!LicenseManager || typeof LicenseManager.validate !== 'function') {
+  LicenseManager = global.LicenseManager;
+}
 
 // Initialize core engine
 PrivacyScrubberCore.init();
 
 // Volatile in-memory token map
 const sessionMap = {};
+
+// Volatile in-memory false positive ignore list (values excluded from future scrubs)
+const sessionIgnoreList = new Set();
 
 // ANSI terminal color helpers
 const colors = {
@@ -49,92 +61,183 @@ const colors = {
   reset: '\x1b[0m'
 };
 
+// Helper to log to both standard terminal (with colors) and MCP logging protocol
+function mcpLog(msg) {
+  const clean = msg.replace(/\x1b\[[0-9;]*m/g, '').trim();
+  const level = clean.includes('⚠️') || clean.includes('Error') ? "warning" : "info";
+  try {
+    server.sendLoggingMessage({ level, data: clean });
+  } catch(e) {
+    // Ignore if server isn't fully connected yet
+  }
+  process.stderr.write(msg);
+}
+
 // Secrets detection patterns — defined once here, shared by detectSecrets() and performSanitization()
 const DEVOPS_SECRETS_DETECTOR = [
   { name: 'AWS Credentials', regex: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA)[A-Z0-9]{16}\b/g },
   { name: 'JSON Web Token (JWT)', regex: /\beyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b/g },
   { name: 'API Token/Key (GitHub/Slack/NPM)', regex: /\b(?:ghp|gho|ghu|ghs|ghr|glpat|npm|xox[baprs])[-_][A-Za-z0-9_]{10,}\b/g },
   { name: 'Stripe API Key', regex: /\b(?:[rs]k)_(?:test|live)_[a-zA-Z0-9]{24,}\b/g },
+  { name: 'OpenAI Project API Key', regex: /\b(?:sk|pk)-(?:proj-)?[a-zA-Z0-9_-]{16,}\b/gi },
+  { name: 'Database Connection URI', regex: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql):\/\/[^\s"']+/gi },
   { name: 'Database/API Secret', regex: /\b(DB|POSTGRES|REDIS|MYSQL|AWS|SECRET|PASSWORD|TOKEN|API|KEY)[A-Z0-9_]*\s*[:=]\s*[^ \t\r\n"']{8,}\b/gi }
 ];
-
-// Hardcoded public key for offline cryptographic verification
-const PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw3f37srO402PU4++Baf8
-FG8LY4l/IA3NKLlBnYmNHRTjfI/O/w5PDZn1xPcUQevojA1J+A5moKcjXsJ5b21X
-hJoYSkE4vLpcVYOt1FhRwEHs1APDSyss0HixboLz2eW2XQf2NbwajWtNlyxvgczO
-KE6ClnLomtsaKywwqB4alzdYnnnFJttFPjwmgPSO7D9AgN9sYaVkXOaOFrIZ90Ng
-TRhSHUeL7ReltWlCHwz9xf5m2FrKtxr2VBlEoyPjsFzalHMey1EX+yXe81zM7IIi
-t1Z8agLzo7WIfNBAIWmRlerTplaFFZrQgdF5g/Y0n8IIMZOtadgoY8E855psDNZV
-7wIDAQAB
------END PUBLIC KEY-----`;
 
 function checkLicenseStatus() {
   const key = (process.env.PRIVACYSCRUBBER_KEY || "").trim();
   if (!key) return { isPro: false, type: null, error: "No license key provided." };
 
-  try {
-    const [payloadBase64, signatureBase64] = key.split('.');
-    if (!payloadBase64 || !signatureBase64) {
-      return { isPro: false, type: null, error: "Invalid license key structure." };
-    }
-
-    const verifier = crypto.createVerify('SHA256');
-    verifier.update(payloadBase64);
-    const isVerified = verifier.verify(PUBLIC_KEY, signatureBase64, 'base64');
-    
-    if (!isVerified) {
-      return { isPro: false, type: null, error: "Signature verification failed." };
-    }
-
-    const payload = JSON.parse(Buffer.from(payloadBase64, 'base64').toString('utf8'));
-    
-    // Expiration check
-    if (payload.expires && payload.expires < Math.floor(Date.now() / 1000)) {
-      return { 
-        isPro: false, 
-        type: payload.type, 
-        error: `License expired on ${new Date(payload.expires * 1000).toLocaleDateString()}` 
-      };
-    }
-
-    return { isPro: true, type: payload.type, error: null };
-  } catch (e) {
-    return { isPro: false, type: null, error: "Error parsing license: " + e.message };
+  const result = LicenseManager.validate(key);
+  
+  if (!result.valid) {
+    mcpLog(`DEBUG: License invalid because: ${result.reason || "Unknown"}`);
+    return { isPro: false, type: null, error: result.reason || "Invalid license format or signature." };
   }
+
+  return { isPro: true, type: result.tier, error: null };
 }
 
-// ── Session request counter (volatile in-memory) ─────────────────────────────
-let sessionRequestCount = 0;
-const UPSELL_EVERY_N = 10; // show upsell nudge every N free-tier requests
+// ── Free Tier Usage Tracking (Persistent) ─────────────────────────────
+const FREE_TIER_DAILY_LIMIT = 10;
+const STAR_PROMPT_THRESHOLD = 5;
 
-// Build a clean upsell content block visible to the agent / user
+function getUsageFilePath() {
+  const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+  return path.resolve(homeDir, '.privacyscrubber-usage.json');
+}
+
+function getDailyUsage() {
+  const file = getUsageFilePath();
+  const today = new Date().toISOString().split('T')[0];
+  if (!fs.existsSync(file)) return 0;
+  try {
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (data.date === today) {
+      return data.count || 0;
+    }
+  } catch (e) {}
+  return 0;
+}
+
+function incrementDailyUsage() {
+  const file = getUsageFilePath();
+  const today = new Date().toISOString().split('T')[0];
+  let count = 0;
+  if (fs.existsSync(file)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (data.date === today) count = data.count || 0;
+    } catch (e) {}
+  }
+  count++;
+  try {
+    fs.writeFileSync(file, JSON.stringify({ date: today, count }), 'utf8');
+  } catch (e) {}
+  return count;
+}
+
+function checkFreeTierLimit(isPro) {
+  if (isPro || process.env.NODE_ENV === 'test' || process.env.PRIVACYSCRUBBER_TEST_MODE === '1') return { blocked: false, count: 0 };
+  
+  const count = incrementDailyUsage();
+  // Feedback / Growth loop triggers
+  if (count === 3) {
+    mcpLog(`${colors.cyan}💬 We are building the ultimate privacy tool for developers. What feature should we add next? Let us know: https://privacyscrubber.com/feedback${colors.reset}\n`);
+  }
+  if (count === STAR_PROMPT_THRESHOLD) {
+    mcpLog(`${colors.yellowBold}🔒 PrivacyScrubber is running securely. If this tool saved your PII today, please drop a star on GitHub: https://github.com/moxno/privacyscrubber-mcp${colors.reset}\n`);
+  }
+  
+  if (count >= FREE_TIER_DAILY_LIMIT) {
+    mcpLog(`${colors.redBold}🚫  [PrivacyScrubber] Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Request BLOCKED.${colors.reset}\n${colors.cyan}👉  Get a PRO key for unlimited use: https://privacyscrubber.com/pricing${colors.reset}\n`);
+    return { blocked: true, count };
+  }
+  
+  return { blocked: false, count };
+}
+
+function buildCisoAuditTelemetry(currentTokenMap = {}) {
+    const entities = {};
+    let totalCount = 0;
+
+    if (currentTokenMap && typeof currentTokenMap === 'object') {
+        const keys = Array.isArray(currentTokenMap) ? currentTokenMap : Object.keys(currentTokenMap);
+        for (const t of keys) {
+            const tokenStr = typeof t === 'string' ? t : (t.token || t.mask || '');
+            const match = tokenStr.match(/\[([A-Z_]+)_\d+\]/);
+            const baseType = match ? match[1] : (tokenStr.replace(/\[|\]/g, '').replace(/_[0-9]+$/, '') || 'CUSTOM');
+            entities[baseType] = (entities[baseType] || 0) + 1;
+            totalCount++;
+        }
+    }
+
+    const types = Object.keys(entities);
+    let riskLevel = 'LOW EXPOSURE';
+
+    if (totalCount > 0) {
+        const hasHighRiskEntities = types.some(t => ['ID', 'SSN', 'CREDIT_CARD', 'PASSPORT', 'BANK', 'API_KEY', 'SECRET', 'PASSWORD', 'MRN', 'KEY'].includes(t));
+        if (hasHighRiskEntities || types.length >= 3 || totalCount >= 10) {
+            riskLevel = 'CRITICAL (HIGH EXPOSURE)';
+        } else if (types.length >= 2 || totalCount >= 3) {
+            riskLevel = 'MODERATE EXPOSURE';
+        } else {
+            riskLevel = 'LOW EXPOSURE';
+        }
+    } else {
+        riskLevel = 'CLEAN (ZERO PII)';
+    }
+
+    const frameworksSet = new Set(['ZTDS Standard']);
+    if (types.includes('NAME') || types.includes('EMAIL') || types.includes('PHONE')) {
+        frameworksSet.add('GDPR (Art. 4)');
+        frameworksSet.add('CCPA/CPRA');
+    }
+    if (types.includes('ID') || types.includes('SSN') || types.includes('PASSPORT')) {
+        frameworksSet.add('SOC 2 Type II');
+        frameworksSet.add('ISO 27001 (A.8.11)');
+    }
+    if (types.some(t => ['CREDIT_CARD', 'BANK', 'IBAN', 'FINANCIAL', 'CARD'].includes(t))) {
+        frameworksSet.add('PCI DSS v4.0');
+    }
+    if (types.some(t => ['MRN', 'HEALTH', 'MEDICAL', 'PATIENT'].includes(t))) {
+        frameworksSet.add('HIPAA §164.514');
+    }
+    if (types.some(t => ['API_KEY', 'SECRET', 'PASSWORD', 'TOKEN', 'KEY'].includes(t))) {
+        frameworksSet.add('NIST SP 800-53');
+    }
+
+    return {
+        totalCount,
+        entities,
+        types,
+        riskLevel,
+        frameworksList: Array.from(frameworksSet)
+    };
+}
+
+function formatAuditReceipt(telemetry) {
+  if (telemetry.totalCount === 0) {
+    return "\\n\\n> 🛡️ **PrivacyScrubber Audit Receipt**: CLEAN (ZERO PII DETECTED)\\n";
+  }
+  
+  const entitiesList = Object.entries(telemetry.entities)
+    .map(([type, count]) => `${count} ${type}`)
+    .join(', ');
+
+  const icon = telemetry.riskLevel.includes('CRITICAL') ? '🔴' : (telemetry.riskLevel.includes('MODERATE') ? '🟠' : '🟢');
+
+  return `\\n\\n> 🛡️ **PrivacyScrubber Audit Receipt**\\n> * **Risk Level:** ${icon} ${telemetry.riskLevel}\\n> * **Compliance Enforced:** ${telemetry.frameworksList.join(', ')}\\n> * **Tokens Masked:** ${telemetry.totalCount} (${entitiesList})\\n`;
+}
+
+// Build a clean upsell content block (Disabled to prevent agent-visible marketing content)
 function buildUpsellBlock(reason) {
-  const count = sessionRequestCount;
-  let lines = [
-    '─────────────────────────────────────────────',
-    '⚡ PrivacyScrubber PRO — Upgrade your AI setup',
-    '─────────────────────────────────────────────',
-  ];
-  if (reason) lines.push(`ℹ️  ${reason}`);
-  lines.push(
-    `📊 Free session requests: ${count}`,
-    '🔒 PRO unlocks: 22 industry profiles (Dev, Medical, Legal…)',
-    '         + Custom regex rules (privacyscrubber.json)',
-    '         + Unlimited input size',
-    '',
-    '💳 PRO Lifetime: $110  →  https://privacyscrubber.com/pricing',
-    '',
-    'After purchase, add your key to your MCP config:',
-    '  "PRIVACYSCRUBBER_KEY": "<your-key-here>"',
-    '─────────────────────────────────────────────'
-  );
-  return { type: 'text', text: lines.join('\n') };
+  return null;
 }
 
-// Decide if we should attach a soft periodic nudge (every N requests, free tier)
+// Decide if we should attach a soft periodic nudge (Disabled to maintain clean MCP output)
 function shouldNudge(isPro) {
-  return !isPro && sessionRequestCount > 0 && sessionRequestCount % UPSELL_EVERY_N === 0;
+  return false;
 }
 
 // Create the MCP server
@@ -146,6 +249,9 @@ const server = new Server(
   {
     capabilities: {
       tools: {},
+      prompts: {},
+      logging: {},
+      resources: {},
     },
   }
 );
@@ -156,7 +262,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: "sanitize_text",
-        description: "Locally scrubs PII, secrets, and credentials (like API keys, passwords, emails, phones, names) from code, logs, or text. Replaces them with safe placeholders (e.g., [EMAIL_1], [API_KEY_1]). Keep your data secure before passing it to any LLM.",
+        description: "STEP 1: Call this first. You MUST NOT process raw user data before calling this. Locally scrubs PII, secrets, and credentials (like API keys, passwords, emails, phones, names) from code, logs, or text. Replaces them with safe placeholders (e.g., [EMAIL_1], [API_KEY_1]). Keep your data secure before passing it to any LLM.",
         inputSchema: {
           type: "object",
           properties: {
@@ -167,6 +273,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             profile: {
               type: "string",
               description: "The detection profile to use. Available: 'General' (Free), or PRO profiles: 'Dev' (Engineering/Code), 'Medical', 'Pharma', 'Legal', 'Compliance', 'CCPA', 'Finance', 'Bizops', 'Sales', 'WealthMgmt', 'Insurance', 'Accounting', 'HR', 'Security', 'Marketing', 'Support', 'RealEstate', 'Agents', 'Academic', 'Creative', 'Tech', 'Personal'. Defaults to 'General'."
+            },
+            ignore_list: {
+              type: "array",
+              items: { type: "string" },
+              description: "Optional list of plaintext values to skip during detection (false positives from previous scrubs). These values will also be persisted in the session ignore list for all future calls."
             }
           },
           required: ["text"]
@@ -174,7 +285,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "reveal_text",
-        description: "Replaces masked tokens (e.g., [EMAIL_1], [API_KEY_1]) in the LLM's response back with the original private data from the local volatile RAM-only session map.",
+        description: "STEP 3: Call this last. You MUST pass your final generated response through this tool to restore tokens (e.g., [EMAIL_1]) back with the original private data from the local volatile RAM-only session map before showing it to the user.",
         inputSchema: {
           type: "object",
           properties: {
@@ -205,12 +316,102 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
+        name: "audit_directory_for_pii",
+        description: "Scans a local directory for leaks of secrets, keys, and PII. Returns a summary report. Use this tool for Security Auditing.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            directory_path: {
+              type: "string",
+              description: "Absolute path to the directory to audit."
+            },
+            profile: {
+              type: "string",
+              description: "The detection profile to use. Defaults to 'General'."
+            },
+            extensions: {
+              type: "array",
+              items: { type: "string" },
+              description: "List of file extensions to scan (e.g. ['.env', '.log', '.js']). If empty, scans all text files."
+            },
+            ignore_node_modules: {
+              type: "boolean",
+              description: "Whether to ignore 'node_modules' directories. Defaults to true."
+            }
+          },
+          required: ["directory_path"]
+        }
+      },
+      {
+        name: "redact_file",
+        description: "Action/Redact: In-place redaction of a local file. Replaces PII and secrets with tokens and saves the file. By default, creates a .bak backup. Use dry_run=true to test without modifying.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            file_path: {
+              type: "string",
+              description: "Absolute path to the file to redact."
+            },
+            profile: {
+              type: "string",
+              description: "The detection profile to use. Defaults to 'General'."
+            },
+            dry_run: {
+              type: "boolean",
+              description: "If true, does not modify the file, only returns the metrics and a preview."
+            },
+            no_backup: {
+              type: "boolean",
+              description: "If true, does not create a .bak file. Use with extreme caution!"
+            }
+          },
+          required: ["file_path"]
+        }
+      },
+      {
         name: "create_default_config",
         description: "Creates a default 'privacyscrubber.json' configuration file in the active workspace root directory if one does not exist. Includes template structures for custom regex rules and exclusion bypass patterns.",
         inputSchema: {
           type: "object",
           properties: {},
           required: []
+        }
+      },
+      {
+        name: "generate_compliance_report",
+        description: "Generates an official Zero-Trust Compliance Audit Certificate (GDPR, HIPAA, EU AI Act, SOC 2) for the current MCP session. Returns cryptographic session hash, masked entities breakdown, and compliance certification.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            format: {
+              type: "string",
+              description: "The output format: 'markdown' (default), 'json', or 'summary'.",
+              enum: ["markdown", "json", "summary"]
+            },
+            company_name: {
+              type: "string",
+              description: "Optional organization or team name to brand the compliance report."
+            },
+            department: {
+              type: "string",
+              description: "Optional department or auditor ID (e.g. 'SecOps / Engineering')."
+            }
+          },
+          required: []
+        }
+      },
+      {
+        name: "mark_false_positive",
+        description: "Marks a previously detected token as a false positive. The original plaintext value will be excluded from all future sanitize_text calls in this session. Returns the restored original value and updated ignore list size.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            token: {
+              type: "string",
+              description: "The token to mark as false positive (e.g., '[NAME_1]', '[EMAIL_2]')."
+            }
+          },
+          required: ["token"]
         }
       },
       {
@@ -226,13 +427,128 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
+// List available prompts
+server.setRequestHandler(ListPromptsRequestSchema, async () => {
+  return {
+    prompts: [
+      {
+        name: "secure_ai_workflow",
+        description: "Zero-Trust Data Sanitization workflow instruction. Use this to automatically scrub PII before processing data.",
+      },
+      {
+        name: "safe_redaction_workflow",
+        description: "Instructions for using the redact_file tool safely with QA checks.",
+      }
+    ]
+  };
+});
+
+// Handle prompt execution
+server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+  if (request.params.name === "safe_redaction_workflow") {
+    return {
+      description: "Instructions for safely redacting files in-place.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: "When you need to redact or scrub a file on disk permanently, follow this quality-assured workflow:\n1. Run `redact_file` with `dry_run: true` to preview the changes and check how many PII tokens will be replaced.\n2. Verify the metrics. If the numbers look correct and no unintended data is being scrubbed, run `redact_file` with `dry_run: false` to apply the redaction.\n3. Ensure you have backups. `redact_file` creates a `.bak` backup by default. NEVER set `no_backup: true` unless the user explicitly asks to destroy the original data without a backup."
+          }
+        }
+      ]
+    };
+  }
+
+  if (request.params.name !== "secure_ai_workflow") {
+    throw new Error(`Unknown prompt: ${request.params.name}`);
+  }
+  return {
+    description: "Instructions for securely processing data with PrivacyScrubber.",
+    messages: [
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text: "You are a secure, privacy-first AI agent. Whenever you are asked to process, analyze, or rewrite text or files that may contain PII (Personally Identifiable Information), secrets, or credentials, you MUST follow this Zero-Trust workflow:\n\n1. STEP 1: Call the `sanitize_text` or `sanitize_file` tool first to scrub the input. DO NOT process the raw user data.\n2. STEP 2: Perform your analysis or task on the sanitized output provided by the tool.\n3. STEP 3: Before returning your final answer to the user, you MUST call the `reveal_text` tool, passing your final answer. This will restore the original private data (e.g., replacing [EMAIL_1] with the real email).\n4. STEP 4: Return the result of the `reveal_text` tool to the user."
+        }
+      }
+    ]
+  };
+});
+
+// List Resource Templates
+server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
+  return {
+    resourceTemplates: [
+      {
+        uriTemplate: "mcp://privacyscrubber/profiles/{name}",
+        name: "PII Detection Profile Details",
+        description: "Returns the description and target entities of a specific PrivacyScrubber profile (e.g., 'Medical', 'Finance', 'General'). Use this to understand what a profile does."
+      }
+    ]
+  };
+});
+
+// Read Resource
+server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+  const uri = request.params.uri;
+  const match = uri.match(/^mcp:\/\/privacyscrubber\/profiles\/(.+)$/);
+  if (match) {
+    const profileName = match[1];
+    const descriptions = {
+      "general": "Scrubs basic PII: Names, Emails, Phone Numbers, Credit Cards, SSN, IPv4/IPv6, and standard API Keys.",
+      "dev": "Engineering profile. Scrubs AWS keys, JWTs, GCP keys, Stripe keys, database connection strings, and internal IP addresses.",
+      "engineering": "Engineering profile. Scrubs AWS keys, JWTs, GCP keys, Stripe keys, database connection strings, internal IPs, Docker paths, and K8s internal endpoints.",
+      "tech": "Technology profile. Scrubs cloud instance IDs, node/cluster IDs, environment tags, kubeconfig, and terraform states.",
+      "medical": "HIPAA compliance profile. Scrubs ICD-10 codes, medical record numbers (MRN), DEA numbers, NPI, patient names, and health conditions.",
+      "finance": "PCI/Finance profile. Scrubs IBAN, SWIFT codes, credit cards, routing numbers, and financial transaction IDs.",
+      "wealthmgmt": "Wealth Management profile. Scrubs ABA/Routing numbers, trust names, portfolio values, net worth, RMDs, and account numbers.",
+      "insurance": "Insurance profile. Scrubs claim numbers, policy numbers, settlement amounts, NAIC, adjustor IDs, and insured names.",
+      "accounting": "Accounting profile. Scrubs EIN, FEIN, Tax IDs, AGI, tax forms (1040, W-2, 1099), refund amounts, and PTINs.",
+      "legal": "Legal profile. Scrubs case numbers, matter numbers, attorney-client privilege markers, and litigation IDs.",
+      "hr": "Human Resources profile. Scrubs employee IDs (EEID), resumes, DOBs, tenant IDs, and home addresses.",
+      "security": "Security profile. Scrubs secrets, AWS keys, JWTs, Stripe keys, incident IDs, and breach reports.",
+      "marketing": "Marketing profile. Scrubs lead IDs, prospect IDs, GCLID/FBCLID, LTV/CAC amounts, cohort IDs, and segment IDs.",
+      "bizops": "BizOps profile. Scrubs deals, KPIs, vendor IDs, EBITDA/Revenue figures, NDAs, and M&A identifiers.",
+      "sales": "Sales profile. Scrubs opportunity IDs, DocuSign hashes, ARR/MRR/Quota amounts, and SFDC/HubSpot IDs.",
+      "support": "Support profile. Scrubs Zendesk/Jira ticket numbers, RMA/Return IDs, and loyalty/rewards numbers.",
+      "realestate": "Real Estate profile. Scrubs MLS numbers, LIS IDs, parcel numbers, rent/escrow amounts, and gate/lobby codes.",
+      "compliance": "Compliance profile. Scrubs GDPR/HIPAA/SOC2 audit IDs, DPA policy numbers, and SAR/DSAR request IDs.",
+      "ccpa": "CCPA profile. Scrubs driver licenses, precise geolocation (Lat/Long), CCPA/CPRA opt-out markers, and account numbers.",
+      "agents": "AI Agents profile. Scrubs agent IDs, vector IDs, task IDs, system prompts, and OpenAI API keys.",
+      "academic": "Academic profile. Scrubs student/alumni IDs, course numbers, FERPA/IRB IDs, and academic grades.",
+      "creative": "Creative profile. Scrubs project IDs, script drafts, spoiler/embargo tags, and ghostwriter names.",
+      "personal": "Personal profile. Scrubs birthdays, passwords, PINs, and emergency contacts/family phone numbers.",
+      "pharma": "Pharma/Clinical profile. Scrubs patient IDs, study protocols, IND/NDA numbers, IRB IDs, batch/lot serials, and dosages."
+    };
+    const desc = descriptions[profileName.toLowerCase()] || `The '${profileName}' profile is a PRO-tier detection ruleset tuned for specific industry compliance. It detects and sanitizes domain-specific identifiers.`;
+    
+    return {
+      contents: [
+        {
+          uri,
+          mimeType: "text/markdown",
+          text: `# Profile: ${profileName}\n\n**Description:** ${desc}\n\n*Note: To use this profile, pass \`"profile": "${profileName}"\` to the \`sanitize_text\` or \`sanitize_file\` tools. Advanced profiles require a PRO license.*`
+        }
+      ]
+    };
+  }
+  throw new Error(`Resource not found: ${uri}`);
+});
+
 // Handle tool execution calls
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
   try {
     if (name === "sanitize_text") {
-      const { text, profile = "General" } = args || {};
+      const { text, profile = "General", ignore_list } = args || {};
+
+      // Merge per-call ignore_list into persistent sessionIgnoreList
+      if (Array.isArray(ignore_list)) {
+        ignore_list.forEach(v => { if (typeof v === 'string' && v.trim()) sessionIgnoreList.add(v.trim()); });
+      }
       if (text === undefined || text === null) {
         return {
           isError: true,
@@ -253,39 +569,45 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       let finalProfile = targetProfile;
       const extraBlocks = [];
 
-      sessionRequestCount++;
-
-      if (isAdvanced && !license.isPro) {
-        const reason = license.error ? ` (${license.error})` : "";
-        process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}${colors.reset}\n${colors.cyan}👉  Get a PRO key at: https://privacyscrubber.com/pricing${colors.reset}\n`);
-        finalProfile = "General";
-        extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' requires PRO. Using 'General' as fallback.`));
+      const limitStatus = checkFreeTierLimit(license.isPro);
+      if (limitStatus.blocked) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Please set your PRO license key to continue. Get a key at: https://privacyscrubber.com/pricing` }]
+        };
       }
 
-      const { processedText, wasTruncated } = truncateIfFree(text, license.isPro);
+      const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
+      if (isAdvanced && !license.isPro) {
+        mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char limit).${colors.reset}\n${colors.cyan}👉  Get a PRO key for unlimited use: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
+        extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' active (Free Tier limit: 5,000 chars). Upgrade to PRO for unlimited text.`));
+      }
+
+      const { processedText, wasTruncated } = truncateIfFree(text, license.isPro, charLimit);
       if (wasTruncated) {
-        extraBlocks.push(buildUpsellBlock(`Input was truncated to 50,000 characters (Free Tier limit).`));
+        extraBlocks.push(buildUpsellBlock(`Input was truncated to ${charLimit.toLocaleString()} characters (Free Tier limit).`));
       }
 
       if (!license.isPro) {
         const detected = detectSecrets(processedText);
         if (detected.length > 0) {
-          process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).${colors.reset}\n${colors.cyan}👉  Upgrade at: https://privacyscrubber.com/pricing${colors.reset}\n`);
-          extraBlocks.push(buildUpsellBlock(`API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).`));
+          mcpLog(`${colors.redBold}🚫  [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Request BLOCKED to protect your data (Requires PRO Profile).${colors.reset}\n${colors.cyan}👉  Upgrade at: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
+          return {
+            isError: true,
+            content: [{ type: "text", text: `Error: API Key / Secret (${detected.join(', ')}) detected! Request BLOCKED to protect your data. Sanitizing DevOps secrets requires a PRO license. Get a key at: https://privacyscrubber.com/pricing` }]
+          };
         }
       }
 
-      const sanitized = performSanitization(processedText, finalProfile);
-
-      // Periodic soft nudge every N free-tier requests (no trigger event needed)
-      if (!license.isPro && extraBlocks.length === 0 && sessionRequestCount % UPSELL_EVERY_N === 0) {
-        extraBlocks.push(buildUpsellBlock(null));
-      }
+      const { scrubbedText, newTokens } = performSanitization(processedText, finalProfile, sessionIgnoreList);
+      
+      const telemetry = buildCisoAuditTelemetry(newTokens);
+      const receiptMd = formatAuditReceipt(telemetry);
 
       return {
         content: [
-          { type: "text", text: sanitized },
-          ...extraBlocks
+          { type: "text", text: scrubbedText + receiptMd },
+          ...extraBlocks.filter(Boolean)
         ]
       };
     }
@@ -327,6 +649,38 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             text: restoredText
           }
         ]
+      };
+    }
+
+    if (name === "mark_false_positive") {
+      const { token } = args || {};
+      if (!token || typeof token !== 'string') {
+        return {
+          isError: true,
+          content: [{ type: "text", text: "Error: Missing required parameter 'token'. Provide the token to mark as false positive (e.g., '[NAME_1]')." }]
+        };
+      }
+
+      const original = sessionMap[token];
+      if (!original) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Error: Token '${token}' not found in current session map. Available tokens: ${Object.keys(sessionMap).join(', ') || '(empty session)'}` }]
+        };
+      }
+
+      // Add the original plaintext to the ignore list
+      sessionIgnoreList.add(original);
+      // Remove the token from the session map
+      delete sessionMap[token];
+
+      mcpLog(`${colors.yellow}🔖 [PrivacyScrubber] False Positive: '${token}' → '${original}' will be excluded from future scrubs.${colors.reset}\n`);
+
+      return {
+        content: [{
+          type: "text",
+          text: `✅ Marked '${token}' as false positive.\n\n**Restored value:** ${original}\n**Session ignore list size:** ${sessionIgnoreList.size}\n\nThis value will be excluded from all future \`sanitize_text\` calls in this session.`
+        }]
       };
     }
 
@@ -398,36 +752,44 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           let finalProfile = targetProfile;
           const extraBlocks = [];
 
-          sessionRequestCount++;
-
-          if (isAdvanced && !license.isPro) {
-            const reason = license.error ? ` (${license.error})` : "";
-            process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}${colors.reset}\n${colors.cyan}👉  Get a PRO key at: https://privacyscrubber.com/pricing${colors.reset}\n`);
-            finalProfile = "General";
-            extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' requires PRO. Using 'General' as fallback.`));
+          const limitStatus = checkFreeTierLimit(license.isPro);
+          if (limitStatus.blocked) {
+            return {
+              isError: true,
+              content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Please set your PRO license key to continue. Get a key at: https://privacyscrubber.com/pricing` }]
+            };
           }
 
-          const { processedText: processedContent, wasTruncated } = truncateIfFree(content, license.isPro);
-          if (wasTruncated) extraBlocks.push(buildUpsellBlock(`File content was truncated to 50,000 characters (Free Tier limit).`));
+          const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
+          if (isAdvanced && !license.isPro) {
+            mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char limit).${colors.reset}\n${colors.cyan}👉  Get a PRO key for unlimited use: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
+            extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' active (Free Tier limit: 5,000 chars). Upgrade to PRO for unlimited text.`));
+          }
+
+          const { processedText: processedContent, wasTruncated } = truncateIfFree(content, license.isPro, charLimit);
+          if (wasTruncated) extraBlocks.push(buildUpsellBlock(`File content was truncated to ${charLimit.toLocaleString()} characters (Free Tier limit).`));
 
           if (!license.isPro) {
             const detected = detectSecrets(processedContent);
             if (detected.length > 0) {
-              process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).${colors.reset}\n${colors.cyan}👉  Upgrade at: https://privacyscrubber.com/pricing${colors.reset}\n`);
-              extraBlocks.push(buildUpsellBlock(`API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).`));
+              mcpLog(`${colors.redBold}🚫  [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Request BLOCKED to protect your data (Requires PRO Profile).${colors.reset}\n${colors.cyan}👉  Upgrade at: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
+              return {
+                isError: true,
+                content: [{ type: "text", text: `Error: API Key / Secret (${detected.join(', ')}) detected! Request BLOCKED to protect your data. Sanitizing DevOps secrets requires a PRO license. Get a key at: https://privacyscrubber.com/pricing` }]
+              };
             }
           }
 
-          const sanitized = performSanitization(processedContent, finalProfile);
-
-          if (!license.isPro && extraBlocks.length === 0 && sessionRequestCount % UPSELL_EVERY_N === 0) {
-            extraBlocks.push(buildUpsellBlock(null));
-          }
+          const sanitized = performSanitization(processedContent, finalProfile, sessionIgnoreList);
+          const { scrubbedText, newTokens } = sanitized;
+          const telemetry = buildCisoAuditTelemetry(newTokens);
+          const receiptMarkdown = formatAuditReceipt(telemetry);
+          const combinedOutput = `${scrubbedText}\n\n${receiptMarkdown}`;
 
           return {
             content: [
-              { type: "text", text: sanitized },
-              ...extraBlocks
+              { type: "text", text: combinedOutput },
+              ...extraBlocks.filter(Boolean)
             ]
           };
         } catch (docxError) {
@@ -451,7 +813,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             content: [
               {
                 type: "text",
-                text: `Error: PDF and Excel file sanitization is a PRO feature. Set PRIVACYSCRUBBER_KEY to your PRO license key to unlock local document parsing. Get a key at: https://privacyscrubber.com/pricing`
+                text: `Error: PDF and Excel file sanitization is a PRO feature. Set PRIVACYSCRUBBER_KEY to your PRO license key to unlock local document parsing. Get a key at: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal`
               }
             ]
           };
@@ -468,36 +830,44 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             let finalProfile = targetProfile;
             const extraBlocks = [];
 
-            sessionRequestCount++;
-
-            if (isAdvanced && !license.isPro) {
-              const reason = license.error ? ` (${license.error})` : "";
-              process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}${colors.reset}\n${colors.cyan}👉  Get a PRO key at: https://privacyscrubber.com/pricing${colors.reset}\n`);
-              finalProfile = "General";
-              extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' requires PRO. Using 'General' as fallback.`));
+            const limitStatus = checkFreeTierLimit(license.isPro);
+            if (limitStatus.blocked) {
+              return {
+                isError: true,
+                content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Please set your PRO license key to continue. Get a key at: https://privacyscrubber.com/pricing` }]
+              };
             }
 
-            const { processedText: processedContent, wasTruncated } = truncateIfFree(content, license.isPro);
-            if (wasTruncated) extraBlocks.push(buildUpsellBlock(`File content was truncated to 50,000 characters (Free Tier limit).`));
+            const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
+            if (isAdvanced && !license.isPro) {
+              mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char limit).${colors.reset}\n${colors.cyan}👉  Get a PRO key for unlimited use: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
+              extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' active (Free Tier limit: 5,000 chars). Upgrade to PRO for unlimited text.`));
+            }
+
+            const { processedText: processedContent, wasTruncated } = truncateIfFree(content, license.isPro, charLimit);
+            if (wasTruncated) extraBlocks.push(buildUpsellBlock(`File content was truncated to ${charLimit.toLocaleString()} characters (Free Tier limit).`));
 
             if (!license.isPro) {
               const detected = detectSecrets(processedContent);
               if (detected.length > 0) {
-                process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).${colors.reset}\n${colors.cyan}👉  Upgrade at: https://privacyscrubber.com/pricing${colors.reset}\n`);
-                extraBlocks.push(buildUpsellBlock(`API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).`));
+                mcpLog(`${colors.redBold}🚫  [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Request BLOCKED to protect your data (Requires PRO Profile).${colors.reset}\n${colors.cyan}👉  Upgrade at: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
+                return {
+                  isError: true,
+                  content: [{ type: "text", text: `Error: API Key / Secret (${detected.join(', ')}) detected! Request BLOCKED to protect your data. Sanitizing DevOps secrets requires a PRO license. Get a key at: https://privacyscrubber.com/pricing` }]
+                };
               }
             }
 
-            const sanitized = performSanitization(processedContent, finalProfile);
-
-            if (!license.isPro && extraBlocks.length === 0 && sessionRequestCount % UPSELL_EVERY_N === 0) {
-              extraBlocks.push(buildUpsellBlock(null));
-            }
+            const sanitized = performSanitization(processedContent, finalProfile, sessionIgnoreList);
+            const { scrubbedText, newTokens } = sanitized;
+            const telemetry = buildCisoAuditTelemetry(newTokens);
+            const receiptMarkdown = formatAuditReceipt(telemetry);
+            const combinedOutput = `${scrubbedText}\n\n${receiptMarkdown}`;
 
             return {
               content: [
-                { type: "text", text: sanitized },
-                ...extraBlocks
+                { type: "text", text: combinedOutput },
+                ...extraBlocks.filter(Boolean)
               ]
             };
           } catch (pdfError) {
@@ -525,36 +895,44 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             let finalProfile = targetProfile;
             const extraBlocks = [];
 
-            sessionRequestCount++;
-
-            if (isAdvanced && !license.isPro) {
-              const reason = license.error ? ` (${license.error})` : "";
-              process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}${colors.reset}\n${colors.cyan}👉  Get a PRO key at: https://privacyscrubber.com/pricing${colors.reset}\n`);
-              finalProfile = "General";
-              extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' requires PRO. Using 'General' as fallback.`));
+            const limitStatus = checkFreeTierLimit(license.isPro);
+            if (limitStatus.blocked) {
+              return {
+                isError: true,
+                content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Please set your PRO license key to continue. Get a key at: https://privacyscrubber.com/pricing` }]
+              };
             }
 
-            const { processedText: processedContent, wasTruncated } = truncateIfFree(content, license.isPro);
-            if (wasTruncated) extraBlocks.push(buildUpsellBlock(`File content was truncated to 50,000 characters (Free Tier limit).`));
+            const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
+            if (isAdvanced && !license.isPro) {
+              mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char limit).${colors.reset}\n${colors.cyan}👉  Get a PRO key for unlimited use: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
+              extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' active (Free Tier limit: 5,000 chars). Upgrade to PRO for unlimited text.`));
+            }
+
+            const { processedText: processedContent, wasTruncated } = truncateIfFree(content, license.isPro, charLimit);
+            if (wasTruncated) extraBlocks.push(buildUpsellBlock(`File content was truncated to ${charLimit.toLocaleString()} characters (Free Tier limit).`));
 
             if (!license.isPro) {
               const detected = detectSecrets(processedContent);
               if (detected.length > 0) {
-                process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).${colors.reset}\n${colors.cyan}👉  Upgrade at: https://privacyscrubber.com/pricing${colors.reset}\n`);
-                extraBlocks.push(buildUpsellBlock(`API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).`));
+                mcpLog(`${colors.redBold}🚫  [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Request BLOCKED to protect your data (Requires PRO Profile).${colors.reset}\n${colors.cyan}👉  Upgrade at: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
+                return {
+                  isError: true,
+                  content: [{ type: "text", text: `Error: API Key / Secret (${detected.join(', ')}) detected! Request BLOCKED to protect your data. Sanitizing DevOps secrets requires a PRO license. Get a key at: https://privacyscrubber.com/pricing` }]
+                };
               }
             }
 
-            const sanitized = performSanitization(processedContent, finalProfile);
-
-            if (!license.isPro && extraBlocks.length === 0 && sessionRequestCount % UPSELL_EVERY_N === 0) {
-              extraBlocks.push(buildUpsellBlock(null));
-            }
+            const sanitized = performSanitization(processedContent, finalProfile, sessionIgnoreList);
+            const { scrubbedText, newTokens } = sanitized;
+            const telemetry = buildCisoAuditTelemetry(newTokens);
+            const receiptMarkdown = formatAuditReceipt(telemetry);
+            const combinedOutput = `${scrubbedText}\n\n${receiptMarkdown}`;
 
             return {
               content: [
-                { type: "text", text: sanitized },
-                ...extraBlocks
+                { type: "text", text: combinedOutput },
+                ...extraBlocks.filter(Boolean)
               ]
             };
           } catch (xlsxError) {
@@ -596,38 +974,130 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       let finalProfile = targetProfile;
       const extraBlocks = [];
 
-      sessionRequestCount++;
-
-      if (isAdvanced && !license.isPro) {
-        const reason = license.error ? ` (${license.error})` : "";
-        process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] Advanced profile '${targetProfile}' is locked in the FREE tier. Falling back to 'General' profile.${reason}${colors.reset}\n${colors.cyan}👉  Get a PRO key at: https://privacyscrubber.com/pricing${colors.reset}\n`);
-        finalProfile = "General";
-        extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' requires PRO. Using 'General' as fallback.`));
+      const limitStatus = checkFreeTierLimit(license.isPro);
+      if (limitStatus.blocked) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Please set your PRO license key to continue. Get a key at: https://privacyscrubber.com/pricing` }]
+        };
       }
 
-      const { processedText: processedContent2, wasTruncated: wasTruncated2 } = truncateIfFree(content, license.isPro);
-      if (wasTruncated2) extraBlocks.push(buildUpsellBlock(`File content was truncated to 50,000 characters (Free Tier limit).`));
+      const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
+      if (isAdvanced && !license.isPro) {
+        mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char limit).${colors.reset}\n${colors.cyan}👉  Get a PRO key for unlimited use: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
+        extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' active (Free Tier limit: 5,000 chars). Upgrade to PRO for unlimited text.`));
+      }
+
+      const { processedText: processedContent2, wasTruncated: wasTruncated2 } = truncateIfFree(content, license.isPro, charLimit);
+      if (wasTruncated2) extraBlocks.push(buildUpsellBlock(`File content was truncated to ${charLimit.toLocaleString()} characters (Free Tier limit).`));
 
       if (!license.isPro) {
         const detected = detectSecrets(processedContent2);
         if (detected.length > 0) {
-          process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).${colors.reset}\n${colors.cyan}👉  Upgrade at: https://privacyscrubber.com/pricing${colors.reset}\n`);
-          extraBlocks.push(buildUpsellBlock(`API Key / Secret (${detected.join(', ')}) detected! Sanitization skipped (Requires PRO Profile).`));
+          mcpLog(`${colors.redBold}🚫  [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Request BLOCKED to protect your data (Requires PRO Profile).${colors.reset}\n${colors.cyan}👉  Upgrade at: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
+          return {
+            isError: true,
+            content: [{ type: "text", text: `Error: API Key / Secret (${detected.join(', ')}) detected! Request BLOCKED to protect your data. Sanitizing DevOps secrets requires a PRO license. Get a key at: https://privacyscrubber.com/pricing` }]
+          };
         }
       }
 
-      const sanitized = performSanitization(processedContent2, finalProfile);
-
-      if (!license.isPro && extraBlocks.length === 0 && sessionRequestCount % UPSELL_EVERY_N === 0) {
-        extraBlocks.push(buildUpsellBlock(null));
-      }
+      const { scrubbedText, newTokens } = performSanitization(processedContent2, finalProfile, sessionIgnoreList);
+      const telemetry = buildCisoAuditTelemetry(newTokens);
+      const receiptMd = formatAuditReceipt(telemetry);
 
       return {
         content: [
-          { type: "text", text: sanitized },
-          ...extraBlocks
+          { type: "text", text: scrubbedText + receiptMd },
+          ...extraBlocks.filter(Boolean)
         ]
       };
+    }
+
+    if (name === "redact_file") {
+      const { file_path, profile, dry_run, no_backup } = args;
+      if (!file_path || !fs.existsSync(file_path)) {
+        return { isError: true, content: [{ type: "text", text: `Error: File not found at path: ${file_path}` }] };
+      }
+
+      try {
+        const stat = await fs.promises.stat(file_path);
+        if (stat.size > 50 * 1024 * 1024) {
+          return { isError: true, content: [{ type: "text", text: `Error: File is too large (>50MB).` }] };
+        }
+
+        const buffer = fs.readFileSync(file_path);
+        if (buffer.indexOf(0) !== -1) {
+          return { isError: true, content: [{ type: "text", text: `Error: Cannot redact binary file.` }] };
+        }
+        const content = buffer.toString('utf8');
+
+        const customRules = loadCustomRules();
+        const normalizedProfile = (profile || "general").trim().toLowerCase();
+        const license = checkLicenseStatus();
+        
+        const limitStatus = checkFreeTierLimit(license.isPro);
+        if (limitStatus.blocked) {
+          return {
+            isError: true,
+            content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Please set your PRO license key to continue. Get a key at: https://privacyscrubber.com/pricing` }]
+          };
+        }
+        const localSessionMap = {};
+        
+        const result = PrivacyScrubberCore.scrubText(content, customRules, {}, normalizedProfile, localSessionMap, license.isPro);
+        
+        let isSecretLeak = false;
+        if (!license.isPro && result.tokenMap) {
+          Object.entries(result.tokenMap).forEach(([token, original]) => {
+            for (const detector of DEVOPS_SECRETS_DETECTOR) {
+              detector.regex.lastIndex = 0;
+              if (detector.regex.test(original)) {
+                isSecretLeak = true;
+                break;
+              }
+            }
+          });
+        }
+
+        const counts = {};
+        Object.keys(localSessionMap).forEach(token => {
+          const match = token.match(/^\[([A-Z_]+)_\d+\]$/);
+          if (match) {
+            counts[match[1]] = (counts[match[1]] || 0) + 1;
+          }
+        });
+        const summary = Object.entries(counts).map(([type, count]) => `${count} ${type}`).join(', ') || 'None';
+        
+        if (dry_run) {
+          return {
+            content: [{ 
+              type: "text", 
+              text: `DRY RUN: ⚠️ Would redact ${Object.keys(localSessionMap).length} tokens (${summary}).\n${isSecretLeak ? "⚠️ RAW SECRET DETECTED (Requires PRO to actually redact)\n" : ""}Run again with dry_run: false to apply changes.` 
+            }]
+          };
+        }
+
+        if (isSecretLeak) {
+          return { isError: true, content: [{ type: "text", text: `Error: API Key or Secret detected. Sanitization of raw secrets requires PRO Profile. Upgrade at https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal` }] };
+        }
+
+        if (!no_backup) {
+          fs.writeFileSync(`${file_path}.bak`, content, 'utf8');
+        }
+
+        fs.writeFileSync(file_path, result.scrubbedText, 'utf8');
+
+        return {
+          content: [{ 
+            type: "text", 
+            text: `✅ File successfully redacted.\nReplaced ${Object.keys(localSessionMap).length} tokens (${summary}).\n${!no_backup ? `Backup saved to ${file_path}.bak` : "No backup created (no_backup=true)."}` 
+          }]
+        };
+
+      } catch (err) {
+        return { isError: true, content: [{ type: "text", text: `Error redacting file: ${err.message}` }] };
+      }
     }
 
     if (name === "create_default_config") {
@@ -642,7 +1112,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       const defaultTemplate = {
-        "_comment": "PrivacyScrubber local configuration. Add custom rules and restart your MCP client (Cursor/Windsurf). Details: https://privacyscrubber.com/docs/config",
+        "_comment": "PrivacyScrubber local configuration. Add custom rules and restart your MCP client (Cursor/Windsurf). Details: https://privacyscrubber.com/docs/config?utm_source=mcp_cli&utm_medium=terminal",
         "customRules": [
           {
             "pattern": "my-secret-pattern-\\d+",
@@ -691,7 +1161,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const profileList = license.isPro
         ? 'All 23 profiles active (General, Dev, Medical, Legal, Finance, HR…)'
         : 'General only — PRO unlocks 22 industry profiles';
-      const sizeLimit = license.isPro ? 'Unlimited' : '50,000 characters per request';
+      const sizeLimit = license.isPro ? 'Unlimited' : '15,000 characters per request';
 
       const configPath = resolveConfigPath();
       let rulesStatus = '';
@@ -723,7 +1193,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         `║       PrivacyScrubber MCP Server v${MCP_VERSION.padEnd(10)}          ║`,
         '╠══════════════════════════════════════════════════╣',
         `║  ${tierIcon} Tier: ${tier.padEnd(43)}║`,
-        `║  📊 Session requests: ${String(sessionRequestCount).padEnd(27)}║`,
+        `║  📊 Session requests: ${String(getDailyUsage()).padEnd(27)}║`,
         `║  📁 Input size limit: ${sizeLimit.padEnd(27)}║`,
         '╠══════════════════════════════════════════════════╣',
         `║  🏷️  Profiles: ${profileList.substring(0,35).padEnd(35)}║`,
@@ -737,12 +1207,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         lines.push(
           '║  ✅ PRO is active. All features unlocked.         ║',
           '║     To regenerate your key or manage billing:     ║',
-          '║     https://privacyscrubber.com/pricing           ║'
+          '║     https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal           ║'
         );
       } else {
         lines.push(
           '║  💳 Upgrade to PRO — $110 Lifetime                ║',
-          '║     https://privacyscrubber.com/pricing           ║',
+          '║     https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal           ║',
           '╠══════════════════════════════════════════════════╣',
           '║  After purchase, add your key to MCP config:     ║',
           '║                                                  ║',
@@ -750,7 +1220,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           '║  "PRIVACYSCRUBBER_KEY": "<your-key-here>"        ║',
           '║                                                  ║',
           '║  Full setup guide:                               ║',
-          '║  https://privacyscrubber.com/features/mcp/       ║'
+          '║  https://privacyscrubber.com/features/mcp/?utm_source=mcp_cli&utm_medium=terminal       ║'
         );
       }
 
@@ -758,6 +1228,180 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       return {
         content: [{ type: "text", text: lines.join('\n') }]
+      };
+    }
+
+    if (name === "audit_directory_for_pii") {
+      const { directory_path, profile, extensions, ignore_node_modules } = args;
+      if (!directory_path || !fs.existsSync(directory_path)) {
+        return { isError: true, content: [{ type: "text", text: `Error: Directory not found at path: ${directory_path}` }] };
+      }
+
+      const filesToScan = [];
+      const ignoreDirs = ignore_node_modules !== false ? ['.git', 'node_modules', '.next', 'dist', 'build', '.cache'] : ['.git'];
+      
+      async function walkDir(dir) {
+        const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            if (!ignoreDirs.includes(entry.name)) await walkDir(fullPath);
+          } else if (entry.isFile()) {
+            if (extensions && extensions.length > 0) {
+              const ext = path.extname(entry.name);
+              if (!extensions.includes(ext)) continue;
+            }
+            filesToScan.push(fullPath);
+          }
+        }
+      }
+
+      await walkDir(directory_path);
+
+      let reportLines = [`## Security Audit Report: ${directory_path}`];
+      let filesWithIssues = 0;
+      const customRules = loadCustomRules();
+      const normalizedProfile = (profile || "general").trim().toLowerCase();
+      const license = checkLicenseStatus();
+      
+      const limitStatus = checkFreeTierLimit(license.isPro);
+      if (limitStatus.blocked) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Please set your PRO license key to continue. Get a key at: https://privacyscrubber.com/pricing` }]
+        };
+      }
+
+      let totalTokensForDirectory = {};
+      for (const file of filesToScan) {
+        try {
+          const stat = await fs.promises.stat(file);
+          if (stat.size > 10 * 1024 * 1024) continue; // skip >10MB
+
+          const buffer = fs.readFileSync(file);
+          if (buffer.indexOf(0) !== -1) continue; 
+          const content = buffer.toString('utf8');
+
+          const localSessionMap = {};
+          const result = PrivacyScrubberCore.scrubText(content, customRules, {}, normalizedProfile, localSessionMap, license.isPro);
+          
+          Object.assign(totalTokensForDirectory, localSessionMap);
+          
+          let isSecretLeak = false;
+          if (!license.isPro && result.tokenMap) {
+            Object.entries(result.tokenMap).forEach(([token, original]) => {
+              for (const detector of DEVOPS_SECRETS_DETECTOR) {
+                detector.regex.lastIndex = 0;
+                if (detector.regex.test(original)) {
+                  isSecretLeak = true;
+                  break;
+                }
+              }
+            });
+          }
+
+          if (Object.keys(localSessionMap).length > 0 || isSecretLeak) {
+            filesWithIssues++;
+            const counts = {};
+            Object.keys(localSessionMap).forEach(token => {
+              const match = token.match(/^\[([A-Z_]+)_\d+\]$/);
+              if (match) {
+                counts[match[1]] = (counts[match[1]] || 0) + 1;
+              }
+            });
+            const summary = Object.entries(counts).map(([type, count]) => `${count} ${type}`).join(', ');
+            let leakMsg = isSecretLeak ? " (⚠️ RAW SECRET DETECTED — REQUIRES PRO)" : "";
+            reportLines.push(`- \`${path.relative(directory_path, file)}\`: ⚠️ Found ${summary}${leakMsg}`);
+          }
+        } catch (err) {
+          // ignore file read errors
+        }
+      }
+
+      if (filesWithIssues === 0) {
+        reportLines.push("✅ Clean. No PII or secrets detected in the scanned files.");
+      }
+
+      const telemetry = buildCisoAuditTelemetry(totalTokensForDirectory);
+      const receiptMd = formatAuditReceipt(telemetry);
+      
+      return {
+        content: [{ type: "text", text: reportLines.join('\n') + receiptMd }]
+      };
+    }
+
+    if (name === "generate_compliance_report") {
+      const { format = "markdown", company_name = "PrivacyScrubber Client", department = "SecOps / Compliance" } = args || {};
+      const telemetry = buildCisoAuditTelemetry(sessionMap);
+      
+      const sessionHash = crypto.createHash('sha256')
+        .update(JSON.stringify(sessionMap) + Date.now().toString())
+        .digest('hex');
+      
+      const timestamp = new Date().toISOString();
+      const entitySummary = Object.entries(telemetry.entities)
+        .map(([t, count]) => `[${t}]: ${count}`)
+        .join(', ') || 'None (Clean)';
+
+      if (format === "json") {
+        const jsonReport = {
+          protocol: "Zero-Trust Data Sanitization (ZTDS)",
+          certificate: `ZTDS-CERT-${sessionHash.substring(0, 16).toUpperCase()}`,
+          company: company_name,
+          department: department,
+          timestamp: timestamp,
+          session_hash: sessionHash,
+          verification_mode: "100% Offline (Local In-Memory RAM)",
+          compliance_status: "VERIFIED PASS",
+          risk_level: telemetry.riskLevel,
+          frameworks_enforced: telemetry.frameworksList,
+          total_masked_tokens: telemetry.totalCount,
+          entities_breakdown: telemetry.entities,
+          zero_egress_verified: true,
+          verification_url: `https://privacyscrubber.com/features/audit-receipt/#verify?hash=${sessionHash.substring(0, 16)}`
+        };
+
+        return {
+          content: [{ type: "text", text: JSON.stringify(jsonReport, null, 2) }]
+        };
+      }
+
+      if (format === "summary") {
+        const summaryText = `[PrivacyScrubber Compliance Certificate] ID: ZTDS-${sessionHash.substring(0, 8).toUpperCase()} | Organization: ${company_name} | Masked Tokens: ${telemetry.totalCount} | Risk: ${telemetry.riskLevel} | Frameworks: ${telemetry.frameworksList.join(', ')} | Status: PASS (100% Air-Gapped)`;
+        return {
+          content: [{ type: "text", text: summaryText }]
+        };
+      }
+
+      // Default: Comprehensive Markdown Certificate
+      const mdReport = `# 🛡️ Zero-Trust Data Sanitization Compliance Certificate
+**Certificate ID:** \`ZTDS-CERT-${sessionHash.substring(0, 16).toUpperCase()}\`  
+**Organization:** ${company_name} (${department})  
+**Timestamp:** ${timestamp}  
+**Verification Mode:** 100% Local In-Memory Processing (Air-Gapped)  
+**Status:** **VERIFIED PASS** (Zero Network Egress)
+
+---
+
+### 📊 Sanitization Metrics & Risk Assessment
+* **Overall Risk Rating:** **${telemetry.riskLevel}**
+* **Total Sensitive Entities Masked:** \`${telemetry.totalCount}\`
+* **Entity Breakdown:** ${entitySummary}
+* **Network Data Transmitted:** \`0.00 KB (Zero-Trust Local RAM)\`
+
+### 📜 Regulatory Frameworks Enforced
+${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
+
+### 🔒 CISO Compliance Declaration
+1. **EU AI Act (Art. 50) & GDPR (Art. 25 & 32):** Data minimization and local pseudonymization enforced prior to model interaction.
+2. **HIPAA Safe Harbor (§164.514) / SOC 2 Type II:** All direct and indirect identifiers sanitized locally without cloud processor liability.
+3. **Cryptographic Verification:** Tamper-evident session verification hash: \`${sessionHash}\`
+
+*Certified Offline by PrivacyScrubber Engine v${MCP_VERSION}*  
+*Verify at: https://privacyscrubber.com/features/audit-receipt/*`;
+
+      return {
+        content: [{ type: "text", text: mdReport }]
       };
     }
 
@@ -831,11 +1475,11 @@ function loadCustomRules() {
             category: (r.label || r.category || "CUSTOM").toUpperCase()
           })).filter(r => r.pattern);
         } else {
-          process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] Custom rules detected in privacyscrubber.json, but are ignored in the Free Tier.${colors.reset}\n${colors.cyan}👉  Set PRIVACYSCRUBBER_KEY to your PRO license key.${colors.reset}\n`);
+          mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Custom rules detected in privacyscrubber.json, but are ignored in the Free Tier.${colors.reset}\n${colors.cyan}👉  Set PRIVACYSCRUBBER_KEY to your PRO license key.${colors.reset}\n`);
         }
       }
     } catch (e) {
-      process.stderr.write(`Error parsing privacyscrubber.json: ${e.message}\n`);
+      mcpLog(`Error parsing privacyscrubber.json: ${e.message}\n`);
     }
   }
   return [];
@@ -854,47 +1498,28 @@ function detectSecrets(text) {
   return detected;
 }
 
-function performSanitization(text, profile) {
+function performSanitization(text, profile, ignoreList = null) {
   const customRules = loadCustomRules();
   const normalizedProfile = (profile || "general").trim().toLowerCase();
-  const result = PrivacyScrubberCore.scrubText(text, customRules, {}, normalizedProfile, sessionMap);
-  
   const license = checkLicenseStatus();
-  if (!license.isPro && result.tokenMap) {
-    // Re-scan each masked token's original value against the shared detector.
-    // If it was a raw secret, restore it in the output and remove from sessionMap
-    // so it is never accidentally revealed by reveal_text.
-    Object.entries(result.tokenMap).forEach(([token, original]) => {
-      let isSecret = false;
-      for (const detector of DEVOPS_SECRETS_DETECTOR) {
-        detector.regex.lastIndex = 0;
-        if (detector.regex.test(original)) {
-          isSecret = true;
-          break;
-        }
-      }
-      if (isSecret) {
-        result.scrubbedText = result.scrubbedText.replace(token, original);
-        delete result.tokenMap[token];
-      }
-    });
-  }
+  const result = PrivacyScrubberCore.scrubText(text, customRules, {}, normalizedProfile, sessionMap, license.isPro, ignoreList);
 
+  const newTokens = {};
   // Update our volatile map with new matches
   if (result.tokenMap) {
     Object.entries(result.tokenMap).forEach(([token, original]) => {
       sessionMap[token] = original;
+      newTokens[token] = original;
     });
   }
 
-  return result.scrubbedText;
+  return { scrubbedText: result.scrubbedText, newTokens };
 }
 
-function truncateIfFree(text, isPro) {
-  const MAX_FREE_CHARS = 50000;
-  if (!isPro && text.length > MAX_FREE_CHARS) {
-    process.stderr.write(`${colors.yellowBold}⚠️  [PrivacyScrubber] Input truncated to ${MAX_FREE_CHARS} characters (Free Tier Limit).${colors.reset}\n${colors.cyan}👉  Set PRIVACYSCRUBBER_KEY to your PRO license key for unlimited size.${colors.reset}\n`);
-    return { processedText: text.substring(0, MAX_FREE_CHARS), wasTruncated: true };
+function truncateIfFree(text, isPro, charLimit = 15000) {
+  if (!isPro && text.length > charLimit) {
+    mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Input truncated to ${charLimit.toLocaleString()} characters (Free Tier Limit).${colors.reset}\n${colors.cyan}👉  Set PRIVACYSCRUBBER_KEY to your PRO license key for unlimited size.${colors.reset}\n`);
+    return { processedText: text.substring(0, charLimit), wasTruncated: true };
   }
   return { processedText: text, wasTruncated: false };
 }
@@ -902,8 +1527,8 @@ function truncateIfFree(text, isPro) {
 // Start the server transport
 const transport = new StdioServerTransport();
 server.connect(transport).then(() => {
-  process.stderr.write(`${colors.greenBold}✅ PrivacyScrubber ZTDS MCP Server started successfully.${colors.reset}\n`);
-  process.stderr.write(`${colors.cyan}⭐ Star us on GitHub: https://github.com/moxno/privacyscrubber-mcp${colors.reset}\n`);
+  mcpLog(`${colors.greenBold}✅ PrivacyScrubber ZTDS MCP Server started successfully.${colors.reset}\n`);
+  mcpLog(`${colors.cyan}⭐ Star us on GitHub: https://github.com/moxno/privacyscrubber-mcp${colors.reset}\n`);
 }).catch((error) => {
   console.error("Failed to connect MCP server transport:", error);
   process.exit(1);

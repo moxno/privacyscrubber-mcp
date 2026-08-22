@@ -3,3 +3,7 @@ bundle.mcpb
 *.mcpb
 .DS_Store
 mcp-publisher
+*.tgz
+qa-test-dir/
+temp-*
+privacyscrubber.json

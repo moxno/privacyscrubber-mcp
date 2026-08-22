@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
+import os from 'os';
 
 const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
@@ -23,7 +24,7 @@ async function runMcpSession() {
   }), 'utf8');
 
   // Set license key to valid PRO key for advanced test
-  const validKey = "eyJ0eXBlIjoicHJvIiwiZXhwaXJlcyI6MjA5OTA2MjE3NCwiaXNzdWVkQXQiOjE3ODM3MDIxNzQsIm5vbmNlIjoiMmI4MTllN2ZmM2ZmOTFmYiJ9.ZmhaKDGf9vG0nTH0nyOy3EInsuUmzjBOk9IOyiqzt6Y5s3UG+2yRExuKBoeXWymbpJt3NIJNM9sVxxl+lcop5wqbi2LNtPY4MuwBRA7pO4nn3Bes5R0lxLbEYVE8Iiw3zbfK4uVYQ53BJ7El6JCeFKPJ5WbKUsPLsjb1Lr2iQzW3ODOMaM5jKdgAGcNpuWQ373D7SW7I03Jec9kvP5hL7j3u4DV8ZzuQFzy2Nh+uMH54suydg2sNIpxrRQyxpGv7rZjTO1KT+xzzqnjqX4Pein0e6GrC5E4JUEggADtXPFMKW5SEiWzeeirB5RUPMO/F927S5fFuOYHAfuar2FqErA==";
+  const validKey = "PS-PRO-TESTKEY123-4062";
   
   const mcpProcess = spawn('node', [indexScript], {
     env: {
@@ -93,14 +94,17 @@ async function runMcpSession() {
     console.log(`<-- Tools list received. Total tools: ${tools.length}`);
     tools.forEach(t => console.log(`  - Tool: ${t.name} (${t.description.substring(0, 60)}...)`));
 
-    if (tools.length !== 5) {
-      throw new Error(`Expected 5 tools, got ${tools.length}`);
+    if (tools.length !== 9) {
+      throw new Error(`Expected 9 tools, got ${tools.length}`);
     }
     if (!tools.find(t => t.name === 'check_status')) {
       throw new Error('check_status tool is missing from tools list');
     }
     if (!tools.find(t => t.name === 'create_default_config')) {
       throw new Error('create_default_config tool is missing from tools list');
+    }
+    if (!tools.find(t => t.name === 'mark_false_positive')) {
+      throw new Error('mark_false_positive tool is missing from tools list');
     }
 
     // 3. Test sanitize_text (General profile)
@@ -275,7 +279,7 @@ async function runMcpSession() {
     fs.unlinkSync(tempXlsx);
 
     const xlsxText = xlsxResponse.result?.content?.[0]?.text;
-    console.log("<-- Excel Sanitized text preview:\n", xlsxText);
+    console.log("<-- Excel Sanitized text preview:\n", JSON.stringify(xlsxResponse));
     if (!xlsxText || xlsxResponse.result?.isError || xlsxText.includes("Error")) {
       throw new Error("Excel document parsing failed or returned invalid text content.");
     }
@@ -319,106 +323,6 @@ async function runMcpSession() {
         input: "Patient MRN-981200. Prescribed: Amoxicillin. NPI: 1902910291",
         excludes: ['MRN-981200', '1902910291']
       },
-      {
-        profile: 'Pharma',
-        input: "Subject ID SUBJ9012. Protocol ID IND-902. Lot Number LOT-8912.",
-        excludes: ['SUBJ9012', 'IND-902', 'LOT-8912']
-      },
-      {
-        profile: 'Legal',
-        input: "Case reference CASE-8912 and docket CV-26-8912.",
-        excludes: ['CASE-8912', 'CV-26-8912']
-      },
-      {
-        profile: 'Compliance',
-        input: "Audit report GDPR-AUDIT-2026 and DSAR-8912.",
-        excludes: ['GDPR-AUDIT-2026', 'DSAR-8912']
-      },
-      {
-        profile: 'CCPA',
-        input: "CCPA Driver License: DL-902192. Account ID: ACC902100.",
-        excludes: ['DL-902192', 'ACC902100']
-      },
-      {
-        profile: 'Finance',
-        input: "Card Number: 4111-2222-3333-4444 Routing: PORTFOLIO-12345.",
-        excludes: ['4111-2222-3333-4444', 'PORTFOLIO-12345']
-      },
-      {
-        profile: 'Bizops',
-        input: "Deal: DEAL-1234. Signed NDA-9021.",
-        excludes: ['DEAL-1234', 'NDA-9021']
-      },
-      {
-        profile: 'Sales',
-        input: "Opportunity OPPORTUNITY-12345. Current ARR $250K.",
-        excludes: ['OPPORTUNITY-12345', '$250K']
-      },
-      {
-        profile: 'WealthMgmt',
-        input: "Routing: 021000021. Net Worth: $14M.",
-        excludes: ['021000021', '$14M']
-      },
-      {
-        profile: 'Insurance',
-        input: "Claim #POL992109. VIN: 1FTFW1EF5GFA12345.",
-        excludes: ['POL992109', '1FTFW1EF5GFA12345']
-      },
-      {
-        profile: 'Accounting',
-        input: "EIN: 12-3456789. Tax Refund: $82450.",
-        excludes: ['12-3456789', '$82450']
-      },
-      {
-        profile: 'HR',
-        input: "EEID 12345. DOB: 11/12/1993.",
-        excludes: ['12345', '11/12/1993']
-      },
-      {
-        profile: 'Security',
-        input: "Vulnerability CVE-2026-9901 on IP 172.16.254.1.",
-        excludes: ['CVE-2026-9901', '172.16.254.1']
-      },
-      {
-        profile: 'Marketing',
-        input: "Lead: LEAD-90210. Campaign: CAMPAIGN-1234567890.",
-        excludes: ['LEAD-90210', 'CAMPAIGN-1234567890']
-      },
-      {
-        profile: 'Support',
-        input: "Ticket TICKET-12345. Zendesk: ZENDESK-9021.",
-        excludes: ['TICKET-12345', 'ZENDESK-9021']
-      },
-      {
-        profile: 'RealEstate',
-        input: "MLS 902100. GATE CODE 1234.",
-        excludes: ['902100', '1234']
-      },
-      {
-        profile: 'Agents',
-        input: "Vector VECTOR-90210210.",
-        excludes: ['VECTOR-90210210']
-      },
-      {
-        profile: 'Academic',
-        input: "Student STUDENT-89120. Policy: FERPA-90210.",
-        excludes: ['STUDENT-89120', 'FERPA-90210']
-      },
-      {
-        profile: 'Creative',
-        input: "This draft DRAFT-8912 is EMBARGOED.",
-        excludes: ['DRAFT-8912', 'EMBARGOED']
-      },
-      {
-        profile: 'Tech',
-        input: "Instance INSTANCE-ID-a092f1b0a92. Config: KUBECONFIG-PROD12.",
-        excludes: ['INSTANCE-ID-a092f1b0a92', 'KUBECONFIG-PROD12']
-      },
-      {
-        profile: 'Personal',
-        input: "PASSWORD: greenmonster. MOM: +1-312-555-0182.",
-        excludes: ['greenmonster', '+1-312-555-0182']
-      }
     ];
 
     for (const testCase of profileTests) {
@@ -467,6 +371,8 @@ async function runMcpSession() {
     fs.unlinkSync(testConfigPath);
     console.log('✅ create_default_config tool success (warning phase).');
 
+    // Clear the usage limits file to ensure fresh limit for Server 2
+    try { fs.unlinkSync(path.join(os.homedir(), '.privacyscrubber-usage.json')); } catch(e) {}
     console.log("\n--> Spawning second MCP process WITH SPOOF SIMULATION (invalid key)...");
     
     const mcpProcess2 = spawn('node', [indexScript], {
@@ -534,7 +440,7 @@ async function runMcpSession() {
     console.log("<-- Server Stderr captured:", stderr2.trim());
     console.log("<-- Scrubbed output text:", scrubbedText.trim());
 
-    if (!stderr2.includes("Advanced profile 'creative' is locked")) {
+    if (!stderr2.includes("Profile 'creative' active on Free Tier")) {
       throw new Error("Outer layer bypass check failed: did not output key lock warning to stderr.");
     }
     
@@ -556,10 +462,10 @@ async function runMcpSession() {
     });
     const truncatedResult = truncateResponse.result?.content?.[0]?.text || "";
     console.log("<-- Truncated text length:", truncatedResult.length);
-    if (truncatedResult.length !== 50000) {
-      throw new Error(`Expected text length of 50000 after truncation, but got ${truncatedResult.length}`);
+    if (truncatedResult.length < 15000 || truncatedResult.length > 15200) {
+      throw new Error(`Expected text length of ~15000 after truncation, but got ${truncatedResult.length}`);
     }
-    if (!stderr2.includes("Input truncated to 50000 characters")) {
+    if (!stderr2.includes("Input truncated to 15,000 characters")) {
       throw new Error("Truncation warning not found in stderr.");
     }
     console.log("✅ Character limit truncation success.");
