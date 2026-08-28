@@ -17,16 +17,16 @@ let DEVOPS_SECRETS = [
     // Secrets & API Keys
     { name: 'AWS Credentials', type: 'SECRET', regex: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA)[A-Z0-9]{16}\b/g },
     { name: 'JSON Web Token (JWT)', type: 'SECRET', regex: /\beyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b/g },
-    { name: 'API Token/Key (GitHub/Slack/NPM)', type: 'SECRET', regex: /\b(?:ghp|gho|ghu|ghs|ghr|glpat|npm|xox[baprs])[-_][A-Za-z0-9_]{10,}\b/g },
-    { name: 'Stripe API Key', type: 'SECRET', regex: /\b(?:[rs]k)_(?:test|live)_[a-zA-Z0-9]{24,}\b/g },
+    { name: 'API Token/Key (GitHub/Slack/NPM)', type: 'SECRET', regex: /\b(?:ghp|gho|ghu|ghs|ghr|glpat|npm|xox[baprs])[-_][A-Za-z0-9_-]{10,}\b/g },
+    { name: 'Stripe API Key', type: 'SECRET', regex: /\b(?:[rs]k)_(?:test|live)_[a-zA-Z0-9]{14,}\b/g },
     { name: 'OpenAI Project API Key', type: 'SECRET', regex: /\b(?:sk|pk)-(?:proj-)?[a-zA-Z0-9_-]{16,}\b/gi },
     { name: 'Database Connection URI', type: 'SECRET', regex: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql):\/\/[^\s"']+/gi },
-    { name: 'Generic Secret/Key', type: 'SECRET', regex: /\b(sk|pk|secret|key|token|auth)(?:[-_][a-zA-Z0-9_-]{3,}|(?=[a-zA-Z0-9_-]{5,}\b)(?=[a-zA-Z_-]*[0-9])[a-zA-Z0-9_-]{5,})\b/gi },
+    { name: 'Generic Secret/Key', type: 'SECRET', regex: /\b(?:sk|pk|secret|key|token|auth)(?:[-_][a-zA-Z0-9_-]{3,}|(?=[a-zA-Z0-9_-]{5,}\b)(?=[a-zA-Z_-]*[0-9])[a-zA-Z0-9_-]{5,})\b/gi },
     { name: 'Hash / Hex Key (32-64 chars)', type: 'SECRET', regex: /\b[a-fA-F0-9]{32,64}\b/g },
     { name: 'CVE Identifier', type: 'SECRET', regex: /\bCVE-\d{4}-\d{4,}\b/gi },
-    { name: 'Cryptographic Hash', type: 'SECRET', regex: /\b(MD5|SHA1|SHA256)[:\s][a-f0-9]{32,64}\b/gi },
-    { name: 'Database/API Secret', type: 'SECRET', regex: /\b(DB|POSTGRES|REDIS|MYSQL|AWS|SECRET|PASSWORD|TOKEN|API|KEY)[A-Z0-9_]*\s*[:=]\s*[^\s"']+\b/gi },
-    { name: 'Proprietary IP / Confidential', type: 'SECRET', regex: /\b(CONFIDENTIAL|PROPRIETARY|TRADE SECRET|DO NOT DISTRIBUTE|INTERNAL USE ONLY)\b/gi },
+    { name: 'Cryptographic Hash', type: 'SECRET', regex: /\b(?:MD5|SHA1|SHA256)[:\s][a-f0-9]{32,64}\b/gi },
+    { name: 'Database/API Secret', type: 'SECRET', regex: /\b(?:DB|POSTGRES|REDIS|MYSQL|AWS|SECRET|PASSWORD|TOKEN|API|KEY)[A-Z0-9_]*\s*[:=]\s*[^\s"']+\b/gi },
+    { name: 'Proprietary IP / Confidential', type: 'SECRET', regex: /\b(?:CONFIDENTIAL|PROPRIETARY|TRADE SECRET|DO NOT DISTRIBUTE|INTERNAL USE ONLY)\b/gi },
     { name: 'Private Cryptographic Key', type: 'SECRET', regex: /-----BEGIN (?:RSA |EC |PGP |DSA )?PRIVATE KEY-----/g }
 ];
 
@@ -78,8 +78,10 @@ let REGEX_RULES = [
     { type: 'ID', regex: /\bTENANT[-_]ID[-_][0-9]{4,}\b/gi },
 
     // Insurance & Health Plan IDs
-    { type: 'ID', regex: /\b(?:BCBS|AETNA|CIGNA|UHC|HUMANA|MEDICARE|MEDICAID)[-_A-Za-z0-9]+\b/gi },
-    { type: 'ID', regex: /\b(?:Insurance|Policy|Member|Subscriber|Group|Plan|Health|Rx)[-_: ]*ID[:\s#]*([A-Za-z0-9-]+)/gi },
+    { type: 'ID', regex: /\b(?:BCB|BCBS|AETNA|CIGNA|UHC|HUMANA|MEDICARE|MEDICAID)[-_A-Za-z0-9]+\b/gi },
+    { type: 'ID', regex: /\b(?:Insurance\s+(?:ID|No\.?|Number|#)|Policy(?:\s*(?:ID|No\.?|Number|#)|[:#])|Member\s*(?:ID|No\.?|Number|#|[:#])|Subscriber\s*(?:ID|No\.?|Number|#|[:#])|Group\s*(?:ID|No\.?|Number|#|[:#])|Plan\s*(?:ID|No\.?|Number|#|[:#])|Health(?:\s+Plan)?\s*(?:ID|No\.?|Number|#)|Rx\s*(?:ID|No\.?|Number|Group|BIN|PCN|#))[:\s#]*([A-Za-z0-9-]+)/gi },
+    { type: 'ID', regex: /\b(?:Health\s+Plan(?:\s+Beneficiary)?|Beneficiary(?:\s+(?:No\.?|Number|ID|Num|#))?|HPN)[:\s#]+([A-Za-z0-9-]+)/gi },
+    { type: 'ID', regex: /\bHPN[-_][A-Za-z0-9-]+\b/gi },
 
     // Addresses & Locations
     { type: 'ADDRESS', isContextAddress: true, regex: /(?:(?:\bBox\s+f\b|\bf\.\s*|\bf\s+(?=Employee))\s*(?:Employee(?:'s)?\s*)?(?:address[,\s]+and\s+ZIP\s+code|address)?|(?:Employee(?:'s)?\s+address[,\s]+and\s+ZIP\s+code))[\s:#]*([A-Za-z0-9#.,\s-]{4,55}?)(?=\r?\n|$|\s{3,}|\t|Box|\d+\b|1\b|2\b|Wages|Federal|Social|Medicare)/gi },
@@ -89,11 +91,16 @@ let REGEX_RULES = [
     { type: 'ADDRESS', regex: /\b[A-Za-z][a-zA-Z\s.-]{1,25},?\s+(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|PR)\s+\d{5}(?:-\d{4})?\b/g },
     { type: 'ADDRESS', regex: /\b(?:ZIP|Postal|Code)?\s*(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|PR)\s+\d{5}(?:-\d{4})?\b/g },
     { type: 'ADDRESS', regex: /\b\d{5}-\d{4}\b/g },
-    { type: 'LOCATION', regex: /\b[A-Za-z][a-zA-Z\s.-]{1,25},?\s+(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|PR)\b/g },
+    { type: 'LOCATION', regex: /\b[A-Za-z][a-zA-Z .'-]{1,25}(?:,\s*(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|PR)|\s+(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|PR))\b/g },
 
     // PHI & Medical
-    { type: 'PHI', regex: /\b(?:MRN|Patient ID|Medical Record No|Patient No)[\s:#]+([A-Za-z0-9-]+)/gi },
-    { type: 'PHI', regex: /\bMRN[ -]?\d{6,}\b/gi },
+    { type: 'PHI', regex: /\b(?:MRN|Patient ID|Medical Record (?:No\.?|Num(?:ber)?|#)|Patient (?:No\.?|Num(?:ber)?|#))[\s:#]+([A-Za-z0-9-]+)/gi },
+    { type: 'PHI', regex: /\bMRN[-_ ]*[A-Za-z0-9-]{4,}\b/gi },
+    { type: 'ID', regex: /\b(?:NPI|National Provider Identifier)[:\s#]*(\d{10})\b/gi },
+    { type: 'ID', regex: /\b(?:Device\s+(?:Identifier|ID|Serial|No\.?|Number)|UDI)[:\s#]+([A-Za-z0-9-]+)/gi },
+    { type: 'ID', regex: /\bUDI[-_][A-Za-z0-9-]+\b/gi },
+    { type: 'ID', regex: /\b(?:Vehicle\s+(?:Serial|ID|Identification(?:\s+Number)?|No\.?|Number)|VIN)[:\s#]+([A-Za-z0-9-]+)/gi },
+    { type: 'ID', regex: /\bVIN[-_][A-Za-z0-9-]+\b/gi },
     { type: 'PHI', regex: /\b[A-TV-Z]\d{2}[. ]?\d[A-Z0-9]?\b/g },
     { type: 'PHI', regex: /\b[A-Z]{2,3}\d{6,8}\b/g },
     { type: 'PHI', regex: /\bNHS[ -]?\d{3}[ -]?\d{3}[ -]?\d{4}\b/gi },
@@ -194,11 +201,18 @@ let PROFILE_RULES = {
         { type: 'FINANCIAL', regex: /\bPORTFOLIO[-_][A-Z0-9]{5,}\b/gi }
     ],
     medical: [
-        { type: 'PHI', regex: /\b(?:MRN|Patient ID|Medical Record No|Patient No)[\s:#]+([A-Za-z0-9-]+)/gi },
+        { type: 'PHI', regex: /\b(?:MRN|Patient ID|Medical Record (?:No\.?|Num(?:ber)?|#)|Patient (?:No\.?|Num(?:ber)?|#))[\s:#]+([A-Za-z0-9-]+)/gi },
         { type: 'DATE', regex: /\b(?:DOB|Date of Birth|BIRTHDAY)[\s:]+([0-9./-]{6,10})\b/gi },
-        { type: 'PHI', regex: /\bMRN[ -]?\d{6,}\b/gi },
-        { type: 'ID', regex: /\b(?:Insurance|Policy|Member|Subscriber|Group|Plan|Health|Rx)[-_: ]*ID[:\s#]*([A-Za-z0-9-]+)/gi },
-        { type: 'ID', regex: /\b(?:BCBS|AETNA|CIGNA|UHC|HUMANA|MEDICARE|MEDICAID)[-_A-Za-z0-9]+\b/gi },
+        { type: 'PHI', regex: /\bMRN[-_ ]*[A-Za-z0-9-]{4,}\b/gi },
+        { type: 'ID', regex: /\b(?:Insurance\s+(?:ID|No\.?|Number|#)|Policy(?:\s*(?:ID|No\.?|Number|#)|[:#])|Member\s*(?:ID|No\.?|Number|#|[:#])|Subscriber\s*(?:ID|No\.?|Number|#|[:#])|Group\s*(?:ID|No\.?|Number|#|[:#])|Plan\s*(?:ID|No\.?|Number|#|[:#])|Health(?:\s+Plan)?\s*(?:ID|No\.?|Number|#)|Rx\s*(?:ID|No\.?|Number|Group|BIN|PCN|#))[:\s#]*([A-Za-z0-9-]+)/gi },
+        { type: 'ID', regex: /\b(?:Health\s+Plan(?:\s+Beneficiary)?|Beneficiary(?:\s+No\.?|\s+Number)?|HPN)[:\s#]+([A-Za-z0-9-]+)/gi },
+        { type: 'ID', regex: /\bHPN[-_][A-Za-z0-9-]+\b/gi },
+        { type: 'ID', regex: /\b(?:BCB|BCBS|AETNA|CIGNA|UHC|HUMANA|MEDICARE|MEDICAID)[-_A-Za-z0-9]+\b/gi },
+        { type: 'ID', regex: /\b(?:NPI|National Provider Identifier)[:\s#]*(\d{10})\b/gi },
+        { type: 'ID', regex: /\b(?:Device\s+(?:Identifier|ID|Serial|No\.?|Number)|UDI)[:\s#]+([A-Za-z0-9-]+)/gi },
+        { type: 'ID', regex: /\bUDI[-_][A-Za-z0-9-]+\b/gi },
+        { type: 'ID', regex: /\b(?:Vehicle\s+(?:Serial|ID|Identification(?:\s+Number)?|No\.?|Number)|VIN)[:\s#]+([A-Za-z0-9-]+)/gi },
+        { type: 'ID', regex: /\bVIN[-_][A-Za-z0-9-]+\b/gi },
         { type: 'PHI', regex: /\b[A-TV-Z]\d{2}[. ]?\d[A-Z0-9]?\b/g },
         { type: 'PHI', regex: /\b[A-Z]{2,3}\d{6,8}\b/g },
         { type: 'PHI', regex: /\bNHS[ -]?\d{3}[ -]?\d{3}[ -]?\d{4}\b/gi }
@@ -356,12 +370,12 @@ let PROFILE_RULES = {
         { type: 'ADDRESS', regex: /\b\d{1,6}[ \t\xA0]+(?:[A-Za-z0-9.-]+[ \t\xA0]+){1,4}(?:St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Ln|Lane|Dr|Drive|Way|Ct|Court|Pl|Place|Terrace|Pkwy|Parkway|Sq|Square|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Row|Pike|Box|PO Box|P\.O\.[ \t\xA0]*Box)\b(?:[ \t\xA0]*,?[ \t\xA0]*(?:Apt|Apartment|Suite|Ste|Unit|#|Fl|Floor|Bldg|Building)\.?[ \t\xA0]*[A-Za-z0-9-]+)?/gi },
         { type: 'ADDRESS', regex: /\b[A-Za-z][a-zA-Z\s.-]{1,25},?\s+(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|PR)\s+\d{5}(?:-\d{4})?\b/g },
         { type: 'ADDRESS', regex: /\b\d{5}-\d{4}\b/g },
-        { type: 'LOCATION', regex: /\b[A-Za-z][a-zA-Z\s.-]{1,25},?\s+(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|PR)\b/g }
+        { type: 'LOCATION', regex: /\b[A-Za-z][a-zA-Z .'-]{1,25}(?:,\s*(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|PR)|\s+(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|PR))\b/g }
     ]
 };
 
 let NAME_STOP_LIST = new Set([
-    'clinical note', 'case note', 'prod log', 'siem alert', 'hr review', 'crm export', 'bank statement', 'file export', 'database row', 'lease application', 'strategy export', 'action log', 'glossary query', 'tool comparison', 'call transcript', 'zendesk ticket', 'board minutes', 'agent context', 'config dump', 'database dump', 'patient note', 'medical record', 'admission note', 'discharge summary', 'progress note', 'hiring review', 'security audit', 'incident response', 'server log', 'system log', 'api response', 'error log', 'audit log', 'debug log',
+    'clinical note', 'case note', 'prod log', 'siem alert', 'critical security incident', 'security incident', 'hr review', 'crm export', 'bank statement', 'file export', 'database row', 'lease application', 'strategy export', 'action log', 'glossary query', 'tool comparison', 'call transcript', 'zendesk ticket', 'board minutes', 'agent context', 'config dump', 'database dump', 'patient note', 'medical record', 'admission note', 'discharge summary', 'progress note', 'hiring review', 'security audit', 'incident response', 'server log', 'system log', 'api response', 'error log', 'audit log', 'debug log',
     'tax statement', 'wage and tax statement', 'wage and tax', 'wage statement', 'earning statement', 'earnings statement', 'pay statement', 'pay stub', 'paystub', 'withholding statement',
     'case no', 'account no', 'client no', 'ref no', 'matter no',
     'affected user', 'incident date', 'incident type', 'incident report',
@@ -398,7 +412,7 @@ let NAME_STOP_LIST = new Set([
     'first name', 'last name', 'middle name', 'full name', 'email address', 'phone number', 'cell phone', 'home phone', 'zip code', 'postal code', 'page number', 'section one', 'table contents', 'table of', 'figure one',
     'marketing department', 'sales department', 'engineering team', 'product team', 'customer support', 'human resources', 'public relations',
     'artificial intelligence', 'machine learning', 'deep learning', 'large language', 'operating system', 'source code', 'user interface', 'web browser', 'pull request', 'merge request', 'commit message', 'code review', 'cloud computing', 'database schema',
-    'blood pressure', 'heart rate', 'chief physician', 'treating physician', 'health care', 'healthcare provider', 'medical record',
+    'blood pressure', 'heart rate', 'chief physician', 'treating physician', 'health care', 'healthcare provider', 'medical record', 'medical record number', 'acute bronchitis', 'vital signs', 'vital sign', 'health plan', 'health plan beneficiary', 'device identifier', 'vehicle serial',
     'grade a', 'grade b', 'grade c', 'grade d', 'grade f',
     'version 1', 'version 2', 'version 3', 'version 4', 'version 5',
     'step 1', 'step 2', 'step 3', 'step 4', 'step 5',
@@ -514,6 +528,17 @@ let NOT_NAME_WORDS = new Set([
     'respond', 'responding', 'responded', 'responds',
     'preserve', 'preserving', 'preserved', 'preserves',
     'replace', 'replacing', 'replaced', 'replaces',
+    'present', 'presented', 'presenting', 'presents',
+    'admit', 'admitted', 'admitting', 'admits',
+    'complain', 'complained', 'complaining', 'complains',
+    'prescribe', 'prescribed', 'prescribing', 'prescribes',
+    'diagnose', 'diagnosed', 'diagnosing', 'diagnoses',
+    'report', 'reported', 'reporting', 'reports',
+    'state', 'stated', 'stating', 'states',
+    'undergo', 'underwent', 'undergoing', 'undergoes',
+    'experience', 'experienced', 'experiencing', 'experiences',
+    'arrive', 'arrived', 'arriving', 'arrives',
+    'order', 'ordered', 'ordering', 'orders',
     // Adverbs, Prepositions, Conjunctions & Modifiers
     'again', 'without', 'with', 'within', 'specific', 'specifically', 'permission', 'permissions',
     'underneath', 'above', 'below', 'between', 'among', 'together', 'separately', 'instead',
@@ -552,7 +577,7 @@ let NOT_NAME_WORDS = new Set([
     // Tax & Payroll terms
     'wages', 'wage', 'tips', 'compensation', 'withheld', 'withholding', 'medicare', 'deductions', 'deduction', 'earning', 'earnings', 'gross', 'net', 'pay', 'payroll', 'paystub', 'taxable', 'exempt', 'allowance', 'allowances', 'regular', 'hours', 'holiday', 'overtime', 'commission', 'bonus', 'bonuses', 'records', 'record', 'statement', 'statements', 'rate', 'rates', 'current', 'ytd', 'benefits', 'taxable', 'pre-tax', 'post-tax', 'reimbursements', 'reimbursement', 'fica', 'oasdi', 'disability', 'unemployment', 'sui', 'sdi', 'std', 'ltd', 'exemptions', 'exemption', 'allowances', 'allowance', 'filing', 'status', 'single', 'married', 'head', 'household', 'advice', 'frequency', 'bi-weekly', 'biweekly', 'weekly', 'monthly', 'semi-monthly', 'direct', 'deposit', 'routing', 'box', 'boxes', 'code', 'control', 'omb', 'copy', 'instructions', 'information', 'deferred', 'adoption', 'statutory', 'third-party', 'sick', 'form', 'schedule', 'w-2', 'w2', 'w-4', 'w4', '1099', 'k-1', '1040', 'fed', 'med', 'fwt', 'swt', 'fed w/h', 'fed med', 'locality', 'state wages', 'state tax', 'local wages', 'local tax', 'allocated', 'nonqualified',
     // Common Web, UI, Compliance, Document & AI Terms (Suppresses false-positive Name detection on headlines, buttons, and badges)
-    'types', 'type', 'leaked', 'leak', 'leaks', 'masked', 'mask', 'masking', 'leave', 'screen', 'screens', 'risk', 'risks', 'cluster', 'clusters', 'parameter', 'parameters', 'processing', 'process', 'processed', 'verified', 'verify', 'verification', 'playground', 'guide', 'guides', 'protection', 'protect', 'corporate', 'enterprise', 'log', 'logs', 'airplane', 'mode', 'zero', 'trust', 'top', 'data', 'live', 'scrubber', 'scrub', 'scrubbed', 'note', 'notes', 'secret', 'secrets', 'card', 'cards', 'raw', 'input', 'output', 'contains', 'contain', 'contained', 'platform', 'solutions', 'pricing', 'company', 'news', 'dashboard', 'add', 'chrome', 'sample', 'samples', 'try', 'terms', 'privacy', 'policy', 'policies', 'home', 'compliance', 'framework', 'frameworks', 'audit', 'audits', 'receipt', 'receipts', 'overview', 'explore', 'vectors', 'vector', 'standard', 'standards', 'status', 'preview', 'view', 'actions', 'action', 'button', 'buttons', 'option', 'options', 'general', 'specialized', 'custom', 'rule', 'rules', 'token', 'tokens', 'value', 'values', 'session', 'sessions', 'local', 'server', 'servers', 'cloud', 'ram', 'memory', 'offline', 'online', 'client', 'browser', 'extension', 'workspace', 'workplace', 'pan', 'phi', 'pii', 'soc', 'soc2', 'gdpr', 'hipaa', 'ccpa', 'iso27001', 'pci', 'dss', 'nist', 'chatgpt', 'claude', 'gemini', 'copilot', 'perplexity', 'deepseek', 'qwen', 'grok', 'llama', 'mistral', 'ai', 'llm', 'prompt', 'prompts', 'transmission', 'transit', 'egress', 'neutralized', 'stripped', 'isolated', 'isolation', 'unlocked', 'locked', 'unlock', 'download', 'copy', 'dismiss', 'close', 'save', 'settings', 'protect', 'reveal', 'unmask', 'restore', 'restored', 'export', 'import',
+    'incident', 'incidents', 'critical', 'production', 'impacted', 'reported', 'details', 'vulnerability', 'vulnerabilities', 'host', 'types', 'type', 'leaked', 'leak', 'leaks', 'masked', 'mask', 'masking', 'leave', 'screen', 'screens', 'risk', 'risks', 'cluster', 'clusters', 'parameter', 'parameters', 'processing', 'process', 'processed', 'verified', 'verify', 'verification', 'playground', 'guide', 'guides', 'protection', 'protect', 'corporate', 'enterprise', 'log', 'logs', 'airplane', 'mode', 'zero', 'trust', 'top', 'data', 'live', 'scrubber', 'scrub', 'scrubbed', 'note', 'notes', 'secret', 'secrets', 'card', 'cards', 'raw', 'input', 'output', 'contains', 'contain', 'contained', 'platform', 'solutions', 'pricing', 'company', 'news', 'dashboard', 'add', 'chrome', 'sample', 'samples', 'try', 'terms', 'privacy', 'policy', 'policies', 'home', 'compliance', 'framework', 'frameworks', 'audit', 'audits', 'receipt', 'receipts', 'overview', 'explore', 'vectors', 'vector', 'standard', 'standards', 'status', 'preview', 'view', 'actions', 'action', 'button', 'buttons', 'option', 'options', 'general', 'specialized', 'custom', 'rule', 'rules', 'token', 'tokens', 'value', 'values', 'session', 'sessions', 'local', 'server', 'servers', 'cloud', 'ram', 'memory', 'offline', 'online', 'client', 'browser', 'extension', 'workspace', 'workplace', 'pan', 'phi', 'pii', 'soc', 'soc2', 'gdpr', 'hipaa', 'ccpa', 'iso27001', 'pci', 'dss', 'nist', 'chatgpt', 'claude', 'gemini', 'copilot', 'perplexity', 'deepseek', 'qwen', 'grok', 'llama', 'mistral', 'ai', 'llm', 'prompt', 'prompts', 'transmission', 'transit', 'egress', 'neutralized', 'stripped', 'isolated', 'isolation', 'unlocked', 'locked', 'unlock', 'download', 'copy', 'dismiss', 'close', 'save', 'settings', 'protect', 'reveal', 'unmask', 'restore', 'restored', 'export', 'import',
     // Games, Chess, and Playing Pieces
     'bishop', 'bishops', 'knight', 'knights', 'rook', 'rooks', 'pawn', 'pawns', 'king', 'kings', 'queen', 'queens', 'chessboard', 'checkmate', 'stalemate', 'castling', 'en passant', 'chess',
     // Colors & Visual Descriptors
@@ -566,7 +591,7 @@ let NOT_NAME_WORDS = new Set([
     'f.3d', 'f.supp', 'u.s.c.', 'v.', 'plaintiff', 'defendant', 'v', 'u.s.', 'court', 'app.', 'reporter', 'cir.']);
 
 const PROFILE_JARGON = {
-    medical: ['sleep', 'apnea', 'symptom', 'symptoms', 'trauma', 'hypertension', 'health', 'disease', 'condition', 'diagnosis', 'treatment', 'medication', 'dose', 'patient', 'clinic', 'surgery', 'therapy', 'alcohol', 'cannabis', 'blood', 'pressure', 'heart', 'rate', 'emergency', 'contact', 'relationship', 'type', 'diabetes', 'cancer', 'asthma', 'copd', 'covid', 'infection', 'syndrome', 'disorder', 'chronic', 'acute', 'illness', 'fever', 'allergy', 'pain', 'referral', 'referred', 'prescription', 'prescribed', 'doctor', 'physician', 'nurse', 'hospital', 'clinical', 'note', 'notes', 'dx', 'rx', 'tx', 'hx', 'px', 'sx', 'insurance', 'bcbs'],
+    medical: ['sleep', 'apnea', 'symptom', 'symptoms', 'trauma', 'hypertension', 'health', 'disease', 'condition', 'diagnosis', 'treatment', 'medication', 'dose', 'patient', 'clinic', 'surgery', 'therapy', 'alcohol', 'cannabis', 'blood', 'pressure', 'heart', 'rate', 'emergency', 'contact', 'relationship', 'type', 'diabetes', 'cancer', 'asthma', 'copd', 'covid', 'infection', 'syndrome', 'disorder', 'chronic', 'acute', 'illness', 'fever', 'allergy', 'pain', 'referral', 'referred', 'prescription', 'prescribed', 'doctor', 'physician', 'nurse', 'hospital', 'clinical', 'note', 'notes', 'dx', 'rx', 'tx', 'hx', 'px', 'sx', 'insurance', 'bcbs', 'bronchitis', 'amoxicillin', 'penicillin', 'antibiotic', 'antibiotics', 'vital', 'vitals', 'bp', 'hr', 'bpm', 'mmhg', 'allergies', 'dosage'],
     realestate: ['escrow', 'tenant', 'landlord', 'lease', 'mortgage', 'appraisal', 'broker', 'property', 'zoning', 'parcel', 'rent', 'buyer', 'seller', 'agent', 'listing'],
     legal: ['testator', 'notary', 'commission', 'county', 'court', 'affidavit', 'plaintiff', 'defendant', 'litigation', 'jurisdiction', 'agreement', 'contract', 'settlement', 'clause', 'article', 'section', 'matter', 'case'],
     hr: ['candidate', 'employee', 'payroll', 'benefits', 'salary', 'vacation', 'supervisor', 'subordinate', 'performance', 'appraisal', 'interview', 'resume', 'applicant'],
@@ -709,25 +734,30 @@ const PROFILE_JARGON = {
                     }
                     matches.push({ start, end, value: matchedText, type: rule.type });
                 } else {
+                    if (rule.type === 'NAME') {
+                        matchedText = matchedText.replace(/[.,;:]+$/, '').trim();
+                    }
                     let val = matchedText.toLowerCase().trim();
-                    if (NAME_STOP_LIST.has(val)) continue;
+                    if (!val || NAME_STOP_LIST.has(val)) continue;
                     
-                    if (!rule.isContextName && rule.type === 'NAME') {
+                    if (rule.type === 'NAME') {
                         let words = val.split(/[ \t\xA0]+/);
-                        let origWords = matchedText.split(/[ \t\xA0]+/);
-                        while (words.length > 2 && (currentJargon.has(words[0]) || (words[0].length > 1 && NOT_NAME_WORDS.has(words[0])) || (words[0].replace(/[^\p{L}]/gu, '').length > 1 && NOT_NAME_WORDS.has(words[0].replace(/[^\p{L}]/gu, ''))))) {
-                            origWords.shift();
-                            words.shift();
-                            const nextStart = matchedText.indexOf(origWords[0]);
-                            if (nextStart !== -1) {
-                                start += nextStart;
-                                matchedText = matchedText.substring(nextStart);
-                                val = matchedText.toLowerCase().trim();
-                            } else {
-                                break;
+                        if (!rule.isContextName) {
+                            let origWords = matchedText.split(/[ \t\xA0]+/);
+                            while (words.length > 2 && (currentJargon.has(words[0]) || (words[0].length > 1 && NOT_NAME_WORDS.has(words[0])) || (words[0].replace(/[^\p{L}]/gu, '').length > 1 && NOT_NAME_WORDS.has(words[0].replace(/[^\p{L}]/gu, ''))))) {
+                                origWords.shift();
+                                words.shift();
+                                const nextStart = matchedText.indexOf(origWords[0]);
+                                if (nextStart !== -1) {
+                                    start += nextStart;
+                                    matchedText = matchedText.substring(nextStart);
+                                    val = matchedText.toLowerCase().trim();
+                                } else {
+                                    break;
+                                }
                             }
                         }
-                        if (words.some(w => {
+                        if (!rule.isContextName && words.some(w => {
                             const cleanW = w.replace(/[^\p{L}]/gu, '');
                             if (cleanW.length <= 1) return false;
                             return currentJargon.has(w) || NOT_NAME_WORDS.has(w) || NOT_NAME_WORDS.has(cleanW) || NAME_STOP_LIST.has(w) || NAME_STOP_LIST.has(cleanW);

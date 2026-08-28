@@ -591,11 +591,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (!license.isPro) {
         const detected = detectSecrets(processedText);
         if (detected.length > 0) {
-          mcpLog(`${colors.redBold}🚫  [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Request BLOCKED to protect your data (Requires PRO Profile).${colors.reset}\n${colors.cyan}👉  Upgrade at: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
-          return {
-            isError: true,
-            content: [{ type: "text", text: `Error: API Key / Secret (${detected.join(', ')}) detected! Request BLOCKED to protect your data. Sanitizing DevOps secrets requires a PRO license. Get a key at: https://privacyscrubber.com/pricing` }]
-          };
+          mcpLog(`${colors.cyan}🔒 [PrivacyScrubber] DevOps Secret / API Key (${detected.join(', ')}) sanitized locally in RAM.${colors.reset}\n${colors.yellowBold}👉 Upgrade to PRO for 25 industry profiles & batch sanitization: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
+          extraBlocks.push(buildUpsellBlock(`DevOps Secret / API Key (${detected.join(', ')}) sanitized. Upgrade to PRO for 25 specialized industry profiles & batch directory sanitization.`));
         }
       }
 
@@ -1159,8 +1156,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const tier = license.isPro ? 'PRO' : 'FREE';
       const tierIcon = license.isPro ? '✅' : '🔓';
       const profileList = license.isPro
-        ? 'All 23 profiles active (General, Dev, Medical, Legal, Finance, HR…)'
-        : 'General only — PRO unlocks 22 industry profiles';
+        ? 'All 25 profiles active (General, Dev, Medical, Legal, Finance, HR…)'
+        : 'General only — PRO unlocks 25 industry profiles';
       const sizeLimit = license.isPro ? 'Unlimited' : '15,000 characters per request';
 
       const configPath = resolveConfigPath();
