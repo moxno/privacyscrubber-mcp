@@ -3,6 +3,9 @@
 [![NPM Version](https://img.shields.io/npm/v/@privacyscrubber/mcp-server?color=blue)](https://www.npmjs.com/package/@privacyscrubber/mcp-server)
 [![NPM Downloads](https://img.shields.io/npm/dm/@privacyscrubber/mcp-server?color=3b82f6)](https://www.npmjs.com/package/@privacyscrubber/mcp-server)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22058770.svg)](https://zenodo.org/records/22058770)
+[![OSF DOI](https://img.shields.io/badge/OSF%20DOI-10.17605%2FOSF.IO%2F5BYJF-blue.svg)](https://osf.io/5byjf/)
+[![SSRN](https://img.shields.io/badge/SSRN-7335581-darkred.svg)](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7335581)
 [![smithery badge](https://smithery.ai/badge/privacyscrubber/pii-masking-mcp)](https://smithery.ai/servers/privacyscrubber/pii-masking-mcp)
 [![Security: 100% Local](https://img.shields.io/badge/Security-100%25%20Local-emerald)](https://privacyscrubber.com)
 [![Parity: 100% Core Match](https://img.shields.io/badge/Parity-100%25%20Core%20Match-blueviolet)](https://privacyscrubber.com)
@@ -148,7 +151,7 @@ Reads a local file, extracts text, sanitizes it, and returns the redacted templa
 
 Looking for real-time protection directly inside your web browser?
 *   **Chrome Extension:** Get the [PrivacyScrubber Chrome Extension](https://chromewebstore.google.com/detail/privacyscrubber-%E2%80%94-pii-red/pimoejgefeilajmmbpghifdmhdlkgjol) to sanitize prompts directly inside ChatGPT, Claude, and Gemini in real-time.
-*   **Web Sandbox:** Use the zero-server browser sanitization tools at [PrivacyScrubber Homepage](https://privacyscrubber.com/).
+*   **Web Sandbox:** Use the zero-server browser sanitization tools at [PrivacyScrubber Homepage](https://privacyscrubber.com/?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server).
 
 ## 📄 License & Commercial Upgrade
 
@@ -166,7 +169,7 @@ By default, the server runs under the **Free Tier** (restricted to 50,000 charac
 | **Team Rules Sync (GPO)** | ❌ No | ❌ No | ✅ Yes (Shared Link) |
 | **Licensing Cost** | $0 | **$110 Lifetime** | **$99/mo Flat Rate** |
 
-👉 **[Acquire a PRO / TEAMS License Key at privacyscrubber.com/pricing](https://privacyscrubber.com/pricing)**
+👉 **[Acquire a PRO / TEAMS License Key at privacyscrubber.com/pricing](https://privacyscrubber.com/pricing?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server)**
 
 ---
 
@@ -195,12 +198,12 @@ Returns a visual dashboard showing your current tier, session request count, act
     ║  📋 Custom rules: 🔒 Locked — requires PRO       ║
     ╠══════════════════════════════════════════════════╣
     ║  💳 Upgrade to PRO — $110 Lifetime               ║
-    ║     https://privacyscrubber.com/pricing          ║
+    ║     https://privacyscrubber.com/pricing?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server          ║
     ╠══════════════════════════════════════════════════╣
     ║  After purchase, add your key to MCP config:     ║
     ║  "PRIVACYSCRUBBER_KEY": "<your-key-here>"        ║
     ║  Full setup guide:                               ║
-    ║  https://privacyscrubber.com/features/mcp/       ║
+    ║  https://privacyscrubber.com/features/mcp/?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server       ║
     ╚══════════════════════════════════════════════════╝
     ```
 
@@ -208,7 +211,7 @@ Returns a visual dashboard showing your current tier, session request count, act
 
 ## 🔐 After Purchase: Activate PRO in Your MCP Client
 
-After purchasing a PRO license at [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing), you will receive a license key. Add it to your MCP client config as an environment variable: `PRIVACYSCRUBBER_KEY`.
+After purchasing a PRO license at [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server), you will receive a license key. Add it to your MCP client config as an environment variable: `PRIVACYSCRUBBER_KEY`.
 
 ### Claude Desktop
 
@@ -270,4 +273,37 @@ Use the check_status tool from PrivacyScrubber MCP
 ```
 
 The dashboard should show **Tier: PRO** and all profiles unlocked.
+
+---
+
+## 📚 Academic Foundations & Regulatory Verification
+
+PrivacyScrubber and the Zero-Trust Data Sanitization (ZTDS) protocol are backed by published scientific, clinical, and legal treatises:
+
+| Repository / Archive | DOI / Identifier | Focus Area | Regulatory & Compliance Scope |
+|---|---|---|---|
+| **Zenodo / CERN** | [`10.5281/zenodo.22058770`](https://zenodo.org/records/22058770) | Zero-Trust Data Sanitization (ZTDS) Protocol Foundation | Cross-Border AI Privacy, ISO 27001 A.8.11 |
+| **OSF (Center for Open Science)** | [`10.17605/OSF.IO/5BYJF`](https://osf.io/5byjf/) | Empirical Latency Benchmark & Memory Profiling (<2ms RAM) | Performance vs Cloud DLP Proxies |
+| **SSRN / Elsevier** | [`SSRN ID: 7335581`](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7335581) | Enterprise Generative AI Governance | EU AI Act, UK GDPR, US State Privacy |
+| **medRxiv (Cold Spring Harbor)** | [`MEDRXIV/2026/361661`](https://submit.medrxiv.org/) | Multi-Center Clinical Trial De-Identification | HIPAA Safe Harbor Section 164.514(b) |
+| **Law Archive / OSF** | [`LawArchive ID: 4wc86`](https://osf.io/preprints/lawarchive/4wc86/) | Preserving Attorney-Client Privilege in AI Workflows | ABA Model Rules & Legal Ethics |
+
+### Citing PrivacyScrubber in Research & Audits
+```bibtex
+@software{sibiryakov2026privacyscrubber,
+  author = {Sibiryakov, Ilya},
+  title = {PrivacyScrubber: Zero-Trust Data Sanitization (ZTDS) Engine & MCP Server},
+  year = {2026},
+  publisher = {Zenodo},
+  doi = {10.5281/zenodo.22058770},
+  url = {https://github.com/moxno/privacyscrubber-mcp}
+}
+```
+
+---
+
+## 📄 License
+
+MIT © [Ilya Sibiryakov](https://privacyscrubber.com) (BrandMeWeb)
+
 

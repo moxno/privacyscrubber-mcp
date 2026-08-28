@@ -1,0 +1,39 @@
+cff-version: 1.2.0
+message: "If you use PrivacyScrubber or the ZTDS engine in your research or enterprise compliance audit, please cite our foundation treatises."
+title: "PrivacyScrubber: Zero-Trust Data Sanitization (ZTDS) Engine & MCP Server"
+version: 2.0.2
+date-released: 2026-08-28
+license: MIT
+repository-code: "https://github.com/moxno/privacyscrubber-mcp"
+url: "https://privacyscrubber.com"
+authors:
+  - family-names: "Sibiryakov"
+    given-names: "Ilya"
+    affiliation: "PrivacyScrubber Research / BrandMeWeb"
+    website: "https://privacyscrubber.com"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.22058770"
+    description: "Zenodo / CERN: Zero-Trust Data Sanitization (ZTDS) Protocol Foundation"
+  - type: doi
+    value: "10.17605/OSF.IO/5BYJF"
+    description: "OSF: Empirical Latency Benchmark and Client Memory Profiling (<2ms RAM)"
+  - type: other
+    value: "SSRN-7335581"
+    description: "SSRN / Elsevier: EU AI Act, UK GDPR, and US State Privacy Statutes"
+  - type: other
+    value: "MEDRXIV/2026/361661"
+    description: "medRxiv: PHI De-Identification in Multi-Center Clinical Trials under HIPAA Safe Harbor 164.514(b)"
+  - type: other
+    value: "OSF-LawArchive-4wc86"
+    description: "Law Archive: Preserving Attorney-Client Privilege in Generative AI Workflows"
+keywords:
+  - "data-privacy"
+  - "zero-trust"
+  - "pii-sanitization"
+  - "mcp-server"
+  - "model-context-protocol"
+  - "hipaa-safe-harbor"
+  - "gdpr"
+  - "cursor"
+  - "claude-desktop"
