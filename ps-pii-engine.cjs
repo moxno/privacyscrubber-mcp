@@ -25,7 +25,7 @@ let DEVOPS_SECRETS = [
     { name: 'Hash / Hex Key (32-64 chars)', type: 'SECRET', regex: /\b[a-fA-F0-9]{32,64}\b/g },
     { name: 'CVE Identifier', type: 'SECRET', regex: /\bCVE-\d{4}-\d{4,}\b/gi },
     { name: 'Cryptographic Hash', type: 'SECRET', regex: /\b(?:MD5|SHA1|SHA256)[:\s][a-f0-9]{32,64}\b/gi },
-    { name: 'Database/API Secret', type: 'SECRET', regex: /\b(?:DB|POSTGRES|REDIS|MYSQL|AWS|SECRET|PASSWORD|TOKEN|API|KEY)[A-Z0-9_]*\s*[:=]\s*[^\s"']+\b/gi },
+    { name: 'Database/API Secret', type: 'SECRET', regex: /\b(?:DB|POSTGRES|REDIS|MYSQL|AWS|SECRET|PASSWORD|TOKEN|API)[A-Z0-9_]*\s*[:=]\s*[^\s"']+\b|\b(?:API_KEY|SECRET_KEY|PRIVATE_KEY|ACCESS_KEY|AUTH_KEY|ENCRYPTION_KEY)\s*[:=]\s*[^\s"']+\b/gi },
     { name: 'Proprietary IP / Confidential', type: 'SECRET', regex: /\b(?:CONFIDENTIAL|PROPRIETARY|TRADE SECRET|DO NOT DISTRIBUTE|INTERNAL USE ONLY)\b/gi },
     { name: 'Private Cryptographic Key', type: 'SECRET', regex: /-----BEGIN (?:RSA |EC |PGP |DSA )?PRIVATE KEY-----/g }
 ];
@@ -54,7 +54,7 @@ let REGEX_RULES = [
     // Professional IDs & Organizations
     { type: 'NAME', isContextName: true, regex: /\b(?:[A-Z][A-Za-z0-9&.,'-]*[ \t\xA0]+){1,5}(?:Inc\.?|LLC|Corp\.?|Corporation|Ltd\.?|Limited|Co\.?|Company|Group|Holdings|Solutions|Services|Technologies|Logistics|Industries|Capital|Bank|Partners|LLP|PLLC)(?:\s+(?:LLC|Inc\.?|Corp\.?|Ltd\.?|USA|Group))?\b/g },
     { type: 'ID', regex: /\b(?:Employee|Emp|EE|Worker|Staff|File|Badge|Member|Advisor|Producer|Agent|Borrower)\s*(?:#|ID|No\.?|Number)[:\s#]*[A-Z0-9-]{3,15}\b/gi },
-    { type: 'ID', regex: /\b(?:Pay\s+Group|Cost\s+Center|Dept|Department)[:\s#]*[A-Za-z0-9_-]{2,30}\b/gi },
+    { type: 'ID', regex: /\b(?:Pay\s+Group|Cost\s+Center|Dept|Department)(?:[:#][\s#]*[A-Za-z0-9_-]{2,30}|\s+[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
     { type: 'ID', regex: /(?:\b(?:Box\s+d\b|d\.\s*(?:Control|#)?|d\s+Control)\s*(?:number|no\.?|#|num)?[:\s#]*|\bControl\s*(?:number|no\.?|#|num)[:\s#]*|\bControl[:#]\s*)([A-Za-z0-9-]{3,30})/gi },
     { type: 'ID', regex: /\bEEID[ -]?\d{4,}\b/gi },
     { type: 'ID', regex: /\bRESUME[-_]?[A-Z0-9]{4,}\b/gi },
@@ -79,19 +79,24 @@ let REGEX_RULES = [
 
     // Insurance & Health Plan IDs
     { type: 'ID', regex: /\b(?:BCB|BCBS|AETNA|CIGNA|UHC|HUMANA|MEDICARE|MEDICAID)[-_A-Za-z0-9]+\b/gi },
-    { type: 'ID', regex: /\b(?:Insurance\s+(?:ID|No\.?|Number|#)|Policy(?:\s*(?:ID|No\.?|Number|#)|[:#])|Member\s*(?:ID|No\.?|Number|#|[:#])|Subscriber\s*(?:ID|No\.?|Number|#|[:#])|Group\s*(?:ID|No\.?|Number|#|[:#])|Plan\s*(?:ID|No\.?|Number|#|[:#])|Health(?:\s+Plan)?\s*(?:ID|No\.?|Number|#)|Rx\s*(?:ID|No\.?|Number|Group|BIN|PCN|#))[:\s#]*([A-Za-z0-9-]+)/gi },
+    { type: 'ID', regex: /\b(?:Insurance\s+(?:ID|No\.?|Number|#)|Policy(?:\s*(?:ID|No\.?|Number|#)|[:#])|Member\s*(?:ID|No\.?|Number|#|[:#])|Subscriber\s*(?:ID|No\.?|Number|#|[:#])|Group\s*(?:ID|No\.?|Number|#|[:#])|Plan\s*(?:ID|No\.?|Number|#|[:#])|Health(?:\s+Plan)?\s*(?:ID|No\.?|Number|#)|Rx\s*(?:ID|No\.?|Number|Group|BIN|PCN|#))[:\s#]+([A-Za-z0-9-]{3,30})\b/gi },
     { type: 'ID', regex: /\b(?:Health\s+Plan(?:\s+Beneficiary)?|Beneficiary(?:\s+(?:No\.?|Number|ID|Num|#))?|HPN)[:\s#]+([A-Za-z0-9-]+)/gi },
     { type: 'ID', regex: /\bHPN[-_][A-Za-z0-9-]+\b/gi },
-
-    // Addresses & Locations
     { type: 'ADDRESS', isContextAddress: true, regex: /(?:(?:\bBox\s+f\b|\bf\.\s*|\bf\s+(?=Employee))\s*(?:Employee(?:'s)?\s*)?(?:address[,\s]+and\s+ZIP\s+code|address)?|(?:Employee(?:'s)?\s+address[,\s]+and\s+ZIP\s+code))[\s:#]*([A-Za-z0-9#.,\s-]{4,55}?)(?=\r?\n|$|\s{3,}|\t|Box|\d+\b|1\b|2\b|Wages|Federal|Social|Medicare)/gi },
     { type: 'ADDRESS', isContextAddress: true, regex: /(?:(?:Borrower(?:'s)?|Co-Borrower(?:'s)?|Employee(?:'s)?|Employer(?:'s)?|Home|Mailing|Property|Physical)\s+address)[\s:#]+([A-Za-z0-9#.,\s-]{4,55}?)(?=\r?\n|$|\s{3,}|\t|City|State|ZIP|SSN|EIN|Phone|Box|\d+\b)/gi },
-    { type: 'ADDRESS', regex: /\b\d{1,6}[ \t\xA0]+(?:[A-Za-z0-9.-]+[ \t\xA0]+){1,4}(?:St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Ln|Lane|Dr|Drive|Way|Ct|Court|Pl|Place|Terrace|Pkwy|Parkway|Sq|Square|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Row|Pike|Box|PO Box|P\.O\.[ \t\xA0]*Box)\b(?:[ \t\xA0]*,?[ \t\xA0]*(?:Apt|Apartment|Suite|Ste|Unit|#|Fl|Floor|Bldg|Building)\.?[ \t\xA0]*[A-Za-z0-9-]+)?/gi },
+    { type: 'ADDRESS', regex: /\b\d{1,6}[ \t\xA0]+(?:[A-Za-z0-9.-]+[ \t\xA0]+){0,4}(?:St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Ln|Lane|Dr|Drive|Way|Ct|Court|Pl|Place|Terrace|Pkwy|Parkway|Sq|Square|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Row|Pike|Bishopsgate|Gate|Walk|Close|Hill|Crescent|Gardens|Grove|Mews|Yard|Box|PO Box|P\.O\.[ \t\xA0]*Box)\b(?:[ \t\xA0]*,?[ \t\xA0]*(?:Apt|Apartment|Suite|Ste|Unit|#|Fl|Floor|Bldg|Building)\.?[ \t\xA0]*[A-Za-z0-9-]+)?/gi },
     { type: 'ADDRESS', regex: /\b(?:P\.?O\.?[ \t\xA0]*Box|PO[ \t\xA0]*Box)[ \t\xA0]+\d{1,6}\b/gi },
     { type: 'ADDRESS', regex: /\b[A-Za-z][a-zA-Z\s.-]{1,25},?\s+(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|PR)\s+\d{5}(?:-\d{4})?\b/g },
     { type: 'ADDRESS', regex: /\b(?:ZIP|Postal|Code)?\s*(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|PR)\s+\d{5}(?:-\d{4})?\b/g },
     { type: 'ADDRESS', regex: /\b\d{5}-\d{4}\b/g },
-    { type: 'LOCATION', regex: /\b[A-Za-z][a-zA-Z .'-]{1,25}(?:,\s*(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|PR)|\s+(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|PR))\b/g },
+    // SSN / National IDs
+    { type: 'ID', regex: /\b\d{3}-\d{2}-\d{4}\b/g },
+    { type: 'ID', regex: /(?<=^|[^\w*])(?:\*{3}|X{3}|x{3}|\*{2}|X{2}|x{2})[ -]?(?:\*{2}|X{2}|x{2})\b/gi },
+    { type: 'ID', regex: /(?<=^|[^\w*])(?:\*{3}|X{3}|x{3}|\*{2}|X{2}|x{2})[ -]?(?:\*{2}|X{2}|x{2})[ -]?\d{4}\b/g },
+    { type: 'ID', regex: /\b\d{2}-\d{7}\b/g },
+    { type: 'ID', regex: /\b(?:HICN|MBI)[:\s#]*([0-9][A-Za-z][0-9A-Za-z][0-9]-[A-Za-z][0-9A-Za-z][0-9]-[A-Za-z0-9]{4})\b/gi },
+    { type: 'ID', regex: /\b[1-9][A-Za-z][0-9A-Za-z][0-9]-[A-Za-z][0-9A-Za-z][0-9]-[A-Za-z0-9]{4}\b/gi },
+    { type: 'LOCATION', regex: /\b[A-Za-z][a-zA-Z .'-]{1,25},\s*(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|PR)\b/g },
 
     // PHI & Medical
     { type: 'PHI', regex: /\b(?:MRN|Patient ID|Medical Record (?:No\.?|Num(?:ber)?|#)|Patient (?:No\.?|Num(?:ber)?|#))[\s:#]+([A-Za-z0-9-]+)/gi },
@@ -100,9 +105,7 @@ let REGEX_RULES = [
     { type: 'ID', regex: /\b(?:Device\s+(?:Identifier|ID|Serial|No\.?|Number)|UDI)[:\s#]+([A-Za-z0-9-]+)/gi },
     { type: 'ID', regex: /\bUDI[-_][A-Za-z0-9-]+\b/gi },
     { type: 'ID', regex: /\b(?:Vehicle\s+(?:Serial|ID|Identification(?:\s+Number)?|No\.?|Number)|VIN)[:\s#]+([A-Za-z0-9-]+)/gi },
-    { type: 'ID', regex: /\bVIN[-_][A-Za-z0-9-]+\b/gi },
-    { type: 'PHI', regex: /\b[A-TV-Z]\d{2}[. ]?\d[A-Z0-9]?\b/g },
-    { type: 'PHI', regex: /\b[A-Z]{2,3}\d{6,8}\b/g },
+    { type: 'PHI', regex: /\b(?!NCT|INC|SEC|ISO|DOC|SOC|CPT)[A-Z]{2,3}\d{6,8}\b/g },
     { type: 'PHI', regex: /\bNHS[ -]?\d{3}[ -]?\d{3}[ -]?\d{4}\b/gi },
 
     // Copyrights
@@ -129,7 +132,7 @@ let REGEX_RULES = [
     { type: 'IP', regex: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g },
     { type: 'IP', regex: /\b(?:[a-fA-F0-9]{1,4}:){7}[a-fA-F0-9]{1,4}\b/g },
     { type: 'ID', regex: /\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b/g },
-    { type: 'ID', regex: /(?:\B\/|\b[a-zA-Z]:\\)(?:[\w.-]+[\/\\])*[\w.-]+\b/g },
+    { type: 'ID', regex: /(?<![:/A-Za-z0-9])(?:\/[a-zA-Z0-9_.-]+(?:[\/\\][a-zA-Z0-9_.-]+)+|\b[a-zA-Z]:\\[\w.-]+(?:\\[\w.-]+)*)/g },
     { type: 'ID', regex: /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}(?::\d{2})?)?\b/g },
     { type: 'ID', regex: /\b\d{4}-\d{2}-\d{2}\b/g },
     { type: 'ID', regex: /\b\d{2}\/\d{2}\/\d{4}\b/g },
@@ -170,8 +173,8 @@ let REGEX_RULES = [
     { type: 'NAME', isContextName: true, regex: /(?:(?:Employee(?:'s)?|Borrower(?:'s)?|Co-Borrower(?:'s)?|Applicant(?:'s)?|Candidate(?:'s)?|Worker(?:'s)?|Taxpayer(?:'s)?|Spouse(?:'s)?|Person(?:'s)?)\s+)?(?:First\s+name(?:\s+(?:and|&)\s+initial)?|Given\s+name)[\s:#]+(?:\b|\b\s*)([A-Za-z0-9.\s'-]{2,30}?)(?=\r?\n|$|\s{3,}|\t|Last|Surname|Family|Suff|Box|Address|SSN|EIN)/gi },
     // Contextual Last Names (Last name, Surname, Family name)
     { type: 'NAME', isContextName: true, regex: /(?:(?:Employee(?:'s)?|Borrower(?:'s)?|Co-Borrower(?:'s)?|Applicant(?:'s)?|Candidate(?:'s)?|Worker(?:'s)?|Taxpayer(?:'s)?|Spouse(?:'s)?|Person(?:'s)?)\s+)?(?:Last\s+name|Surname|Family\s+name)[\s:#]+(?:\b|\b\s*)([A-Za-z'-]{2,30})/gi },
-    // Contextual General Names (Employee, Borrower, Co-Borrower, Taxpayer, Spouse, Applicant, Candidate, Worker, Employer, Company, Insured, Patient, Client, etc.)
-    { type: 'NAME', isContextName: true, regex: /(?:Employee(?:\s+Name)?|Employer(?:\s+Name)?|Borrower(?:\s+Name)?|Co-Borrower(?:\s+Name)?|Applicant(?:\s+Name)?|Candidate(?:\s+Name)?|Worker(?:\s+Name)?|Taxpayer(?:\s+Name)?|Spouse(?:\s+Name)?|Manager|Supervisor|Reporting To|Insured|Claimant|Patient|Client|Customer|Account Holder|Prepared By|Attention|Attn|Contact(?: Name)?|Child|Parent|Guardian|Relationship|Kin|Tenant|Landlord|Buyer|Seller|Plaintiff|Defendant|Testator)[\s:#]+(?:\b|\b\s*)([A-Za-z0-9&.,\s'-]{2,40}?)(?=\r?\n|$|\s{3,}|\t|Employee|Employer|Address|Phone|SSN|EIN|FEIN|Date|Pay|Rate|Tax|W-2|OMB|Copy|Box|Status)/gi },
+    // Contextual General Names (Employee, Principal Investigator, Physician, Doctor, etc.)
+    { type: 'NAME', isContextName: true, regex: /(?:(?:Employee|Employer|Borrower|Co-Borrower|Applicant|Candidate|Worker|Taxpayer|Spouse|Client|Customer|Patient|Claimant|Insured|Tenant|Landlord|Buyer|Seller|Plaintiff|Defendant|Testator|Author)\s+(?:Name|Full\s+Name)|(?:Principal\s+Investigator|Investigator|Physician|Doctor|Supervisor|Reporting\s+To|Prepared\s+By|Attention|Attn|Contact(?:\s+Person)?|Author)(?:\s+Name)?|(?:Employee|Employer|Borrower|Client|Customer|Patient|Claimant|Insured|Doctor|Attn|Signatory|Witness|Tenant|Landlord|Buyer|Seller|Plaintiff|Defendant|Author)\s*[:=#])[:\s#]*(?:\b|\b\s*)([A-Z\p{Lu}][A-Za-z0-9&.,\s'-]{1,35}?)(?=\r?\n|$|\s{3,}|\t|Employee|Employer|Address|Phone|SSN|EIN|FEIN|Date|Pay|Rate|Tax|W-2|OMB|Copy|Box|Status)/giu },
     // Box e shorthand
     { type: 'NAME', isContextName: true, regex: /\b(?:Box\s+e)\s*[:#-]\s*([A-Za-z0-9&.,\s'-]{2,40})/gi }
 ];
@@ -204,7 +207,7 @@ let PROFILE_RULES = {
         { type: 'PHI', regex: /\b(?:MRN|Patient ID|Medical Record (?:No\.?|Num(?:ber)?|#)|Patient (?:No\.?|Num(?:ber)?|#))[\s:#]+([A-Za-z0-9-]+)/gi },
         { type: 'DATE', regex: /\b(?:DOB|Date of Birth|BIRTHDAY)[\s:]+([0-9./-]{6,10})\b/gi },
         { type: 'PHI', regex: /\bMRN[-_ ]*[A-Za-z0-9-]{4,}\b/gi },
-        { type: 'ID', regex: /\b(?:Insurance\s+(?:ID|No\.?|Number|#)|Policy(?:\s*(?:ID|No\.?|Number|#)|[:#])|Member\s*(?:ID|No\.?|Number|#|[:#])|Subscriber\s*(?:ID|No\.?|Number|#|[:#])|Group\s*(?:ID|No\.?|Number|#|[:#])|Plan\s*(?:ID|No\.?|Number|#|[:#])|Health(?:\s+Plan)?\s*(?:ID|No\.?|Number|#)|Rx\s*(?:ID|No\.?|Number|Group|BIN|PCN|#))[:\s#]*([A-Za-z0-9-]+)/gi },
+        { type: 'ID', regex: /\b(?:Insurance\s+(?:ID|No\.?|Number|#)|Policy(?:\s*(?:ID|No\.?|Number|#)|[:#])|Member\s*(?:ID|No\.?|Number|#|[:#])|Subscriber\s*(?:ID|No\.?|Number|#|[:#])|Group\s*(?:ID|No\.?|Number|#|[:#])|Plan\s*(?:ID|No\.?|Number|#|[:#])|Health(?:\s+Plan)?\s*(?:ID|No\.?|Number|#)|Rx\s*(?:ID|No\.?|Number|Group|BIN|PCN|#))[:\s#]+([A-Za-z0-9-]{3,30})\b/gi },
         { type: 'ID', regex: /\b(?:Health\s+Plan(?:\s+Beneficiary)?|Beneficiary(?:\s+No\.?|\s+Number)?|HPN)[:\s#]+([A-Za-z0-9-]+)/gi },
         { type: 'ID', regex: /\bHPN[-_][A-Za-z0-9-]+\b/gi },
         { type: 'ID', regex: /\b(?:BCB|BCBS|AETNA|CIGNA|UHC|HUMANA|MEDICARE|MEDICAID)[-_A-Za-z0-9]+\b/gi },
@@ -213,8 +216,7 @@ let PROFILE_RULES = {
         { type: 'ID', regex: /\bUDI[-_][A-Za-z0-9-]+\b/gi },
         { type: 'ID', regex: /\b(?:Vehicle\s+(?:Serial|ID|Identification(?:\s+Number)?|No\.?|Number)|VIN)[:\s#]+([A-Za-z0-9-]+)/gi },
         { type: 'ID', regex: /\bVIN[-_][A-Za-z0-9-]+\b/gi },
-        { type: 'PHI', regex: /\b[A-TV-Z]\d{2}[. ]?\d[A-Z0-9]?\b/g },
-        { type: 'PHI', regex: /\b[A-Z]{2,3}\d{6,8}\b/g },
+        { type: 'PHI', regex: /\b(?!NCT|INC|SEC|ISO|DOC|SOC|CPT)[A-Z]{2,3}\d{6,8}\b/g },
         { type: 'PHI', regex: /\bNHS[ -]?\d{3}[ -]?\d{3}[ -]?\d{4}\b/gi }
     ],
     security: [
@@ -248,13 +250,13 @@ let PROFILE_RULES = {
         { type: 'ID', regex: /\b(?:MLS|LIS)[- ]?\d{6,10}\b/gi },
         { type: 'ID', regex: /\bPARCEL[- ]?\d{5,15}\b/gi },
         { type: 'ID', regex: /\bTENANT[-_]ID[-_][0-9]{4,}\b/gi },
-        { type: 'FINANCIAL', regex: /\b(?:RENT|LEASE|ESCROW)[\s:]+(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[0-9,]{3,}\b/gi },
+        { type: 'FINANCIAL', regex: /(?<=\b(?:RENT|LEASE|ESCROW)[\s:]+)(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[0-9,]{3,}(?:\.\d{2})?\b/gi },
         { type: 'SECRET', regex: /\b(?:GATE|DOOR|LOBBY)[-_ ](?:CODE|PIN)[\s:]*\d{4,6}\b/gi }
     ],
     compliance: [
         { type: 'SECRET', regex: /\b(?:GDPR|HIPAA|CCPA|SOC2|ISO27001)[-_: ]?AUDIT[-_: ]?\d{4}\b/gi },
         { type: 'SECRET', regex: /\b(?:DPA|POLICY)[-_: ]?[A-Z0-9]{5,15}\b/gi },
-        { type: 'ID', regex: /\b(?:SAR|DSAR)[-_\/: ]?[A-Z0-9-/]+\b/gi }
+        { type: 'ID', regex: /\b(?:SAR|DSAR)(?:[-_\/: ]+[A-Z0-9/_-]+|[0-9][A-Z0-9/_-]*)\b/gi }
     ],
     ccpa: [
         { type: 'ID', regex: /\b(?:DL|DRIVER['’]?S?\s+LICENSE)[:\s#-]*[A-Z0-9]{6,12}\b/gi },
@@ -276,7 +278,7 @@ let PROFILE_RULES = {
     academic: [
         { type: 'ID', regex: /\b(?:STUDENT|ALUMNI)[-_:# ]?[0-9]{5,10}\b/gi },
         { type: 'ID', regex: /\bCOURSE[-_:# ]?[A-Z]{3,4}[ ]?[0-9]{3,4}\b/gi },
-        { type: 'ID', regex: /\b(?:FERPA|IRB)[-_:# ]?[A-Z0-9]{5,10}\b/gi },
+        { type: 'ID', regex: /\b(?:FERPA|IRB)[-_:# ]*[A-Z0-9_-]*\d[A-Z0-9_-]*\b/gi },
         { type: 'ID', regex: /\bGRADE[S]?[\s:][A-DF][+-]?\b/gi }
     ],
     creative: [
@@ -352,7 +354,7 @@ let PROFILE_RULES = {
         
         // Employee, Loan & Payroll IDs
         { type: 'ID', regex: /\b(?:Employee|Emp|EE|Worker|Borrower|Badge|Advisor|Producer|Agent|Applicant|File)\s*(?:#|ID|No\.?|Number)[:\s#]*[A-Z0-9-]{3,20}\b/gi },
-        { type: 'ID', regex: /\b(?:Pay\s+Group|Cost\s+Center|Dept|Department)[:\s#]*[A-Za-z0-9_-]{2,30}\b/gi },
+        { type: 'ID', regex: /\b(?:Pay\s+Group|Cost\s+Center|Dept|Department)(?:[:#][\s#]*[A-Za-z0-9_-]{2,30}|\s+[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
         { type: 'ID', regex: /\b(?:Loan|Application|Deal|Borrower|File)\s*(?:#|ID|No\.?|Number)[:\s#]*[A-Za-z0-9-]{4,25}\b/gi },
         
         // Direct Deposit, Bank Accounts & Routing Numbers (Masked & Unmasked)
@@ -418,8 +420,7 @@ let NAME_STOP_LIST = new Set([
     'step 1', 'step 2', 'step 3', 'step 4', 'step 5',
     'page 1', 'page 2', 'page 3', 'page 4', 'page 5',
     'cs101', 'course cs101',
-    // Expanded Stop List (Common nouns, command phrases, legal, prompt, chess, and animation terms)
-    'docket number', 'docket numbers', 'dockets section', 'case name', 'case names', 'case number', 'case numbers', 'law firm', 'law firms', 'counsel stack', 'counselstack', 'counselstack connector', 'tier 0', 'tier 1', 'tier 2', 'tier 3', 'tier 4', 'do not', 'do not write', 'specific permission', 'write again', 'without permission', 'without specific permission', 'on screen', 'in report', 'own line', 'connector access', 'prompt instruction', 'prompt instructions', 'finding report', 'findings report',
+    'docket number', 'docket numbers', 'dockets section', 'case name', 'case names', 'case number', 'case numbers', 'law firm', 'law firms', 'counsel stack', 'counselstack', 'counselstack connector', 'tier 0', 'tier 1', 'tier 2', 'tier 3', 'tier 4', 'do not', 'do not write', 'specific permission', 'write again', 'without permission', 'without specific permission', 'on screen', 'in report', 'own line', 'connector access', 'prompt instruction', 'prompt instructions', 'finding report', 'findings report', 'wage and tax statement', 'form w-2', 'wage and tax', 'tax statement', 'u.s. individual', 'income tax return', 'earnings statement', 'adp totalsource', 'paychex flex', 'clinical progress note', 'inpatient discharge summary', 'mri brain', 'closing disclosure', 'settlement statement', 'clinical protocol', 'research strategy', 'deposit in escrow', 'incident record', 'institutional review board', 'review board', 'national institutes', 'institutes health', 'dana-farber', 'cancer institute', 'harvard medical school', 'medical school', 'department homeland security', 'homeland security', 'control sc-28', 'sc-28 attestation', 'system security plan', 'morgan stanley', 'blackstone capital', 'communicating pi',
     'white bishop', 'black bishop', 'white knight', 'black knight', 'white king', 'black king', 'white queen', 'black queen', 'white rook', 'black rook', 'white pawn', 'black pawn', 'chess piece', 'chess pieces', 'chess game', 'chess match', 'disney-pixar', 'disney pixar', 'pixar animation', 'close-up', 'close up',
     'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
     'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
@@ -458,11 +459,13 @@ let NAME_STOP_LIST = new Set([
     'lighting', 'keyboard', 'creating', 'building', 'training', 'planning', 'starting', 'painting', 'printing', 'returned', 'released', 'required', 'accepted', 'imported', 'services', 'products', 'accounts', 'settings', 'partners', 'keywords', 'keystone', 'keyspace', 'keynotes', 'keychain'
 , 'quarterly results', 'strategic planning', 'market research', 'customer base', 'privacy settings', 'account settings', 'security settings', 'download now', 'free trial', 'limited time', 'copyright protected', 'all rights', 'rights reserved', 'credit score', 'monthly rent', 'lease application', 'property address', 'reference number', 'additional identifier', 'lease agreement', 'hiring review', 'candidate name', 'privacy policy', 'terms of service', 'machine learning', 'artificial intelligence', 'generative ai', 'silicon valley', 'google cloud', 'amazon web', 'data science', 'operating system', 'software engineer', 'product manager', 'project manager', 'data analyst', 'gross margin', 'revenue growth', 'source code', 'version control', 'large language model',
     'wages', 'wage', 'tips', 'compensation', 'withheld', 'withholding', 'medicare', 'deductions', 'deduction',
-    'regular', 'hours', 'holiday', 'overtime', 'commission', 'bonus', 'bonuses', 'records', 'record', 'statement', 'statements', 'rate', 'rates', 'current', 'ytd', 'benefits', 'taxable', 'pre-tax', 'post-tax', 'reimbursements', 'reimbursement', 'fica', 'oasdi', 'disability', 'unemployment', 'sui', 'sdi', 'std', 'ltd', 'exemptions', 'exemption', 'allowances', 'allowance', 'filing', 'status', 'single', 'married', 'head', 'household', 'advice', 'frequency', 'bi-weekly', 'biweekly', 'weekly', 'monthly', 'semi-monthly', 'direct', 'deposit', 'routing', 'box', 'boxes', 'code', 'control', 'omb', 'copy', 'instructions', 'information', 'deferred', 'adoption', 'statutory', 'third-party', 'sick', 'form', 'schedule', 'w-2', 'w2', 'w-4', 'w4', '1099', 'k-1', '1040', 'fed', 'med', 'fwt', 'swt', 'fed w/h', 'fed med', 'locality', 'state wages', 'state tax', 'local wages', 'local tax', 'allocated', 'nonqualified', 'suff', 'suffix', 'allocated tips', 'advance eic', 'advance eic payment', 'dependent care', 'dependent care benefits', 'nonqualified plans', 'statutory employee', 'retirement plan', 'third-party sick pay']);
+    'regular', 'hours', 'holiday', 'overtime', 'commission', 'bonus', 'bonuses', 'records', 'record', 'statement', 'statements', 'rate', 'rates', 'current', 'ytd', 'benefits', 'taxable', 'pre-tax', 'post-tax', 'reimbursements', 'reimbursement', 'fica', 'oasdi', 'disability', 'unemployment', 'sui', 'sdi', 'std', 'ltd', 'exemptions', 'exemption', 'allowances', 'allowance', 'filing', 'status', 'single', 'married', 'head', 'household', 'advice', 'frequency', 'bi-weekly', 'biweekly', 'weekly', 'monthly', 'semi-monthly', 'direct', 'deposit', 'routing', 'box', 'boxes', 'code', 'control', 'omb', 'copy', 'instructions', 'information', 'deferred', 'adoption', 'statutory', 'third-party', 'sick', 'form', 'schedule', 'w-2', 'w2', 'w-4', 'w4', '1099', 'k-1', '1040', 'fed', 'med', 'fwt', 'swt', 'fed w/h', 'fed med', 'locality', 'state wages', 'state tax', 'local wages', 'local tax', 'allocated', 'nonqualified', 'suff', 'suffix', 'allocated tips', 'advance eic', 'advance eic payment', 'dependent care', 'dependent care benefits', 'nonqualified plans', 'statutory employee', 'retirement plan', 'third-party sick pay',
+    'uk', 'eu', 'us', 'usa', 'dpa', 'ico', 'dpo', 'ciso', 'ssrn', 'elsevier', 'gdpr', 'ccpa', 'cpra', 'hipaa', 'soc2', 'iso27001', 'governance', 'regulatory', 'framework', 'mandate', 'mandates', 'guidance', 'statute', 'statutes', 'jurisdiction', 'jurisdictions', 'recital', 'article', 'articles', 'treatise', 'workstation', 'device', 'endpoint', 'blueprint', 'personal', 'cross-border', 'cross', 'border', 'transfer', 'retrieval', 'augmented', 'generation', 'limitation', 'discrimination', 'imposes', 'heavy', 'identifiable', 'bypasses', 'author', 'contact', 'keywords', 'keyword', 'keys', 'key', 'separation', 'pre-print', 'preprint']);
 
-let JARGON_WORDS = new Set(['step', 'page', 'grade', 'version', 'course', 'class', 'follow', 'chapter', 'lesson', 'unit', 'marketing', 'manager', 'specialist', 'science', 'administration', 'university', 'skills', 'leadership', 'communication', 'working', 'proficiency', 'decision', 'driven', 'experience', 'summary', 'bachelor', 'ads', 'solutions', 'positioning', 'acquisition', 'strategy', 'research', 'database', 'forecast', 'interest', 'prepared', 'merchant', 'document', 'feedback', 'template', 'campaign', 'partners', 'settings', 'keystone', 'llm', 'gpt', 'chatgpt', 'openai', 'anthropic', 'claude', 'gemini', 'api', 'json', 'xml', 'html', 'css', 'javascript', 'python', 'golang', 'typescript', 'rust', 'fastapi', 'snowflake', 'kubernetes', 'terraform', 'docker', 'redis', 'kafka', 'pytorch', 'policy', 'terms', 'conditions', 'release', 'sprint', 'deployment', 'cluster', 'instance', 'package', 'module', 'revenue', 'margin', 'gross', 'quarter', 'system', 'code', 'data', 'cloud', 'server', 'database', 'artificial', 'intelligence', 'learning', 'generative', 'regular', 'hours', 'holiday', 'earnings', 'deductions', 'withheld', 'withholding', 'taxes', 'medicare', 'benefits', 'reimbursements', 'compensation', 'wages', 'code']);
+let JARGON_WORDS = new Set(['step', 'page', 'grade', 'version', 'course', 'class', 'follow', 'chapter', 'lesson', 'unit', 'marketing', 'manager', 'specialist', 'science', 'administration', 'university', 'skills', 'leadership', 'communication', 'working', 'proficiency', 'decision', 'driven', 'experience', 'summary', 'bachelor', 'ads', 'solutions', 'positioning', 'acquisition', 'strategy', 'research', 'database', 'forecast', 'interest', 'prepared', 'merchant', 'document', 'feedback', 'template', 'campaign', 'partners', 'settings', 'keystone', 'llm', 'gpt', 'chatgpt', 'openai', 'anthropic', 'claude', 'gemini', 'api', 'json', 'xml', 'html', 'css', 'javascript', 'python', 'golang', 'typescript', 'rust', 'fastapi', 'snowflake', 'kubernetes', 'terraform', 'docker', 'redis', 'kafka', 'pytorch', 'policy', 'terms', 'conditions', 'release', 'sprint', 'deployment', 'cluster', 'instance', 'package', 'module', 'revenue', 'margin', 'gross', 'quarter', 'system', 'code', 'data', 'cloud', 'server', 'database', 'artificial', 'intelligence', 'learning', 'generative', 'regular', 'hours', 'holiday', 'earnings', 'deductions', 'withheld', 'withholding', 'taxes', 'medicare', 'benefits', 'reimbursements', 'compensation', 'wages', 'code', 'uk', 'eu', 'us', 'usa', 'dpa', 'ico', 'dpo', 'ciso', 'ssrn', 'elsevier', 'gdpr', 'ccpa', 'cpra', 'hipaa', 'soc2', 'iso27001', 'governance', 'regulatory', 'framework', 'mandate', 'mandates', 'guidance', 'statute', 'statutes', 'jurisdiction', 'jurisdictions', 'recital', 'article', 'articles', 'treatise', 'workstation', 'device', 'endpoint', 'blueprint', 'personal', 'cross-border', 'cross', 'border', 'transfer', 'retrieval', 'augmented', 'generation', 'limitation', 'discrimination', 'imposes', 'heavy', 'identifiable', 'bypasses', 'author', 'contact', 'keywords', 'keyword', 'keys', 'key', 'separation', 'pre-print', 'preprint']);
 
 let NOT_NAME_WORDS = new Set([
+    'uk', 'eu', 'us', 'usa', 'dpa', 'ico', 'dpo', 'ciso', 'ssrn', 'elsevier', 'gdpr', 'ccpa', 'cpra', 'hipaa', 'soc2', 'iso27001', 'governance', 'regulatory', 'framework', 'mandate', 'mandates', 'guidance', 'statute', 'statutes', 'jurisdiction', 'jurisdictions', 'recital', 'article', 'articles', 'treatise', 'workstation', 'device', 'endpoint', 'blueprint', 'personal', 'cross-border', 'cross', 'border', 'transfer', 'retrieval', 'augmented', 'generation', 'limitation', 'discrimination', 'imposes', 'heavy', 'identifiable', 'bypasses', 'author', 'contact', 'keywords', 'keyword', 'keys', 'key', 'separation', 'pre-print', 'preprint',
     // Grammatical & Sentence Starters
     'the', 'a', 'an', 'this', 'that', 'these', 'those', 'my', 'your', 'his', 'her', 'their', 'our', 'its', 'it', 'he', 'she', 'they', 'we', 'i', 'you', 'who', 'whom', 'which', 'what', 'whose', 'why', 'how', 'when', 'where', 'with', 'for', 'from', 'by', 'to', 'at', 'in', 'on', 'of', 'about', 'as', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'and', 'but', 'or', 'so', 'yet', 'im', "i'm", "you're", "they're", "we're", "it's", "he's", "she's", "that's", "there's", "what's", "who's", "i've", "you've", "we've", "they've", "i'll", "you'll", "we'll", "they'll", "i'd", "you'd", "we'd", "they'd",
     // Verbs, Auxiliaries, Commands & Imperatives
@@ -576,8 +579,7 @@ let NOT_NAME_WORDS = new Set([
     'clinical', 'note', 'notes', 'dx', 'rx', 'tx', 'hx', 'px', 'sx', 'type', 'diabetes', 'referred', 'referral', 'diagnosed', 'diagnosis', 'patient', 'insurance', 'bcbs', 'mrn', 'dob',
     // Tax & Payroll terms
     'wages', 'wage', 'tips', 'compensation', 'withheld', 'withholding', 'medicare', 'deductions', 'deduction', 'earning', 'earnings', 'gross', 'net', 'pay', 'payroll', 'paystub', 'taxable', 'exempt', 'allowance', 'allowances', 'regular', 'hours', 'holiday', 'overtime', 'commission', 'bonus', 'bonuses', 'records', 'record', 'statement', 'statements', 'rate', 'rates', 'current', 'ytd', 'benefits', 'taxable', 'pre-tax', 'post-tax', 'reimbursements', 'reimbursement', 'fica', 'oasdi', 'disability', 'unemployment', 'sui', 'sdi', 'std', 'ltd', 'exemptions', 'exemption', 'allowances', 'allowance', 'filing', 'status', 'single', 'married', 'head', 'household', 'advice', 'frequency', 'bi-weekly', 'biweekly', 'weekly', 'monthly', 'semi-monthly', 'direct', 'deposit', 'routing', 'box', 'boxes', 'code', 'control', 'omb', 'copy', 'instructions', 'information', 'deferred', 'adoption', 'statutory', 'third-party', 'sick', 'form', 'schedule', 'w-2', 'w2', 'w-4', 'w4', '1099', 'k-1', '1040', 'fed', 'med', 'fwt', 'swt', 'fed w/h', 'fed med', 'locality', 'state wages', 'state tax', 'local wages', 'local tax', 'allocated', 'nonqualified',
-    // Common Web, UI, Compliance, Document & AI Terms (Suppresses false-positive Name detection on headlines, buttons, and badges)
-    'incident', 'incidents', 'critical', 'production', 'impacted', 'reported', 'details', 'vulnerability', 'vulnerabilities', 'host', 'types', 'type', 'leaked', 'leak', 'leaks', 'masked', 'mask', 'masking', 'leave', 'screen', 'screens', 'risk', 'risks', 'cluster', 'clusters', 'parameter', 'parameters', 'processing', 'process', 'processed', 'verified', 'verify', 'verification', 'playground', 'guide', 'guides', 'protection', 'protect', 'corporate', 'enterprise', 'log', 'logs', 'airplane', 'mode', 'zero', 'trust', 'top', 'data', 'live', 'scrubber', 'scrub', 'scrubbed', 'note', 'notes', 'secret', 'secrets', 'card', 'cards', 'raw', 'input', 'output', 'contains', 'contain', 'contained', 'platform', 'solutions', 'pricing', 'company', 'news', 'dashboard', 'add', 'chrome', 'sample', 'samples', 'try', 'terms', 'privacy', 'policy', 'policies', 'home', 'compliance', 'framework', 'frameworks', 'audit', 'audits', 'receipt', 'receipts', 'overview', 'explore', 'vectors', 'vector', 'standard', 'standards', 'status', 'preview', 'view', 'actions', 'action', 'button', 'buttons', 'option', 'options', 'general', 'specialized', 'custom', 'rule', 'rules', 'token', 'tokens', 'value', 'values', 'session', 'sessions', 'local', 'server', 'servers', 'cloud', 'ram', 'memory', 'offline', 'online', 'client', 'browser', 'extension', 'workspace', 'workplace', 'pan', 'phi', 'pii', 'soc', 'soc2', 'gdpr', 'hipaa', 'ccpa', 'iso27001', 'pci', 'dss', 'nist', 'chatgpt', 'claude', 'gemini', 'copilot', 'perplexity', 'deepseek', 'qwen', 'grok', 'llama', 'mistral', 'ai', 'llm', 'prompt', 'prompts', 'transmission', 'transit', 'egress', 'neutralized', 'stripped', 'isolated', 'isolation', 'unlocked', 'locked', 'unlock', 'download', 'copy', 'dismiss', 'close', 'save', 'settings', 'protect', 'reveal', 'unmask', 'restore', 'restored', 'export', 'import',
+    'incident', 'incidents', 'critical', 'production', 'impacted', 'reported', 'details', 'vulnerability', 'vulnerabilities', 'host', 'types', 'type', 'leaked', 'leak', 'leaks', 'masked', 'mask', 'masking', 'leave', 'screen', 'screens', 'risk', 'risks', 'cluster', 'clusters', 'parameter', 'parameters', 'processing', 'process', 'processed', 'verified', 'verify', 'verification', 'playground', 'guide', 'guides', 'protection', 'protect', 'corporate', 'enterprise', 'log', 'logs', 'airplane', 'mode', 'zero', 'trust', 'top', 'data', 'live', 'scrubber', 'scrub', 'scrubbed', 'note', 'notes', 'secret', 'secrets', 'card', 'cards', 'raw', 'input', 'output', 'contains', 'contain', 'contained', 'platform', 'solutions', 'pricing', 'company', 'news', 'dashboard', 'add', 'chrome', 'sample', 'samples', 'try', 'terms', 'privacy', 'policy', 'policies', 'home', 'compliance', 'framework', 'frameworks', 'audit', 'audits', 'receipt', 'receipts', 'overview', 'explore', 'vectors', 'vector', 'standard', 'standards', 'status', 'preview', 'view', 'actions', 'action', 'button', 'buttons', 'option', 'options', 'general', 'specialized', 'custom', 'rule', 'rules', 'token', 'tokens', 'value', 'values', 'session', 'sessions', 'local', 'server', 'servers', 'cloud', 'ram', 'memory', 'offline', 'online', 'client', 'browser', 'extension', 'workspace', 'workplace', 'pan', 'phi', 'pii', 'soc', 'soc2', 'gdpr', 'hipaa', 'ccpa', 'iso27001', 'pci', 'dss', 'nist', 'chatgpt', 'claude', 'gemini', 'copilot', 'perplexity', 'deepseek', 'qwen', 'grok', 'llama', 'mistral', 'ai', 'llm', 'prompt', 'prompts', 'transmission', 'transit', 'egress', 'neutralized', 'stripped', 'isolated', 'isolation', 'unlocked', 'locked', 'unlock', 'download', 'copy', 'dismiss', 'close', 'save', 'settings', 'protect', 'reveal', 'unmask', 'restore', 'restored', 'export', 'import', 'sanitization', 'sanitizer', 'sensitive', 'entities', 'entity', 'breakdown', 'metrics', 'exposure', 'high', 'low', 'medium', 'cryptographic', 'separation', 'pseudonymization', 'minimization', 'transparency', 'forensic', 'extraction', 'conduit', 'liability', 'processor', 'binding', 'bindings', 'signature', 'certified', 'certificate', 'payload', 'transmitted', 'evaluation', 'air-gapped', 'client-side', 'zero-trust', 'iso', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x', 'statutory', 'declaration', 'pass', 'passed', 'fail', 'failed', 'side', 'privacyscrubber', 'ztds', 'safe harbor', 'harbor', 'safe', 'ciso', 'united', 'states', 'district', 'court', 'northern', 'southern', 'eastern', 'western', 'division', 'in re', 'litigation', 'complaint', 'violation', 'defend', 'trade', 'secrets', 'demand', 'jury', 'trial', 'federal', 'question', 'diversity', 'citizenship', 'mutual', 'non-disclosure', 'confidentiality', 'recitals', 'standard', 'governing', 'jpmorgan', 'chase', 'bank', 'beginning', 'ending', 'balance', 'deposits', 'additions', 'withdrawals', 'electronic', 'transfers', 'subscription', 'billed', 'lifetime', 'amount', 'due', 'subtotal', 'residential', 'commercial', 'lease', 'premises', 'deposit', 'utilities', 'closing', 'disclosure', 'settlement', 'trid', 'hud-1', 'purchase', 'price', 'escrow', 'funds', 'institutional', 'review', 'board', 'irb', 'national', 'institutes', 'health', 'nih', 'research', 'strategy', 'grant', 'adenocarcinoma', 'pancreatic', 'ductal', 'dana-farber', 'cancer', 'institute', 'harvard', 'department', 'homeland', 'cisa', 'controlled', 'unclassified', 'cui', 'foia', 'responsive', 'attestation', 'fedramp', 'ssp', 'package', 'moderate', 'impact', 'sshd', 'publickey', 'cron', 'systemd', 'failed', 'accepted', 'password', 'individual', 'income', 'totalsource', 'paychex', 'flex', 'lisinopril', 'metformin', 'atorvastatin', 'serum', 'creatinine', 'egfr', 'hba1c', 'vitals', 'copd', 'obstructive', 'pulmonary', 'disease', 'chronic', 'mri', 'brain', 'contrast', 'parenchyma', 'ventricles', 'fazekas', 'systems', 'distributed', 'event-driven', 'cfa', 'blackstone', 'morgan', 'chartered', 'confidential', 'information', 'cisa', 'attestation', 'sc-28', 'sp', '800-53', 'fedramp', 'clinicaltrials', 'nct', 'protocol', 'grant', 'r01', 'pancreatic', 'adenocarcinoma', 'dana-farber', 'harvard', 'cardiology', 'diverticulitis', 'resection', 'superbill', 'hcpcs', 'icd-10', 'progress', 'name', 'names', 'partner', 'partners', 'capital', 'adp', 'tax', 'taxes', 'inpatient', 'discharge', 'clinicaltrials.gov', 'id', 'ids', 'phd', 'md', 'do', 'jd', 'mba', 'cpa', 'pi', 'in', 'at', 'on', 'of', 'to', 'by', 'or', 'as', 'if', 'an', 'is', 'it', 'be', 'we', 'us', 'up', 'so', 'no', 'do', 'go', 'he', 'me', 'my',
     // Games, Chess, and Playing Pieces
     'bishop', 'bishops', 'knight', 'knights', 'rook', 'rooks', 'pawn', 'pawns', 'king', 'kings', 'queen', 'queens', 'chessboard', 'checkmate', 'stalemate', 'castling', 'en passant', 'chess',
     // Colors & Visual Descriptors
@@ -591,11 +593,77 @@ let NOT_NAME_WORDS = new Set([
     'f.3d', 'f.supp', 'u.s.c.', 'v.', 'plaintiff', 'defendant', 'v', 'u.s.', 'court', 'app.', 'reporter', 'cir.']);
 
 const PROFILE_JARGON = {
-    medical: ['sleep', 'apnea', 'symptom', 'symptoms', 'trauma', 'hypertension', 'health', 'disease', 'condition', 'diagnosis', 'treatment', 'medication', 'dose', 'patient', 'clinic', 'surgery', 'therapy', 'alcohol', 'cannabis', 'blood', 'pressure', 'heart', 'rate', 'emergency', 'contact', 'relationship', 'type', 'diabetes', 'cancer', 'asthma', 'copd', 'covid', 'infection', 'syndrome', 'disorder', 'chronic', 'acute', 'illness', 'fever', 'allergy', 'pain', 'referral', 'referred', 'prescription', 'prescribed', 'doctor', 'physician', 'nurse', 'hospital', 'clinical', 'note', 'notes', 'dx', 'rx', 'tx', 'hx', 'px', 'sx', 'insurance', 'bcbs', 'bronchitis', 'amoxicillin', 'penicillin', 'antibiotic', 'antibiotics', 'vital', 'vitals', 'bp', 'hr', 'bpm', 'mmhg', 'allergies', 'dosage'],
-    realestate: ['escrow', 'tenant', 'landlord', 'lease', 'mortgage', 'appraisal', 'broker', 'property', 'zoning', 'parcel', 'rent', 'buyer', 'seller', 'agent', 'listing'],
-    legal: ['testator', 'notary', 'commission', 'county', 'court', 'affidavit', 'plaintiff', 'defendant', 'litigation', 'jurisdiction', 'agreement', 'contract', 'settlement', 'clause', 'article', 'section', 'matter', 'case'],
-    hr: ['candidate', 'employee', 'payroll', 'benefits', 'salary', 'vacation', 'supervisor', 'subordinate', 'performance', 'appraisal', 'interview', 'resume', 'applicant'],
-    sales: ['prospect', 'opportunity', 'quota', 'pipeline', 'deal', 'revenue', 'forecast', 'lead', 'churn', 'client', 'customer']
+    medical: [
+        'sleep', 'apnea', 'symptom', 'symptoms', 'trauma', 'hypertension', 'health', 'disease', 'condition',
+        'diagnosis', 'treatment', 'medication', 'dose', 'patient', 'clinic', 'surgery', 'therapy', 'alcohol',
+        'cannabis', 'blood', 'pressure', 'heart', 'rate', 'emergency', 'contact', 'relationship', 'type',
+        'diabetes', 'cancer', 'asthma', 'copd', 'covid', 'infection', 'syndrome', 'disorder', 'chronic', 'acute',
+        'illness', 'fever', 'allergy', 'pain', 'referral', 'referred', 'prescription', 'prescribed', 'doctor',
+        'physician', 'nurse', 'hospital', 'clinical', 'note', 'notes', 'dx', 'rx', 'tx', 'hx', 'px', 'sx',
+        'insurance', 'bcbs', 'bronchitis', 'amoxicillin', 'penicillin', 'antibiotic', 'antibiotics', 'vital',
+        'vitals', 'bp', 'hr', 'bpm', 'mmhg', 'allergies', 'dosage', 'parenchyma', 'ventricles', 'fazekas',
+        'ischemia', 'lesion', 'cardiology', 'atherosclerotic', 'aortocoronary', 'bypass', 'graft', 'hyperlipidemia',
+        'diverticulitis', 'resection', 'colon', 'superbill', 'encounter', 'cpt', 'hcpcs', 'icd-10'
+    ],
+    realestate: [
+        'escrow', 'tenant', 'landlord', 'lease', 'mortgage', 'appraisal', 'broker', 'property', 'zoning',
+        'parcel', 'rent', 'buyer', 'seller', 'agent', 'listing', 'residential', 'commercial', 'premises',
+        'deposit', 'utilities', 'closing', 'disclosure', 'settlement', 'trid', 'hud-1', 'purchase', 'price',
+        'funds', 'lender', 'deed', 'title', 'disbursement'
+    ],
+    legal: [
+        'testator', 'notary', 'commission', 'county', 'court', 'affidavit', 'plaintiff', 'defendant',
+        'litigation', 'jurisdiction', 'agreement', 'contract', 'settlement', 'clause', 'article', 'section',
+        'matter', 'case', 'united', 'states', 'district', 'northern', 'southern', 'eastern', 'western',
+        'division', 'complaint', 'violation', 'defend', 'trade', 'secrets', 'act', 'demand', 'jury', 'trial',
+        'federal', 'question', 'diversity', 'citizenship', 'mutual', 'non-disclosure', 'confidentiality',
+        'recitals', 'whereas', 'confidential', 'information', 'care', 'term', 'exhibit', 'party', 'parties',
+        'disclosing', 'receiving', 'witnesseth', 'standard', 'indemnification', 'liability', 'governing',
+        'law', 'docket', 'deponent', 'reporter', 'appearances', 'examination', 'services', 'scope', 'work',
+        'master', 'msa'
+    ],
+    academic: [
+        'institutional', 'review', 'board', 'irb', 'protocol', 'national', 'institutes', 'health', 'nih',
+        'research', 'strategy', 'grant', 'adenocarcinoma', 'pancreatic', 'ductal', 'dana-farber', 'cancer',
+        'institute', 'harvard', 'medical', 'school', 'application', 'study', 'title', 'identifier',
+        'investigator', 'principal', 'investigators', 'sponsor', 'protection', 'confidentiality', 'harbor',
+        'standards', 'clinical', 'trials', 'de-identification', 'aggregation', 'identifiers', 'aims',
+        'sequencing', 'biomarkers', 'methylation'
+    ],
+    finance: [
+        'jpmorgan', 'chase', 'bank', 'beginning', 'ending', 'balance', 'deposits', 'additions', 'withdrawals',
+        'electronic', 'transfers', 'statement', 'customer', 'subscription', 'plan', 'billed', 'lifetime',
+        'amount', 'due', 'subtotal', 'sales', 'tax', 'regular', 'pay', 'bonus', 'gross', 'net', 'earnings',
+        'withholding', 'withheld', 'social', 'security', 'medicare', 'fica', 'oasdi', 'swt', 'fwt', 'direct',
+        'deposit', 'checking', 'savings', 'account', 'invoice', 'currency', 'status', 'routing', 'check',
+        'advice', 'summary', 'credit', 'debit'
+    ],
+    devops: [
+        'failed', 'accepted', 'publickey', 'password', 'cron', 'systemd', 'sshd', 'authentication',
+        'connection', 'timeout', 'cluster', 'postgres', 'postgresql', 'root', 'admin', 'syslog', 'daemon',
+        'service', 'kubernetes', 'k8s', 'docker', 'container', 'pod', 'namespace', 'ingress', 'egress'
+    ],
+    compliance: [
+        'department', 'homeland', 'security', 'cisa', 'controlled', 'unclassified', 'information', 'cui',
+        'foia', 'responsive', 'record', 'ciso', 'attestation', 'fedramp', 'ssp', 'package', 'moderate',
+        'impact', 'level', 'nist', 'sp', '800-53', 'sc-28', 'fips', '140-3', 'dhs', 'exemption', 'privacy',
+        'mandate', 'statutory', 'declaration'
+    ],
+    support: [
+        'ticket', 'status', 'priority', 'requester', 'assignee', 'organization', 'solved', 'open', 'pending',
+        'incident', 'record', 'servicenow', 'zendesk', 'jira', 'rate', 'limit', 'quota', 'concurrency',
+        'settings', 'access', 'connection', 'pool', 'exhaustion'
+    ],
+    hr: [
+        'candidate', 'employee', 'payroll', 'benefits', 'salary', 'vacation', 'supervisor', 'subordinate',
+        'performance', 'appraisal', 'interview', 'resume', 'applicant', 'engineer', 'developer', 'analyst',
+        'specialist', 'director', 'manager', 'lead', 'staff', 'senior', 'junior', 'experience', 'education',
+        'skills', 'certifications', 'summary', 'responsibilities'
+    ],
+    sales: [
+        'prospect', 'opportunity', 'quota', 'pipeline', 'deal', 'revenue', 'forecast', 'lead', 'churn',
+        'client', 'customer'
+    ]
 };
     // --- END DEFAULT RULES ---
 
@@ -635,10 +703,10 @@ const PROFILE_JARGON = {
     const PROFILE_ALIAS_MAP = {
         'general': 'general',
         'underwriting': 'underwriting', 'lending': 'underwriting', 'mortgage': 'underwriting', 'loan': 'underwriting', 'income': 'underwriting', 'income_verification': 'underwriting', 'payroll': 'underwriting', 'w2': 'underwriting', 'paystub': 'underwriting',
-        'medical': 'medical', 'healthcare': 'medical', 'health': 'medical', 'pharma': 'pharma',
+        'medical': 'medical', 'healthcare': 'medical', 'health': 'medical', 'pharma': 'pharma', 'hipaa': 'medical',
         'engineering': 'engineering', 'dev': 'engineering', 'devops': 'engineering', 'tech': 'tech',
-        'finance': 'finance', 'bizops': 'bizops', 'sales': 'sales', 'wealthmgmt': 'wealthmgmt', 'wealth': 'wealthmgmt', 'insurance': 'insurance', 'accounting': 'accounting',
-        'legal': 'legal', 'compliance': 'compliance', 'ccpa': 'ccpa',
+        'finance': 'finance', 'bizops': 'bizops', 'sales': 'sales', 'wealthmgmt': 'wealthmgmt', 'wealth': 'wealthmgmt', 'insurance': 'insurance', 'accounting': 'accounting', 'pci': 'finance',
+        'legal': 'legal', 'compliance': 'compliance', 'ccpa': 'ccpa', 'gdpr': 'compliance', 'soc2': 'compliance', 'iso27001': 'compliance', 'nist': 'compliance', 'dpo': 'compliance', 'grc': 'compliance',
         'hr': 'hr', 'security': 'security', 'marketing': 'marketing', 'support': 'support',
         'realestate': 'realestate', 'academic': 'academic', 'agents': 'agents', 'ai_agents': 'agents', 'creative': 'creative', 'personal': 'personal'
     };
@@ -722,13 +790,14 @@ const PROFILE_JARGON = {
                         start = m.index + relOffset;
                     }
                 }
+                if (matchedText.trim().length < 2) continue;
                 const end = start + matchedText.length;
                 
                 if (rule.type !== 'NAME' && rule.type !== 'ADDRESS') {
                     const val = matchedText.toLowerCase().trim();
-                    if (NAME_STOP_LIST.has(val) || NOT_NAME_WORDS.has(val)) {
+                    if (NAME_STOP_LIST.has(val) || NOT_NAME_WORDS.has(val) || currentJargon.has(val)) {
                         // Skip if generic English dictionary term matched by greedy regex (e.g. SWIFT matching SCRUBBER or CONTAINS)
-                        if (rule.type === 'FINANCIAL' || rule.type === 'ID' || rule.type === 'PRIVACY' || rule.type === 'SECRET') {
+                        if (rule.type === 'FINANCIAL' || rule.type === 'ID' || rule.type === 'PRIVACY' || rule.type === 'SECRET' || rule.type === 'LEGAL' || rule.type === 'PHI') {
                             continue;
                         }
                     }
@@ -738,7 +807,7 @@ const PROFILE_JARGON = {
                         matchedText = matchedText.replace(/[.,;:]+$/, '').trim();
                     }
                     let val = matchedText.toLowerCase().trim();
-                    if (!val || NAME_STOP_LIST.has(val)) continue;
+                    if (!val || NAME_STOP_LIST.has(val) || currentJargon.has(val) || NOT_NAME_WORDS.has(val)) continue;
                     
                     if (rule.type === 'NAME') {
                         let words = val.split(/[ \t\xA0]+/);
@@ -757,14 +826,28 @@ const PROFILE_JARGON = {
                                 }
                             }
                         }
-                        if (!rule.isContextName && words.some(w => {
+                        if (!rule.isContextName && (
+                            words.some(w => {
+                                const cleanW = w.replace(/[^\p{L}]/gu, '');
+                                if (cleanW.length <= 1) return false;
+                                return currentJargon.has(w) || NOT_NAME_WORDS.has(w) || NOT_NAME_WORDS.has(cleanW) || NAME_STOP_LIST.has(w) || NAME_STOP_LIST.has(cleanW);
+                            }) ||
+                            val.split(/[ \t\xA0-]+/).some(sw => {
+                                const cleanSW = sw.replace(/[^\p{L}]/gu, '');
+                                if (cleanSW.length <= 1) return false;
+                                return currentJargon.has(sw) || NOT_NAME_WORDS.has(sw) || NOT_NAME_WORDS.has(cleanSW) || NAME_STOP_LIST.has(sw) || NAME_STOP_LIST.has(cleanSW);
+                            })
+                        )) continue;
+
+                        if (rule.isContextName && words.length > 0 && words.every(w => {
                             const cleanW = w.replace(/[^\p{L}]/gu, '');
-                            if (cleanW.length <= 1) return false;
-                            return currentJargon.has(w) || NOT_NAME_WORDS.has(w) || NOT_NAME_WORDS.has(cleanW) || NAME_STOP_LIST.has(w) || NAME_STOP_LIST.has(cleanW);
-                        })) continue;
+                            return !cleanW || currentJargon.has(w) || NOT_NAME_WORDS.has(w) || NOT_NAME_WORDS.has(cleanW) || NAME_STOP_LIST.has(w) || NAME_STOP_LIST.has(cleanW);
+                        })) {
+                            continue;
+                        }
                     } else if (rule.type === 'ADDRESS') {
                         const cleanVal = val.replace(/[.,;!?]/g, ' ').trim();
-                        if (NAME_STOP_LIST.has(cleanVal) || currentJargon.has(cleanVal)) continue;
+                        if (NAME_STOP_LIST.has(cleanVal) || currentJargon.has(cleanVal) || NOT_NAME_WORDS.has(cleanVal)) continue;
                     }
                     
                     matches.push({ start, end: start + matchedText.length, value: matchedText, type: rule.type });
@@ -774,6 +857,11 @@ const PROFILE_JARGON = {
 
         if (nlpNames && nlpNames.length > 0) {
             nlpNames.forEach(name => {
+                if (!name || typeof name !== 'string' || name.trim().length < 3) return;
+                const val = name.toLowerCase().trim();
+                if (NAME_STOP_LIST.has(val) || NOT_NAME_WORDS.has(val) || currentJargon.has(val)) return;
+                const words = val.split(/\s+/);
+                if (words.every(w => NOT_NAME_WORDS.has(w) || currentJargon.has(w) || NAME_STOP_LIST.has(w))) return;
                 const safeName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 const rx = new RegExp(`(?<=^|[^\\p{L}\\p{N}_])${safeName}(?=[^\\p{L}\\p{N}_]|$)`, 'gu');
                 let m;

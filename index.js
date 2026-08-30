@@ -97,6 +97,8 @@ function checkLicenseStatus() {
 
   return { isPro: true, type: result.tier, error: null };
 }
+// ── Zero-Trust Air-Gapped Operation ──────────────────────────────────────────
+// 100% local stdio execution in memory. Zero external network calls, zero telemetry.
 
 // ── Free Tier Usage Tracking (Persistent) ─────────────────────────────
 const FREE_TIER_DAILY_LIMIT = 10;
@@ -228,16 +230,6 @@ function formatAuditReceipt(telemetry) {
   const icon = telemetry.riskLevel.includes('CRITICAL') ? '🔴' : (telemetry.riskLevel.includes('MODERATE') ? '🟠' : '🟢');
 
   return `\\n\\n> 🛡️ **PrivacyScrubber Audit Receipt**\\n> * **Risk Level:** ${icon} ${telemetry.riskLevel}\\n> * **Compliance Enforced:** ${telemetry.frameworksList.join(', ')}\\n> * **Tokens Masked:** ${telemetry.totalCount} (${entitiesList})\\n`;
-}
-
-// Build a clean upsell content block (Disabled to prevent agent-visible marketing content)
-function buildUpsellBlock(reason) {
-  return null;
-}
-
-// Decide if we should attach a soft periodic nudge (Disabled to maintain clean MCP output)
-function shouldNudge(isPro) {
-  return false;
 }
 
 // Create the MCP server
@@ -540,6 +532,7 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
 // Handle tool execution calls
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
+  const toolStart = Date.now();
 
   try {
     if (name === "sanitize_text") {
@@ -567,7 +560,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const isAdvanced = targetProfile.toLowerCase() !== "general";
       const license = checkLicenseStatus();
       let finalProfile = targetProfile;
-      const extraBlocks = [];
 
       const limitStatus = checkFreeTierLimit(license.isPro);
       if (limitStatus.blocked) {
@@ -579,22 +571,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
       if (isAdvanced && !license.isPro) {
-        mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char limit).${colors.reset}\n${colors.cyan}👉  Get a PRO key for unlimited use: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
-        extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' active (Free Tier limit: 5,000 chars). Upgrade to PRO for unlimited text.`));
+        mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char limit).${colors.reset}\n`);
       }
 
-      const { processedText, wasTruncated } = truncateIfFree(text, license.isPro, charLimit);
-      if (wasTruncated) {
-        extraBlocks.push(buildUpsellBlock(`Input was truncated to ${charLimit.toLocaleString()} characters (Free Tier limit).`));
-      }
-
-      if (!license.isPro) {
-        const detected = detectSecrets(processedText);
-        if (detected.length > 0) {
-          mcpLog(`${colors.cyan}🔒 [PrivacyScrubber] DevOps Secret / API Key (${detected.join(', ')}) sanitized locally in RAM.${colors.reset}\n${colors.yellowBold}👉 Upgrade to PRO for 25 industry profiles & batch sanitization: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
-          extraBlocks.push(buildUpsellBlock(`DevOps Secret / API Key (${detected.join(', ')}) sanitized. Upgrade to PRO for 25 specialized industry profiles & batch directory sanitization.`));
-        }
-      }
+      const { processedText } = truncateIfFree(text, license.isPro, charLimit);
 
       const { scrubbedText, newTokens } = performSanitization(processedText, finalProfile, sessionIgnoreList);
       
@@ -603,8 +583,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       return {
         content: [
-          { type: "text", text: scrubbedText + receiptMd },
-          ...extraBlocks.filter(Boolean)
+          { type: "text", text: scrubbedText + receiptMd }
         ]
       };
     }
@@ -745,9 +724,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const targetProfile = profile.trim();
           const isAdvanced = targetProfile.toLowerCase() !== "general";
           const license = checkLicenseStatus();
-
           let finalProfile = targetProfile;
-          const extraBlocks = [];
 
           const limitStatus = checkFreeTierLimit(license.isPro);
           if (limitStatus.blocked) {
@@ -759,23 +736,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
           const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
           if (isAdvanced && !license.isPro) {
-            mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char limit).${colors.reset}\n${colors.cyan}👉  Get a PRO key for unlimited use: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
-            extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' active (Free Tier limit: 5,000 chars). Upgrade to PRO for unlimited text.`));
+            mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char limit).${colors.reset}\n`);
           }
 
-          const { processedText: processedContent, wasTruncated } = truncateIfFree(content, license.isPro, charLimit);
-          if (wasTruncated) extraBlocks.push(buildUpsellBlock(`File content was truncated to ${charLimit.toLocaleString()} characters (Free Tier limit).`));
-
-          if (!license.isPro) {
-            const detected = detectSecrets(processedContent);
-            if (detected.length > 0) {
-              mcpLog(`${colors.redBold}🚫  [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Request BLOCKED to protect your data (Requires PRO Profile).${colors.reset}\n${colors.cyan}👉  Upgrade at: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
-              return {
-                isError: true,
-                content: [{ type: "text", text: `Error: API Key / Secret (${detected.join(', ')}) detected! Request BLOCKED to protect your data. Sanitizing DevOps secrets requires a PRO license. Get a key at: https://privacyscrubber.com/pricing` }]
-              };
-            }
-          }
+          const { processedText: processedContent } = truncateIfFree(content, license.isPro, charLimit);
 
           const sanitized = performSanitization(processedContent, finalProfile, sessionIgnoreList);
           const { scrubbedText, newTokens } = sanitized;
@@ -785,8 +749,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
           return {
             content: [
-              { type: "text", text: combinedOutput },
-              ...extraBlocks.filter(Boolean)
+              { type: "text", text: combinedOutput }
             ]
           };
         } catch (docxError) {
@@ -810,7 +773,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             content: [
               {
                 type: "text",
-                text: `Error: PDF and Excel file sanitization is a PRO feature. Set PRIVACYSCRUBBER_KEY to your PRO license key to unlock local document parsing. Get a key at: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal`
+                text: `🔒 [PrivacyScrubber PRO] Sanitizing ${isPdf ? 'PDF' : 'Excel/XLSX'} files is a PRO feature.\n\n👉 Set your PRIVACYSCRUBBER_KEY environment variable to a valid PRO license key.\n👉 Upgrade at: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal\n👉 Alternatively, sanitize plain text, code, CSV, and DOCX files for free.`
               }
             ]
           };
@@ -822,40 +785,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const data = await pdf(buffer);
             const content = data.text;
             const targetProfile = profile.trim();
-            const isAdvanced = targetProfile.toLowerCase() !== "general";
-
             let finalProfile = targetProfile;
-            const extraBlocks = [];
 
-            const limitStatus = checkFreeTierLimit(license.isPro);
-            if (limitStatus.blocked) {
-              return {
-                isError: true,
-                content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Please set your PRO license key to continue. Get a key at: https://privacyscrubber.com/pricing` }]
-              };
-            }
-
-            const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
-            if (isAdvanced && !license.isPro) {
-              mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char limit).${colors.reset}\n${colors.cyan}👉  Get a PRO key for unlimited use: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
-              extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' active (Free Tier limit: 5,000 chars). Upgrade to PRO for unlimited text.`));
-            }
-
-            const { processedText: processedContent, wasTruncated } = truncateIfFree(content, license.isPro, charLimit);
-            if (wasTruncated) extraBlocks.push(buildUpsellBlock(`File content was truncated to ${charLimit.toLocaleString()} characters (Free Tier limit).`));
-
-            if (!license.isPro) {
-              const detected = detectSecrets(processedContent);
-              if (detected.length > 0) {
-                mcpLog(`${colors.redBold}🚫  [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Request BLOCKED to protect your data (Requires PRO Profile).${colors.reset}\n${colors.cyan}👉  Upgrade at: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
-                return {
-                  isError: true,
-                  content: [{ type: "text", text: `Error: API Key / Secret (${detected.join(', ')}) detected! Request BLOCKED to protect your data. Sanitizing DevOps secrets requires a PRO license. Get a key at: https://privacyscrubber.com/pricing` }]
-                };
-              }
-            }
-
-            const sanitized = performSanitization(processedContent, finalProfile, sessionIgnoreList);
+            const sanitized = performSanitization(content, finalProfile, sessionIgnoreList);
             const { scrubbedText, newTokens } = sanitized;
             const telemetry = buildCisoAuditTelemetry(newTokens);
             const receiptMarkdown = formatAuditReceipt(telemetry);
@@ -863,8 +795,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
             return {
               content: [
-                { type: "text", text: combinedOutput },
-                ...extraBlocks.filter(Boolean)
+                { type: "text", text: combinedOutput }
               ]
             };
           } catch (pdfError) {
@@ -887,40 +818,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             });
 
             const targetProfile = profile.trim();
-            const isAdvanced = targetProfile.toLowerCase() !== "general";
-
             let finalProfile = targetProfile;
-            const extraBlocks = [];
 
-            const limitStatus = checkFreeTierLimit(license.isPro);
-            if (limitStatus.blocked) {
-              return {
-                isError: true,
-                content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Please set your PRO license key to continue. Get a key at: https://privacyscrubber.com/pricing` }]
-              };
-            }
-
-            const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
-            if (isAdvanced && !license.isPro) {
-              mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char limit).${colors.reset}\n${colors.cyan}👉  Get a PRO key for unlimited use: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
-              extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' active (Free Tier limit: 5,000 chars). Upgrade to PRO for unlimited text.`));
-            }
-
-            const { processedText: processedContent, wasTruncated } = truncateIfFree(content, license.isPro, charLimit);
-            if (wasTruncated) extraBlocks.push(buildUpsellBlock(`File content was truncated to ${charLimit.toLocaleString()} characters (Free Tier limit).`));
-
-            if (!license.isPro) {
-              const detected = detectSecrets(processedContent);
-              if (detected.length > 0) {
-                mcpLog(`${colors.redBold}🚫  [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Request BLOCKED to protect your data (Requires PRO Profile).${colors.reset}\n${colors.cyan}👉  Upgrade at: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
-                return {
-                  isError: true,
-                  content: [{ type: "text", text: `Error: API Key / Secret (${detected.join(', ')}) detected! Request BLOCKED to protect your data. Sanitizing DevOps secrets requires a PRO license. Get a key at: https://privacyscrubber.com/pricing` }]
-                };
-              }
-            }
-
-            const sanitized = performSanitization(processedContent, finalProfile, sessionIgnoreList);
+            const sanitized = performSanitization(content, finalProfile, sessionIgnoreList);
             const { scrubbedText, newTokens } = sanitized;
             const telemetry = buildCisoAuditTelemetry(newTokens);
             const receiptMarkdown = formatAuditReceipt(telemetry);
@@ -928,8 +828,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
             return {
               content: [
-                { type: "text", text: combinedOutput },
-                ...extraBlocks.filter(Boolean)
+                { type: "text", text: combinedOutput }
               ]
             };
           } catch (xlsxError) {
@@ -967,9 +866,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const targetProfile = profile.trim();
       const isAdvanced = targetProfile.toLowerCase() !== "general";
       const license = checkLicenseStatus();
-
       let finalProfile = targetProfile;
-      const extraBlocks = [];
 
       const limitStatus = checkFreeTierLimit(license.isPro);
       if (limitStatus.blocked) {
@@ -981,23 +878,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
       if (isAdvanced && !license.isPro) {
-        mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char limit).${colors.reset}\n${colors.cyan}👉  Get a PRO key for unlimited use: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
-        extraBlocks.push(buildUpsellBlock(`Profile '${targetProfile}' active (Free Tier limit: 5,000 chars). Upgrade to PRO for unlimited text.`));
+        mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char limit).${colors.reset}\n`);
       }
 
-      const { processedText: processedContent2, wasTruncated: wasTruncated2 } = truncateIfFree(content, license.isPro, charLimit);
-      if (wasTruncated2) extraBlocks.push(buildUpsellBlock(`File content was truncated to ${charLimit.toLocaleString()} characters (Free Tier limit).`));
-
-      if (!license.isPro) {
-        const detected = detectSecrets(processedContent2);
-        if (detected.length > 0) {
-          mcpLog(`${colors.redBold}🚫  [PrivacyScrubber] API Key / Secret (${detected.join(', ')}) detected! Request BLOCKED to protect your data (Requires PRO Profile).${colors.reset}\n${colors.cyan}👉  Upgrade at: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal${colors.reset}\n`);
-          return {
-            isError: true,
-            content: [{ type: "text", text: `Error: API Key / Secret (${detected.join(', ')}) detected! Request BLOCKED to protect your data. Sanitizing DevOps secrets requires a PRO license. Get a key at: https://privacyscrubber.com/pricing` }]
-          };
-        }
-      }
+      const { processedText: processedContent2 } = truncateIfFree(content, license.isPro, charLimit);
 
       const { scrubbedText, newTokens } = performSanitization(processedContent2, finalProfile, sessionIgnoreList);
       const telemetry = buildCisoAuditTelemetry(newTokens);
@@ -1005,8 +889,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       return {
         content: [
-          { type: "text", text: scrubbedText + receiptMd },
-          ...extraBlocks.filter(Boolean)
+          { type: "text", text: scrubbedText + receiptMd }
         ]
       };
     }

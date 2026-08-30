@@ -69,38 +69,20 @@ const DEVOPS_SECRETS_DETECTOR = [
   { name: 'Database/API Secret', regex: /\b(DB|POSTGRES|REDIS|MYSQL|AWS|SECRET|PASSWORD|TOKEN|API|KEY)[A-Z0-9_]*\s*[:=]\s*[^ \t\r\n"']{8,}\b/gi }
 ];
 
-const PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAy1jZ9X4rO5C9U0qK57V1
-hJoYSkE4vLpcVYOt1FhRwEHs1APDSyss0HixboLz2eW2XQf2NbwajWtNlyxvgczO
-KE6ClnLomtsaKywwqB4alzdYnnnFJttFPjwmgPSO7D9AgN9sYaVkXOaOFrIZ90Ng
-TRhSHUeL7ReltWlCHwz9xf5m2FrKtxr2VBlEoyPjsFzalHMey1EX+yXe81zM7IIi
-t1Z8agLzo7WIfNBAIWmRlerTplaFFZrQgdF5g/Y0n8IIMZOtadgoY8E855psDNZV
-7wIDAQAB
------END PUBLIC KEY-----`;
+let LicenseManager = require('./ps-license-manager.js');
+if (!LicenseManager || typeof LicenseManager.validate !== 'function') {
+  LicenseManager = global.LicenseManager;
+}
 
 function checkLicenseStatus() {
   const key = (process.env.PRIVACYSCRUBBER_KEY || "").trim();
-  if (!key) return { isPro: false, error: "No license key provided." };
+  if (!key) return { isPro: false, type: null, error: "No license key provided." };
 
-  try {
-    const [payloadBase64, signatureBase64] = key.split('.');
-    const verifier = crypto.createVerify('SHA256');
-    verifier.update(payloadBase64);
-    const isVerified = verifier.verify(PUBLIC_KEY, signatureBase64, 'base64');
-    
-    if (!isVerified) return { isPro: false, error: "Signature verification failed." };
-
-    const payload = JSON.parse(Buffer.from(payloadBase64, 'base64').toString('utf8'));
-    if (payload.expires && payload.expires < Math.floor(Date.now() / 1000)) {
-      return { 
-        isPro: false, 
-        error: `License expired on ${new Date(payload.expires * 1000).toLocaleDateString()}` 
-      };
-    }
-    return { isPro: true, error: null };
-  } catch (e) {
-    return { isPro: false, error: "Error parsing license: " + e.message };
+  const result = LicenseManager.validate(key);
+  if (!result.valid) {
+    return { isPro: false, type: null, error: result.reason || "Invalid license format or signature." };
   }
+  return { isPro: true, type: result.tier, error: null };
 }
 
 function resolveConfigPath() {
