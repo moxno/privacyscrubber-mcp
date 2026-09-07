@@ -2,6 +2,7 @@
 
 [![NPM Version](https://img.shields.io/npm/v/@privacyscrubber/mcp-server?color=blue)](https://www.npmjs.com/package/@privacyscrubber/mcp-server)
 [![NPM Downloads](https://img.shields.io/npm/dm/@privacyscrubber/mcp-server?color=3b82f6)](https://www.npmjs.com/package/@privacyscrubber/mcp-server)
+[![NPM SDK](https://img.shields.io/npm/v/@privacyscrubber/sdk?label=%40privacyscrubber%2Fsdk&color=10b981)](https://www.npmjs.com/package/@privacyscrubber/sdk)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22058770.svg)](https://zenodo.org/records/22058770)
 [![OSF DOI](https://img.shields.io/badge/OSF%20DOI-10.17605%2FOSF.IO%2F5BYJF-blue.svg)](https://osf.io/5byjf/)
@@ -9,6 +10,8 @@
 [![smithery badge](https://smithery.ai/badge/privacyscrubber/pii-masking-mcp)](https://smithery.ai/servers/privacyscrubber/pii-masking-mcp)
 [![Cursor Directory](https://img.shields.io/badge/Cursor%20Directory-Verified%20Plugin-000000.svg)](https://cursor.directory/plugins/privacyscrubber-mcp)
 [![Glama.ai](https://glama.ai/mcp/servers/moxno/privacyscrubber-mcp/badge)](https://glama.ai/mcp/servers/moxno/privacyscrubber-mcp)
+[![TensorBlock MCP Index](https://img.shields.io/badge/TensorBlock-Indexed%20MCP-FF6B6B.svg)](https://github.com/TensorBlock/awesome-mcp-servers)
+[![There's An AI For That](https://img.shields.io/badge/There's_An_AI_For_That-Live-06b6d4.svg)](https://theresanaiforthat.com/ai/privacy-scrubber/)
 [![Security: 100% Local](https://img.shields.io/badge/Security-100%25%20Local-emerald)](https://privacyscrubber.com)
 [![Parity: 100% Core Match](https://img.shields.io/badge/Parity-100%25%20Core%20Match-blueviolet)](https://privacyscrubber.com)
 
@@ -44,6 +47,23 @@ Run the server directly without local installation:
 ```bash
 npx -y @privacyscrubber/mcp-server
 ```
+
+### 3. Programmatic Node.js / TypeScript SDK
+Need direct, in-memory zero-trust PII sanitization in your backend microservice or custom AI agent rather than an MCP server? Use our official zero-dependency SDK:
+
+```bash
+npm install @privacyscrubber/sdk
+```
+
+```javascript
+import OpenAI from 'openai';
+import { wrapOpenAI } from '@privacyscrubber/sdk';
+
+// Transparently masks PII before sending to LLM and rehydrates responses:
+const openai = wrapOpenAI(new OpenAI({ apiKey: process.env.OPENAI_API_KEY }));
+```
+
+👉 [View @privacyscrubber/sdk on NPM](https://www.npmjs.com/package/@privacyscrubber/sdk) | Includes `wrapOpenAI()` middleware, TypeScript definitions, and 25 compliance profiles.
 
 ---
 
@@ -157,7 +177,7 @@ Looking for real-time protection directly inside your web browser?
 
 ## 📄 License & Commercial Upgrade
 
-By default, the server runs under the **Free Tier** (restricted to 50,000 characters per request and the basic `General` PII profile). To unlock advanced engineering, medical, legal, and financial PII profiles, as well as team-wide custom rules, you can purchase a commercial license.
+By default, the server runs under the **Free Tier** (restricted to 15,000 characters per request and the basic `General` PII profile). To unlock 25 specialized engineering, medical, legal, and financial PII profiles, as well as team-wide custom rules, you can purchase a commercial license.
 
 ### Feature Comparison
 
@@ -165,8 +185,8 @@ By default, the server runs under the **Free Tier** (restricted to 50,000 charac
 | :--- | :--- | :--- | :--- |
 | **Volatile Tokenization** | ✅ Yes | ✅ Yes | ✅ Yes |
 | **Standard PII Masking** | ✅ Yes | ✅ Yes | ✅ Yes |
-| **Max Character Length** | 50,000 chars | ♾️ Unlimited | ♾️ Unlimited |
-| **Industry Profiles** | General Only | 22+ Profiles | 22+ Profiles |
+| **Max Character Length** | 15,000 chars | ♾️ Unlimited | ♾️ Unlimited |
+| **Industry Profiles** | General Only | 25 Profiles | 25 Profiles |
 | **Custom Regex Rules** | ❌ Locked | ♾️ Unlimited | ♾️ Unlimited |
 | **Team Rules Sync (GPO)** | ❌ No | ❌ No | ✅ Yes (Shared Link) |
 | **Licensing Cost** | $0 | **$110 Lifetime** | **$99/mo Flat Rate** |
@@ -190,13 +210,13 @@ Returns a visual dashboard showing your current tier, session request count, act
 *   **Response Example (Free Tier):**
     ```
     ╔══════════════════════════════════════════════════╗
-    ║       PrivacyScrubber MCP Server v1.6.6          ║
+    ║       PrivacyScrubber MCP Server v1.7.1          ║
     ╠══════════════════════════════════════════════════╣
     ║  🔓 Tier: FREE                                   ║
     ║  📊 Session requests: 5                          ║
-    ║  📁 Input size limit: 50,000 characters per request║
+    ║  📁 Input size limit: 15,000 characters/request  ║
     ╠══════════════════════════════════════════════════╣
-    ║  🏷️  Profiles: General only — PRO unlocks 22 more  ║
+    ║  🏷️  Profiles: General only — PRO unlocks 25 more ║
     ║  📋 Custom rules: 🔒 Locked — requires PRO       ║
     ╠══════════════════════════════════════════════════╣
     ║  💳 Upgrade to PRO — $110 Lifetime               ║

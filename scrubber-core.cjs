@@ -82,7 +82,7 @@ function scrubText(text, customRules = [], tokenLabelMap = {}, profile = 'Genera
     
     // Split attached table labels/headers (e.g. Sarah MitchellEmail: -> Sarah Mitchell Email:)
     // Specifically matches a letter followed directly by field names and a colon
-    textToProcess = textToProcess.replace(/([a-zA-Z])(Email|Phone|Mobile|Tel|Address|IP|ID|URL|SSN|Date):/g, '$1 $2:');
+    textToProcess = textToProcess.replace(/([a-z])(Email|Phone|Mobile|Tel|Address|IP|ID|URL|SSN|Date):/g, '$1 $2:');
     
     const sysMarker = "[Privacy Scrubber Mode]";
     const oldMarker = "[SYSTEM INSTRUCTION: DATA PRIVACY MODE]";
@@ -388,7 +388,7 @@ function cleanAIPromptPrefix(text) {
         cleaned = cleaned.replace(/(?:^|\n)[a-zA-Z0-9_#.:\-*>[\]=\s,'"]+\{[^}]*(--[a-zA-Z0-9_-]+:|color-mix\(|var\()[^}]*\}/g, "");
     }
     // 2. Strip AI author prefixes and platform artifacts
-    cleaned = cleaned.replace(/^\s*(?:Claude responded|Claude|ChatGPT|Gemini|Grok|DeepSeek|Kimi|Copilot|Assistant|User)\s*(?::|\bsaid\b|\bresponded\b|(?=\s))\s*/i, "");
+    cleaned = cleaned.replace(/^\s*(?:Claude responded|Claude|ChatGPT|Gemini|Grok|DeepSeek|Kimi|Copilot|Assistant|User)\s*(?::|\bsaid\b|\bresponded\b|(?:\s*\n))\s*/i, "");
     cleaned = cleaned.replace(/^(?:Here (?:is|are) (?:the )?(?:redacted|scrubbed|sanitized|processed|clean|updated|modified) (?:text|output|version|data).*?[:\n]+|\*\*Scrubbed Text\*\*[:\n]+|### Scrubbed Text[:\n]+)/i, '');
     cleaned = cleaned.replace(/^\s*Edit\s*\n+/i, "");
     cleaned = cleaned.replace(/\s*\bEdit\s+in\s+a\s+page\b\s*$/i, "");

@@ -144,6 +144,9 @@ function checkFreeTierLimit(isPro) {
   
   const count = incrementDailyUsage();
   // Feedback / Growth loop triggers
+  if (count === 2) {
+    mcpLog(`${colors.cyan}🛠️  [PrivacyScrubber] Need programmatic in-code redaction in your Node/TS backend or RAG pipeline? Try our official SDK: npm install @privacyscrubber/sdk${colors.reset}\n`);
+  }
   if (count === 3) {
     mcpLog(`${colors.cyan}💬 We are building the ultimate privacy tool for developers. What feature should we add next? Let us know: https://privacyscrubber.com/feedback${colors.reset}\n`);
   }
@@ -254,7 +257,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: "sanitize_text",
-        description: "STEP 1: Call this first. You MUST NOT process raw user data before calling this. Locally scrubs PII, secrets, and credentials (like API keys, passwords, emails, phones, names) from code, logs, or text. Replaces them with safe placeholders (e.g., [EMAIL_1], [API_KEY_1]). Keep your data secure before passing it to any LLM.",
+        description: "STEP 1: Call this first. You MUST NOT process raw user data before calling this. Locally scrubs PII, secrets, and credentials (like API keys, passwords, emails, phones, names) from code, logs, or text. Replaces them with safe placeholders (e.g., [EMAIL_1], [API_KEY_1]). Keep your data secure before passing it to any LLM. (For in-code backend services or RAG vector pipelines outside of MCP, use '@privacyscrubber/sdk': npm i @privacyscrubber/sdk)",
         inputSchema: {
           type: "object",
           properties: {
@@ -1407,8 +1410,9 @@ function truncateIfFree(text, isPro, charLimit = 15000) {
 // Start the server transport
 const transport = new StdioServerTransport();
 server.connect(transport).then(() => {
-  mcpLog(`${colors.greenBold}✅ PrivacyScrubber ZTDS MCP Server started successfully.${colors.reset}\n`);
-  mcpLog(`${colors.cyan}⭐ Star us on GitHub: https://github.com/moxno/privacyscrubber-mcp${colors.reset}\n`);
+  mcpLog(`${colors.greenBold}✅ PrivacyScrubber ZTDS MCP Server v${MCP_VERSION} started successfully.${colors.reset}\n`);
+  mcpLog(`${colors.cyan}📦 Need programmatic in-code redaction? Try: npm install @privacyscrubber/sdk${colors.reset}\n`);
+  mcpLog(`${colors.yellowBold}⭐ Star us on GitHub: https://github.com/moxno/privacyscrubber-mcp${colors.reset}\n`);
 }).catch((error) => {
   console.error("Failed to connect MCP server transport:", error);
   process.exit(1);
