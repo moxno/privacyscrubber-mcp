@@ -38,10 +38,10 @@
 function stitchOrphanedNameLines(text, profile) {
     if (!text || !text.includes('\n')) return text;
     const prof = (profile || 'general').toLowerCase();
-    if (prof === 'medical') {
-        text = text.replace(/Patient Name:\s*\n+([A-Z][a-zA-Z]+\s[A-Z][a-zA-Z]+)/g, 'Patient Name: $1');
+    if (prof === 'medical' || prof === 'general') {
+        text = text.replace(/(Patient\s+Name|Emergency\s+Contact|In\s+Case\s+of\s+Emergency|ICE(?:\s+Contact)?):\s*\r?\n+([A-Z\p{Lu}][A-Za-z0-9&.,'’ \t-]*?[A-Za-z0-9\p{Lu}\p{Ll}])(?=\r?\n|$)/gui, '$1: $2');
     } else if (prof === 'legal') {
-        text = text.replace(/Defendant:\s*\n+([A-Z][a-zA-Z]+\s[A-Z][a-zA-Z]+)/g, 'Defendant: $1');
+        text = text.replace(/Defendant:\s*\r?\n+([A-Z][a-zA-Z]+\s[A-Z][a-zA-Z]+)/g, 'Defendant: $1');
     }
     return text;
 }
@@ -1116,7 +1116,7 @@ function hydrateRegex(rule) {
                 }
             });
             if (remaskedCount > 0) {
-                if (typeof showInPageToast === 'function') showInPageToast(`🔒 Re-masked in DOM. Original tokens restored.`, "info");
+                if (typeof showInPageToast === 'function') showInPageToast('Re-masked in DOM. Original tokens restored.', "info");
                 document.querySelectorAll('.ps-toolbar-reveal, [id$="-reveal"]').forEach(b => {
                     b.setAttribute('title', 'Reveal Original Data (Decrypted Locally)');
                     b.classList.remove('ps-revealed-active');
@@ -1184,7 +1184,7 @@ function hydrateRegex(rule) {
         });
 
         if (restoredCount > 0) {
-            if (typeof showInPageToast === 'function') showInPageToast(`✅ Decrypted Locally! Your data is now safe to copy.`, "success");
+            if (typeof showInPageToast === 'function') showInPageToast('✓ Decrypted Locally in RAM. Safe to copy.', "success");
             document.querySelectorAll('.ps-toolbar-reveal, [id$="-reveal"]').forEach(b => {
                 b.setAttribute('title', 'Hide / Re-mask Protected Data in DOM');
                 b.classList.add('ps-revealed-active');

@@ -1,6 +1,6 @@
 {
   "name": "@privacyscrubber/mcp-server",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "mcpName": "io.github.moxno/privacyscrubber-mcp",
   "description": "CISO-Approved Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Windsurf, and Claude Desktop. Prevent API leaks and comply with HIPAA/SOC 2 locally.",
   "main": "index.js",
@@ -27,6 +27,8 @@
     "mcp-server": "index.js",
     "privacyscrubber-mcp": "index.js",
     "pii-masking-run": "pii-masking-run.js",
+    "ps-guard": "pii-masking-run.js",
+    "agentic-guard": "pii-masking-run.js",
     "privacyscrubber-mcp-install": "install.js"
   },
   "scripts": {

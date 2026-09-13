@@ -1,7 +1,7 @@
 {
   "manifest_version": "0.3",
   "name": "privacyscrubber/pii-masking-mcp",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "CISO-Approved Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Windsurf, and Claude Desktop. Prevent API leaks and comply with HIPAA/SOC 2 locally.",
   "author": {
     "name": "PrivacyScrubber",
@@ -12,7 +12,9 @@
     "entry_point": "index.js",
     "mcp_config": {
       "command": "node",
-      "args": ["${__dirname}/index.js"],
+      "args": [
+        "${__dirname}/index.js"
+      ],
       "env": {
         "PRIVACYSCRUBBER_KEY": "${user_config.PRIVACYSCRUBBER_KEY}"
       }

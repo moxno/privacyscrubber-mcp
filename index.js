@@ -24,6 +24,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import crypto from 'crypto';
+import { execSync } from 'child_process';
 
 const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
@@ -417,6 +418,120 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {},
           required: []
         }
+      },
+      {
+        name: "guard_exec",
+        description: "Zero-Trust Agentic Guard: Safely executes a shell/terminal command locally in isolated process, sanitizes stdout and stderr in volatile RAM, tokenizes any API keys, credentials, database URIs, or PII before sending output to LLM. Maps original values in memory for safe local restoration.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            command: {
+              type: "string",
+              description: "The shell command to execute (e.g. 'cat .env', 'git diff', 'docker logs web', 'env')."
+            },
+            cwd: {
+              type: "string",
+              description: "Optional working directory. Defaults to current workspace root."
+            },
+            profile: {
+              type: "string",
+              description: "Detection profile. Available: 'General', 'Dev' (recommended for code/secrets), 'Security', 'Finance', etc. Defaults to 'Dev'."
+            },
+            timeout_ms: {
+              type: "number",
+              description: "Execution timeout in milliseconds. Defaults to 15000 (15s)."
+            }
+          },
+          required: ["command"]
+        }
+      },
+      {
+        name: "guard_read_file",
+        description: "Zero-Trust Agentic Guard: Reads a sensitive local file (.env, config, credentials, source code, database dumps), sanitizes all credentials and PII in volatile RAM, and returns safe tokenized content for AI agent context.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            file_path: {
+              type: "string",
+              description: "Absolute or relative path to the file to inspect."
+            },
+            profile: {
+              type: "string",
+              description: "Detection profile. Defaults to 'Dev'."
+            },
+            max_lines: {
+              type: "number",
+              description: "Optional line cap for large files. Defaults to 500."
+            }
+          },
+          required: ["file_path"]
+        }
+      },
+      {
+        name: "guard_git_diff",
+        description: "Zero-Trust Agentic Guard: Inspects unstaged or staged git diffs locally, sanitizes any newly added or modified credentials, tokens, or PII in RAM, and returns safe diff for AI commit generation or code review.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            staged: {
+              type: "boolean",
+              description: "If true, runs 'git diff --cached'. If false, runs 'git diff'. Defaults to false."
+            },
+            cwd: {
+              type: "string",
+              description: "Optional repository directory. Defaults to current workspace root."
+            },
+            profile: {
+              type: "string",
+              description: "Detection profile. Defaults to 'Dev'."
+            }
+          },
+          required: []
+        }
+      },
+      {
+        name: "guard_apply_patch",
+        description: "Zero-Trust Agentic Guard: Reverses token placeholders ([API_KEY_1], [SECRET_1]) in AI-generated code or text, restores authentic values from local volatile RAM, and writes real content directly to target file on disk. Remote LLM never learns actual secrets.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            file_path: {
+              type: "string",
+              description: "Absolute path to the destination file to create or update."
+            },
+            content: {
+              type: "string",
+              description: "Code or text content containing token placeholders to de-anonymize locally before write."
+            },
+            create_backup: {
+              type: "boolean",
+              description: "Whether to create a .bak backup if target file already exists. Defaults to true."
+            }
+          },
+          required: ["file_path", "content"]
+        }
+      },
+      {
+        name: "create_agent_rules",
+        description: "Zero-Trust Agentic Guard: Scaffolds CISO-grade AI Agent Rules in workspace (.cursorrules, .windsurfrules, CLAUDE.md, .github/copilot-instructions.md, .clinerules). Guides autonomous agents to route all file reads, git diffs, and shell commands through PrivacyScrubber Guard tools.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            agent_types: {
+              type: "array",
+              items: {
+                type: "string",
+                enum: ["all", "cursor", "windsurf", "claude_code", "copilot", "cline"]
+              },
+              description: "List of agent targets to generate rules for. Use ['all'] to generate rules for all supported AI agents."
+            },
+            workspace_dir: {
+              type: "string",
+              description: "Target workspace root directory. Defaults to current directory."
+            }
+          },
+          required: []
+        }
       }
     ]
   };
@@ -433,6 +548,10 @@ server.setRequestHandler(ListPromptsRequestSchema, async () => {
       {
         name: "safe_redaction_workflow",
         description: "Instructions for using the redact_file tool safely with QA checks.",
+      },
+      {
+        name: "agentic_guard_instructions",
+        description: "Zero-Trust Agentic Guard instructions for autonomous AI agents (Cursor, Windsurf, Claude Code).",
       }
     ]
   };
@@ -449,6 +568,21 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
           content: {
             type: "text",
             text: "When you need to redact or scrub a file on disk permanently, follow this quality-assured workflow:\n1. Run `redact_file` with `dry_run: true` to preview the changes and check how many PII tokens will be replaced.\n2. Verify the metrics. If the numbers look correct and no unintended data is being scrubbed, run `redact_file` with `dry_run: false` to apply the redaction.\n3. Ensure you have backups. `redact_file` creates a `.bak` backup by default. NEVER set `no_backup: true` unless the user explicitly asks to destroy the original data without a backup."
+          }
+        }
+      ]
+    };
+  }
+
+  if (request.params.name === "agentic_guard_instructions") {
+    return {
+      description: "Instructions for autonomous AI agents operating under Zero-Trust Agentic Guard.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: "You are an autonomous AI software engineer operating under strict Zero-Trust Data Sanitization (ZTDS) policies. Sensitive files, logs, and shell output must never leak API keys, credentials, or PII to external model APIs.\n\nFollow these mandatory agent protocols:\n1. Terminal Commands: When running commands whose output might contain credentials or PII (cat .env, docker logs, env, git diff, psql), use `guard_exec` to sanitize output in local RAM before it enters your context.\n2. Reading Secrets/Config: When reading configuration files, API keys, or database schemas, call `guard_read_file` instead of raw file readers.\n3. Code Review & Commits: Use `guard_git_diff` to review changes safely with credentials masked as tokens.\n4. Writing Code: When writing code containing token placeholders (e.g. [API_KEY_1]), use `guard_apply_patch` to restore authentic values locally on disk without exposing them to the cloud.\n5. AI Answers: Pass final text containing tokens through `reveal_text` before returning it to the user."
           }
         }
       ]
@@ -1285,6 +1419,296 @@ ${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
 
       return {
         content: [{ type: "text", text: mdReport }]
+      };
+    }
+
+    if (name === "guard_exec") {
+      const { command, cwd, profile = "Dev", timeout_ms = 15000 } = args || {};
+      if (!command || typeof command !== "string") {
+        return {
+          isError: true,
+          content: [{ type: "text", text: "Error: Missing required parameter 'command'." }]
+        };
+      }
+      const license = checkLicenseStatus();
+      const limitStatus = checkFreeTierLimit(license.isPro);
+      if (limitStatus.blocked) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Get a PRO key at https://privacyscrubber.com/pricing` }]
+        };
+      }
+
+      const execCwd = cwd ? path.resolve(cwd) : process.cwd();
+      let stdout = '';
+      let stderr = '';
+      let exitCode = 0;
+
+      try {
+        stdout = execSync(command, {
+          cwd: execCwd,
+          timeout: Math.min(Math.max(timeout_ms, 1000), 60000),
+          maxBuffer: 10 * 1024 * 1024,
+          encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'pipe']
+        });
+      } catch (err) {
+        stdout = err.stdout ? err.stdout.toString() : '';
+        stderr = err.stderr ? err.stderr.toString() : (err.message || '');
+        exitCode = typeof err.status === 'number' ? err.status : 1;
+      }
+
+      const targetProfile = (profile || "Dev").trim();
+      const isAdvanced = targetProfile.toLowerCase() !== "general";
+      const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
+
+      const { processedText: cleanStdout } = truncateIfFree(stdout, license.isPro, charLimit);
+      const { processedText: cleanStderr } = truncateIfFree(stderr, license.isPro, charLimit);
+
+      const resCommand = performSanitization(command, targetProfile, sessionIgnoreList);
+      const resStdout = performSanitization(cleanStdout, targetProfile, sessionIgnoreList);
+      const resStderr = performSanitization(cleanStderr, targetProfile, sessionIgnoreList);
+
+      const allNewTokens = { ...resCommand.newTokens, ...resStdout.newTokens, ...resStderr.newTokens };
+      const tokenCount = Object.keys(allNewTokens).length;
+      const telemetry = buildCisoAuditTelemetry(allNewTokens);
+      const receiptMd = formatAuditReceipt(telemetry);
+
+      const responseText = `[Zero-Trust Agentic Guard: Exec: ${command.split(' ')[0]}]\n` +
+        `Command: ${resCommand.scrubbedText}\n` +
+        `Exit Code: ${exitCode}\n` +
+        `Tokens Redacted: ${tokenCount}\n\n` +
+        (resStdout.scrubbedText ? `--- STDOUT ---\n${resStdout.scrubbedText}\n\n` : '') +
+        (resStderr.scrubbedText ? `--- STDERR ---\n${resStderr.scrubbedText}\n\n` : '') +
+        receiptMd;
+
+      return {
+        content: [{ type: "text", text: responseText }]
+      };
+    }
+
+    if (name === "guard_read_file") {
+      const { file_path, profile = "Dev", max_lines = 500 } = args || {};
+      if (!file_path || typeof file_path !== "string") {
+        return {
+          isError: true,
+          content: [{ type: "text", text: "Error: Missing required parameter 'file_path'." }]
+        };
+      }
+      const resolvedPath = path.resolve(process.cwd(), file_path);
+      if (!fs.existsSync(resolvedPath)) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Error: File not found at path: ${resolvedPath}` }]
+        };
+      }
+      const stat = fs.statSync(resolvedPath);
+      if (stat.isDirectory()) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Error: Path is a directory. Use audit_directory_for_pii to scan directories.` }]
+        };
+      }
+      const license = checkLicenseStatus();
+      const limitStatus = checkFreeTierLimit(license.isPro);
+      if (limitStatus.blocked) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Error: Free tier daily limit exhausted. Get a PRO key at https://privacyscrubber.com/pricing` }]
+        };
+      }
+
+      let rawContent = fs.readFileSync(resolvedPath, 'utf8');
+      const lines = rawContent.split(/\r?\n/);
+      const capped = lines.slice(0, max_lines).join('\n');
+      const wasTruncated = lines.length > max_lines;
+
+      const targetProfile = (profile || "Dev").trim();
+      const isAdvanced = targetProfile.toLowerCase() !== "general";
+      const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
+
+      const { processedText } = truncateIfFree(capped, license.isPro, charLimit);
+      const { scrubbedText, newTokens } = performSanitization(processedText, targetProfile, sessionIgnoreList);
+
+      const telemetry = buildCisoAuditTelemetry(newTokens);
+      const receiptMd = formatAuditReceipt(telemetry);
+
+      const responseText = `[Zero-Trust Agentic Guard: File Read: ${path.basename(resolvedPath)}]\n` +
+        `Path: ${resolvedPath}\n` +
+        `Total Lines: ${lines.length}${wasTruncated ? ` (Displaying first ${max_lines} lines)` : ''}\n` +
+        `Tokens Redacted: ${Object.keys(newTokens).length}\n\n` +
+        `--- SANITIZED CONTENT ---\n` +
+        scrubbedText + '\n\n' +
+        receiptMd;
+
+      return {
+        content: [{ type: "text", text: responseText }]
+      };
+    }
+
+    if (name === "guard_git_diff") {
+      const { staged = false, cwd, profile = "Dev" } = args || {};
+      const repoCwd = cwd ? path.resolve(cwd) : process.cwd();
+      const license = checkLicenseStatus();
+      const limitStatus = checkFreeTierLimit(license.isPro);
+      if (limitStatus.blocked) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Error: Free tier daily limit exhausted. Get a PRO key at https://privacyscrubber.com/pricing` }]
+        };
+      }
+
+      const gitCmd = staged ? "git diff --cached" : "git diff";
+      let diffOutput = '';
+      try {
+        diffOutput = execSync(gitCmd, { cwd: repoCwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+      } catch (err) {
+        if (err.code === 'ENOBUFS' && err.stdout) {
+          diffOutput = err.stdout.toString('utf8');
+        } else {
+          return {
+            isError: true,
+            content: [{ type: "text", text: `Error executing '${gitCmd}': ${err.message}` }]
+          };
+        }
+      }
+
+      if (!diffOutput.trim()) {
+        return {
+          content: [{ type: "text", text: `[Zero-Trust Agentic Guard: Git Diff]\nNo git diff changes detected (${staged ? 'staged' : 'unstaged'}).` }]
+        };
+      }
+
+      const targetProfile = (profile || "Dev").trim();
+      const isAdvanced = targetProfile.toLowerCase() !== "general";
+      const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
+
+      const { processedText } = truncateIfFree(diffOutput, license.isPro, charLimit);
+      const { scrubbedText, newTokens } = performSanitization(processedText, targetProfile, sessionIgnoreList);
+
+      const telemetry = buildCisoAuditTelemetry(newTokens);
+      const receiptMd = formatAuditReceipt(telemetry);
+
+      const responseText = `[Zero-Trust Agentic Guard: Git Diff (${staged ? 'Staged' : 'Unstaged'})]\n` +
+        `Tokens Redacted: ${Object.keys(newTokens).length}\n\n` +
+        `--- SANITIZED DIFF ---\n` +
+        scrubbedText + '\n\n' +
+        receiptMd;
+
+      return {
+        content: [{ type: "text", text: responseText }]
+      };
+    }
+
+    if (name === "guard_apply_patch") {
+      const { file_path, content, create_backup = true } = args || {};
+      if (!file_path || typeof file_path !== "string") {
+        return {
+          isError: true,
+          content: [{ type: "text", text: "Error: Missing required parameter 'file_path'." }]
+        };
+      }
+      if (content === undefined || content === null || typeof content !== "string") {
+        return {
+          isError: true,
+          content: [{ type: "text", text: "Error: Missing required parameter 'content' (must be string)." }]
+        };
+      }
+
+      const resolvedPath = path.resolve(process.cwd(), file_path);
+      const restored = PrivacyScrubberCore.unscrubText(content, sessionMap);
+      const authenticContent = restored.restoredText;
+
+      let backupCreated = false;
+      if (create_backup && fs.existsSync(resolvedPath)) {
+        const backupPath = `${resolvedPath}.bak`;
+        fs.copyFileSync(resolvedPath, backupPath);
+        backupCreated = true;
+      }
+
+      const parentDir = path.dirname(resolvedPath);
+      if (!fs.existsSync(parentDir)) {
+        fs.mkdirSync(parentDir, { recursive: true });
+      }
+
+      fs.writeFileSync(resolvedPath, authenticContent, 'utf8');
+
+      return {
+        content: [{
+          type: "text",
+          text: `[Zero-Trust Agentic Guard: Patch Applied Successfully]\n` +
+            `Destination: ${resolvedPath}\n` +
+            `Tokens Restored Locally: ${restored.restoredCount || 0}\n` +
+            `Backup Created: ${backupCreated ? `${resolvedPath}.bak` : 'No'}\n` +
+            `Status: File written with 100% authentic local values. Remote LLM received zero secrets.`
+        }]
+      };
+    }
+
+    if (name === "create_agent_rules") {
+      const { agent_types = ["all"], workspace_dir } = args || {};
+      const targetDir = workspace_dir ? path.resolve(workspace_dir) : process.cwd();
+      const targets = agent_types.includes("all") ? ["cursor", "windsurf", "claude_code", "copilot", "cline"] : agent_types;
+
+      const ruleText = `# PrivacyScrubber Zero-Trust Agentic Guard (CISO Security Rules)
+# 100% Local In-Memory Data Sanitization. Zero Network Egress.
+
+## Agent Mandate
+You are an autonomous AI assistant operating under strict Zero-Trust Data Sanitization (ZTDS) policies.
+Before reading sensitive files, running terminal commands that may print credentials, or committing code:
+
+1. **Terminal Commands:** When running shell commands whose output may contain API keys, database connection strings, or customer PII (e.g. \`cat .env\`, \`docker logs\`, \`env\`, \`git diff\`), invoke the \`guard_exec\` tool instead of raw terminal execution.
+2. **Reading Credentials/Config:** When reading \`.env*\`, config files, database credentials, or secret keys, always call \`guard_read_file\` so sensitive entities are tokenized locally in RAM before entering your context window.
+3. **Git Code Review:** Use \`guard_git_diff\` to inspect changes without exposing plaintext secrets to the cloud.
+4. **Applying Patches:** When writing files containing token placeholders (e.g. \`[API_KEY_1]\`, \`[DB_PASSWORD_1]\`), use \`guard_apply_patch\` to automatically restore authentic secrets locally to disk without sending them back to the LLM.
+5. **Final Output:** Pass any final synthesized text containing token placeholders through \`reveal_text\` before presenting it to the user.
+`;
+
+      const generatedFiles = [];
+      if (targets.includes("cursor")) {
+        const p = path.join(targetDir, '.cursorrules');
+        fs.writeFileSync(p, ruleText, 'utf8');
+        generatedFiles.push('.cursorrules');
+      }
+      if (targets.includes("windsurf")) {
+        const p = path.join(targetDir, '.windsurfrules');
+        fs.writeFileSync(p, ruleText, 'utf8');
+        generatedFiles.push('.windsurfrules');
+      }
+      if (targets.includes("claude_code")) {
+        const p = path.join(targetDir, 'CLAUDE.md');
+        if (fs.existsSync(p)) {
+          const existing = fs.readFileSync(p, 'utf8');
+          if (!existing.includes("Zero-Trust Agentic Guard")) {
+            fs.writeFileSync(p, existing + "\n\n" + ruleText, 'utf8');
+            generatedFiles.push('CLAUDE.md (appended)');
+          }
+        } else {
+          fs.writeFileSync(p, ruleText, 'utf8');
+          generatedFiles.push('CLAUDE.md');
+        }
+      }
+      if (targets.includes("copilot")) {
+        const copilotDir = path.join(targetDir, '.github');
+        if (!fs.existsSync(copilotDir)) fs.mkdirSync(copilotDir, { recursive: true });
+        const p = path.join(copilotDir, 'copilot-instructions.md');
+        fs.writeFileSync(p, ruleText, 'utf8');
+        generatedFiles.push('.github/copilot-instructions.md');
+      }
+      if (targets.includes("cline")) {
+        const p = path.join(targetDir, '.clinerules');
+        fs.writeFileSync(p, ruleText, 'utf8');
+        generatedFiles.push('.clinerules');
+      }
+
+      return {
+        content: [{
+          type: "text",
+          text: `[Zero-Trust Agentic Guard: Agent Rules Generated]\n` +
+            `Workspace: ${targetDir}\n` +
+            `Files Created/Updated:\n${generatedFiles.map(f => `- ${f}`).join('\n')}\n\n` +
+            `Autonomous AI agents in this repository will now automatically use PrivacyScrubber Guard tools.`
+        }]
       };
     }
 

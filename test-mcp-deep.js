@@ -94,17 +94,17 @@ async function runMcpSession() {
     console.log(`<-- Tools list received. Total tools: ${tools.length}`);
     tools.forEach(t => console.log(`  - Tool: ${t.name} (${t.description.substring(0, 60)}...)`));
 
-    if (tools.length !== 9) {
-      throw new Error(`Expected 9 tools, got ${tools.length}`);
+    if (tools.length !== 14) {
+      throw new Error(`Expected 14 tools, got ${tools.length}`);
     }
-    if (!tools.find(t => t.name === 'check_status')) {
-      throw new Error('check_status tool is missing from tools list');
-    }
-    if (!tools.find(t => t.name === 'create_default_config')) {
-      throw new Error('create_default_config tool is missing from tools list');
-    }
-    if (!tools.find(t => t.name === 'mark_false_positive')) {
-      throw new Error('mark_false_positive tool is missing from tools list');
+    const expectedToolNames = [
+      'check_status', 'create_default_config', 'mark_false_positive',
+      'guard_exec', 'guard_read_file', 'guard_git_diff', 'guard_apply_patch', 'create_agent_rules'
+    ];
+    for (const toolName of expectedToolNames) {
+      if (!tools.find(t => t.name === toolName)) {
+        throw new Error(`${toolName} tool is missing from tools list`);
+      }
     }
 
     // 3. Test sanitize_text (General profile)
@@ -204,7 +204,9 @@ async function runMcpSession() {
     console.log("✅ Sanitize file binary rejection success.");
 
     // 7. Test sanitize_file (DOCX file parsing support)
-    const docxSource = path.resolve(__dirname, '../PrivacyScrubber/outreach-campaigns/guest-posts/Techbullion_GuestPost.docx');
+    const docxSource = fs.existsSync(path.resolve(__dirname, '../docs/articles/guest-posts/Techbullion_GuestPost.docx'))
+      ? path.resolve(__dirname, '../docs/articles/guest-posts/Techbullion_GuestPost.docx')
+      : path.resolve(__dirname, '../PrivacyScrubber/docs/articles/guest-posts/Techbullion_GuestPost.docx');
     const docxDest = path.resolve(__dirname, 'fixture-test.docx');
     
     if (fs.existsSync(docxSource)) {
@@ -370,6 +372,156 @@ async function runMcpSession() {
     }
     fs.unlinkSync(testConfigPath);
     console.log('✅ create_default_config tool success (warning phase).');
+
+    // ── 8.6. Test Zero-Trust Agentic Guard Tools & Prompts ───────────────
+    console.log("\n---> Testing Zero-Trust Agentic Guard Tools & Prompts...");
+
+    // 8.6.1. Test guard_exec
+    console.log("--> Calling 'guard_exec'...");
+    const guardExecResponse = await sendRequest('tools/call', {
+      name: 'guard_exec',
+      arguments: {
+        command: "node -e \"console.log('User: test.user@example.com, Phone: +1-555-555-0199')\"",
+        profile: 'General'
+      }
+    });
+    const guardExecText = guardExecResponse.result?.content?.[0]?.text || '';
+    console.log("<-- guard_exec output:\n" + guardExecText);
+    if (!guardExecText.includes('[Zero-Trust Agentic Guard: Exec: node]') ||
+        guardExecText.includes('test.user@example.com') ||
+        !/\[EMAIL_\d+\]/.test(guardExecText)) {
+      throw new Error(`guard_exec failed to sanitize command output. Got: ${guardExecText}`);
+    }
+    console.log("✅ guard_exec verified.");
+
+    // 8.6.2. Test guard_read_file
+    console.log("--> Calling 'guard_read_file'...");
+    const tempGuardFile = path.resolve(__dirname, '_temp_guard_read.txt');
+    fs.writeFileSync(tempGuardFile, "SECRET_ENV=secret_password_12345\nCONTACT_EMAIL=security@enterprise.com\n", 'utf8');
+    const guardReadFileResponse = await sendRequest('tools/call', {
+      name: 'guard_read_file',
+      arguments: {
+        file_path: tempGuardFile,
+        profile: 'General'
+      }
+    });
+    fs.unlinkSync(tempGuardFile);
+    const guardReadFileText = guardReadFileResponse.result?.content?.[0]?.text || '';
+    console.log("<-- guard_read_file output:\n" + guardReadFileText);
+    if (!guardReadFileText.includes('[Zero-Trust Agentic Guard: File Read:') ||
+        guardReadFileText.includes('security@enterprise.com') ||
+        !/\[EMAIL_\d+\]/.test(guardReadFileText)) {
+      throw new Error(`guard_read_file failed to sanitize file content. Got: ${guardReadFileText}`);
+    }
+    console.log("✅ guard_read_file verified.");
+
+    // 8.6.3. Test guard_git_diff
+    console.log("--> Calling 'guard_git_diff'...");
+    const guardDiffResponse = await sendRequest('tools/call', {
+      name: 'guard_git_diff',
+      arguments: {
+        staged: false,
+        profile: 'General'
+      }
+    });
+    const guardDiffText = guardDiffResponse.result?.content?.[0]?.text || '';
+    if (!guardDiffText.includes('[Zero-Trust Agentic Guard: Git Diff')) {
+      throw new Error(`guard_git_diff returned unexpected response. Got: ${guardDiffText}`);
+    }
+    console.log("✅ guard_git_diff verified.");
+
+    // 8.6.4. Test guard_apply_patch (with token unscrubbing)
+    console.log("--> Testing 'guard_apply_patch' token restoration on disk...");
+    // Prime sessionMap with a token
+    const primeResponse = await sendRequest('tools/call', {
+      name: 'sanitize_text',
+      arguments: {
+        text: 'Secret payload contact: secret-ciso@privacyscrubber.com',
+        profile: 'General'
+      }
+    });
+    const primeText = primeResponse.result?.content?.[0]?.text || '';
+    const emailTokenMatch = primeText.match(/\[EMAIL_\d+\]/);
+    if (!emailTokenMatch) {
+      throw new Error(`Failed to prime session token map for patch test. Got: ${primeText}`);
+    }
+    const emailToken = emailTokenMatch[0];
+
+    const tempPatchFile = path.resolve(__dirname, '_temp_guard_patch.txt');
+    fs.writeFileSync(tempPatchFile, "original line\n", 'utf8');
+
+    const patchResponse = await sendRequest('tools/call', {
+      name: 'guard_apply_patch',
+      arguments: {
+        file_path: tempPatchFile,
+        content: `Target verified: ${emailToken}`,
+        create_backup: true
+      }
+    });
+    const patchText = patchResponse.result?.content?.[0]?.text || '';
+    console.log("<-- guard_apply_patch output:\n" + patchText);
+    if (!patchText.includes('[Zero-Trust Agentic Guard: Patch Applied Successfully]')) {
+      throw new Error(`guard_apply_patch failed. Got: ${patchText}`);
+    }
+
+    const writtenContent = fs.readFileSync(tempPatchFile, 'utf8');
+    const backupExists = fs.existsSync(`${tempPatchFile}.bak`);
+    fs.unlinkSync(tempPatchFile);
+    if (backupExists) fs.unlinkSync(`${tempPatchFile}.bak`);
+
+    if (!writtenContent.includes('secret-ciso@privacyscrubber.com')) {
+      throw new Error(`guard_apply_patch did not restore authentic local secret to disk! File content: ${writtenContent}`);
+    }
+    if (!backupExists) {
+      throw new Error("guard_apply_patch failed to create backup file (.bak).");
+    }
+    console.log("✅ guard_apply_patch token reversal on disk verified.");
+
+    // 8.6.5. Test create_agent_rules
+    console.log("--> Calling 'create_agent_rules'...");
+    const tempWsDir = path.resolve(__dirname, '_temp_guard_ws');
+    if (!fs.existsSync(tempWsDir)) fs.mkdirSync(tempWsDir, { recursive: true });
+
+    const rulesResponse = await sendRequest('tools/call', {
+      name: 'create_agent_rules',
+      arguments: {
+        workspace_dir: tempWsDir,
+        agent_types: ["cursor", "windsurf", "claude_code", "copilot", "cline"]
+      }
+    });
+    const rulesText = rulesResponse.result?.content?.[0]?.text || '';
+    console.log("<-- create_agent_rules output:\n" + rulesText);
+    if (!rulesText.includes('[Zero-Trust Agentic Guard: Agent Rules Generated]')) {
+      throw new Error(`create_agent_rules failed. Got: ${rulesText}`);
+    }
+
+    const cursorrulesPath = path.join(tempWsDir, '.cursorrules');
+    const windsurfrulesPath = path.join(tempWsDir, '.windsurfrules');
+    const claudePath = path.join(tempWsDir, 'CLAUDE.md');
+    const copilotPath = path.join(tempWsDir, '.github', 'copilot-instructions.md');
+    const clinePath = path.join(tempWsDir, '.clinerules');
+
+    if (!fs.existsSync(cursorrulesPath) || !fs.existsSync(windsurfrulesPath) ||
+        !fs.existsSync(claudePath) || !fs.existsSync(copilotPath) || !fs.existsSync(clinePath)) {
+      throw new Error("create_agent_rules failed to write all 5 rule files.");
+    }
+    fs.rmSync(tempWsDir, { recursive: true, force: true });
+    console.log("✅ create_agent_rules verified.");
+
+    // 8.6.6. Test Prompts API
+    console.log("--> Testing MCP prompts/list and prompts/get...");
+    const promptsListResponse = await sendRequest('prompts/list', {});
+    const promptList = promptsListResponse.result?.prompts || [];
+    if (!promptList.find(p => p.name === 'agentic_guard_instructions') ||
+        !promptList.find(p => p.name === 'secure_ai_workflow')) {
+      throw new Error(`Expected both agentic_guard_instructions and secure_ai_workflow. Got: ${JSON.stringify(promptList)}`);
+    }
+    const promptGetResponse = await sendRequest('prompts/get', { name: 'agentic_guard_instructions', arguments: {} });
+    const promptMessages = promptGetResponse.result?.messages || [];
+    if (promptMessages.length === 0 || !promptMessages[0].content?.text?.includes('guard_exec')) {
+      throw new Error(`prompts/get agentic_guard_instructions failed. Got: ${JSON.stringify(promptGetResponse)}`);
+    }
+    console.log("✅ MCP prompts list and get verified.");
 
     // Clear the usage limits file to ensure fresh limit for Server 2
     try { fs.unlinkSync(path.join(os.homedir(), '.privacyscrubber-usage.json')); } catch(e) {}
@@ -581,6 +733,46 @@ async function runMcpSession() {
     }
     console.log('<-- CLI Test 5 (--version):', (cli5.stdout || cli5.stderr).trim());
     console.log('✅ pii-masking-run --version pass.');
+
+    // CLI Test 6: Stdin stream piping
+    const cli6 = await runCli([], 'User contact: defense.chief@pentagon.gov or call +1-555-019-2834\n');
+    if (!cli6.stdout.includes('[EMAIL_1]') || !cli6.stdout.includes('[PHONE_1]') || cli6.stdout.includes('defense.chief@pentagon.gov')) {
+      throw new Error(`pii-masking-run Test 6 (stdin pipe) failed. Got: ${cli6.stdout}`);
+    }
+    console.log('<-- CLI Test 6 (stdin stream pipe):', cli6.stdout.trim());
+    console.log('✅ pii-masking-run stdin stream pipe pass.');
+
+    // CLI Test 7: --diff flag
+    const cli7 = await runCli(['--diff']);
+    if (cli7.code !== 0) {
+      throw new Error(`pii-masking-run Test 7 (--diff) failed with code: ${cli7.code}`);
+    }
+    console.log('✅ pii-masking-run --diff pass.');
+
+    // CLI Test 8: --help flag
+    const cli8 = await runCli(['--help']);
+    if (!cli8.stdout.includes('Zero-Trust Agentic Guard') && !cli8.stdout.includes('ps-guard')) {
+      throw new Error(`pii-masking-run Test 8 (--help) failed. Got: ${cli8.stdout}`);
+    }
+    console.log('✅ pii-masking-run --help pass.');
+
+    // CLI Test 9: --rules flag in temp dir
+    const tempCliWs = path.resolve(__dirname, '_temp_cli_rules_ws');
+    if (!fs.existsSync(tempCliWs)) fs.mkdirSync(tempCliWs, { recursive: true });
+    const originalCwd = process.cwd();
+    process.chdir(tempCliWs);
+    const cli9 = await runCli(['--rules']);
+    process.chdir(originalCwd);
+    if (!fs.existsSync(path.join(tempCliWs, '.cursorrules')) ||
+        !fs.existsSync(path.join(tempCliWs, '.windsurfrules')) ||
+        !fs.existsSync(path.join(tempCliWs, 'CLAUDE.md')) ||
+        !fs.existsSync(path.join(tempCliWs, '.github', 'copilot-instructions.md')) ||
+        !fs.existsSync(path.join(tempCliWs, '.clinerules'))) {
+      fs.rmSync(tempCliWs, { recursive: true, force: true });
+      throw new Error(`pii-masking-run Test 9 (--rules) failed to write files. Got output: ${cli9.stdout}`);
+    }
+    fs.rmSync(tempCliWs, { recursive: true, force: true });
+    console.log('✅ pii-masking-run --rules pass.');
 
     console.log("\n🎉 All deep integration, hardening, and CLI tests passed successfully!");
     // ─────────────────────────────────────────────────────────────────────

@@ -96,6 +96,28 @@ Add this to your Claude Desktop config file:
     *   **Command:** `npx -y @privacyscrubber/mcp-server`
 3. Optional: Set `PRIVACYSCRUBBER_KEY` as an environment variable in your system shell.
 
+### Cline / Roo Code
+Add to `cline_mcp_settings.json`:
+```json
+{
+  "mcpServers": {
+    "privacyscrubber": {
+      "command": "npx",
+      "args": ["-y", "@privacyscrubber/mcp-server"],
+      "env": {
+        "PRIVACYSCRUBBER_KEY": "YOUR_OPTIONAL_PRO_LICENSE_KEY"
+      }
+    }
+  }
+}
+```
+
+### Claude Code CLI
+Add directly from your terminal:
+```bash
+claude mcp add privacyscrubber -- npx -y @privacyscrubber/mcp-server
+```
+
 ---
 
 ## 🛠️ Provided Tools & JSON-RPC Specifications
@@ -167,6 +189,100 @@ Reads a local file, extracts text, sanitizes it, and returns the redacted templa
     *   `filePath` (string, required): Absolute file path to read and sanitize.
     *   `profile` (string, optional): The industry detection profile.
 
+### 4. `guard_exec` (Command Execution Firewall)
+Safely executes terminal commands in an isolated child process, masking stdout/stderr PII, database credentials, and API keys in local RAM before passing them to the AI agent. Includes a CISO audit receipt in stderr.
+
+*   **Arguments:**
+    *   `command` (string, required): The shell command to execute (e.g. `cat .env`, `docker logs web`, `git diff`).
+    *   `cwd` (string, optional): Working directory.
+    *   `profile` (string, optional): Detection profile (defaults to `Dev`).
+    *   `timeout_ms` (number, optional): Timeout in ms (defaults to `15000`).
+
+### 5. `guard_read_file` (Credential-Masking File Reader)
+Reads files (.env, configs, source code, database dumps) and tokenizes all passwords, JWTs, and PII in volatile memory, returning safe redacted content for AI reasoning.
+
+*   **Arguments:**
+    *   `file_path` (string, required): Path to file.
+    *   `profile` (string, optional): Detection profile (defaults to `Dev`).
+    *   `max_lines` (number, optional): Line cap for large files (defaults to `500`).
+
+### 6. `guard_git_diff` (Pre-Commit & Diff Sanitizer)
+Inspects staged (`--cached`) or unstaged repository diffs, redacting any newly introduced secrets or PII in local RAM before AI code review or commit message generation.
+
+*   **Arguments:**
+    *   `staged` (boolean, optional): If `true`, inspects staged changes (`git diff --cached`). Defaults to `false`.
+    *   `cwd` (string, optional): Working directory.
+    *   `profile` (string, optional): Detection profile (defaults to `Dev`).
+
+### 7. `guard_apply_patch` (Safe Patch Applicator)
+Reverses token placeholders (`[API_KEY_1]`, `[SECRET_1]`) in AI-generated code or text by looking up the local RAM session map, creating a `.bak` backup, and writing authentic cleartext directly to disk. The remote LLM never sees real secrets.
+
+*   **Arguments:**
+    *   `file_path` (string, required): Path to target file.
+    *   `content` (string, required): Content containing tokens to restore on disk.
+    *   `create_backup` (boolean, optional): Backup existing file before write (defaults to `true`).
+
+### 8. `create_agent_rules` (1-Click Agent Rule Injection)
+Automatically scaffolds CISO-grade Zero-Trust directives into `.cursorrules`, `.windsurfrules`, `CLAUDE.md`, `.github/copilot-instructions.md`, or `.clinerules`.
+
+*   **Arguments:**
+    *   `agent_types` (array, optional): `["all"]`, `["cursor"]`, `["windsurf"]`, `["claude_code"]`, `["copilot"]`, `["cline"]`. Defaults to `["all"]`.
+    *   `workspace_dir` (string, optional): Workspace directory.
+
+### 9. `check_status`
+
+Returns a visual dashboard showing your current tier, session request count, active profiles, and upgrade instructions. Use it at any time to check your license status or get setup help.
+
+*   **Arguments:** _(none required)_
+*   **JSON-RPC Call Example:**
+    ```json
+    {
+      "method": "tools/call",
+      "params": { "name": "check_status", "arguments": {} }
+    }
+    ```
+*   **Response Example (Free Tier):**
+    ```
+    ╔══════════════════════════════════════════════════╗
+    ║       PrivacyScrubber MCP Server v2.2.0          ║
+    ╠══════════════════════════════════════════════════╣
+    ║  🔓 Tier: FREE                                   ║
+    ║  📊 Session requests: 5                          ║
+    ║  📁 Input size limit: 15,000 characters/request  ║
+    ╠══════════════════════════════════════════════════╣
+    ║  🏷️  Profiles: General only — PRO unlocks 25 more ║
+    ║  📋 Custom rules: 🔒 Locked — requires PRO       ║
+    ╠══════════════════════════════════════════════════╣
+    ║  💳 Upgrade to PRO — $110 Lifetime               ║
+    ║     https://privacyscrubber.com/pricing?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server          ║
+    ╠══════════════════════════════════════════════════╣
+    ║  After purchase, add your key to MCP config:     ║
+    ║  "PRIVACYSCRUBBER_KEY": "<your-key-here>"        ║
+    ║  Full setup guide:                               ║
+    ║  https://privacyscrubber.com/features/mcp/?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server       ║
+    ╚══════════════════════════════════════════════════╝
+    ```
+
+---
+
+## 🛡️ Standalone CLI: `ps-guard`
+
+PrivacyScrubber bundles `ps-guard` for Unix pipe, pre-commit, and agentic workflows:
+
+```bash
+# Pipe any output through RAM redaction
+cat .env | npx ps-guard --profile dev
+
+# Execute commands through the ZTDS safety wrapper
+npx ps-guard -- npm test
+
+# Review git diff with secrets redacted
+npx ps-guard --diff --staged
+
+# Generate rules for all AI IDEs (.cursorrules, .windsurfrules, CLAUDE.md, copilot, cline)
+npx ps-guard --rules
+```
+
 ---
 
 ## 🌐 Browser Extension & Web Client
@@ -192,42 +308,6 @@ By default, the server runs under the **Free Tier** (restricted to 15,000 charac
 | **Licensing Cost** | $0 | **$110 Lifetime** | **$99/mo Flat Rate** |
 
 👉 **[Acquire a PRO / TEAMS License Key at privacyscrubber.com/pricing](https://privacyscrubber.com/pricing?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server)**
-
----
-
-### 4. `check_status`
-
-Returns a visual dashboard showing your current tier, session request count, active profiles, and upgrade instructions. Use it at any time to check your license status or get setup help.
-
-*   **Arguments:** _(none required)_
-*   **JSON-RPC Call Example:**
-    ```json
-    {
-      "method": "tools/call",
-      "params": { "name": "check_status", "arguments": {} }
-    }
-    ```
-*   **Response Example (Free Tier):**
-    ```
-    ╔══════════════════════════════════════════════════╗
-    ║       PrivacyScrubber MCP Server v1.7.1          ║
-    ╠══════════════════════════════════════════════════╣
-    ║  🔓 Tier: FREE                                   ║
-    ║  📊 Session requests: 5                          ║
-    ║  📁 Input size limit: 15,000 characters/request  ║
-    ╠══════════════════════════════════════════════════╣
-    ║  🏷️  Profiles: General only — PRO unlocks 25 more ║
-    ║  📋 Custom rules: 🔒 Locked — requires PRO       ║
-    ╠══════════════════════════════════════════════════╣
-    ║  💳 Upgrade to PRO — $110 Lifetime               ║
-    ║     https://privacyscrubber.com/pricing?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server          ║
-    ╠══════════════════════════════════════════════════╣
-    ║  After purchase, add your key to MCP config:     ║
-    ║  "PRIVACYSCRUBBER_KEY": "<your-key-here>"        ║
-    ║  Full setup guide:                               ║
-    ║  https://privacyscrubber.com/features/mcp/?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server       ║
-    ╚══════════════════════════════════════════════════╝
-    ```
 
 ---
 

@@ -92,7 +92,7 @@ let REGEX_RULES = [
     { type: 'ID', regex: /\b\d{2}\/\d{2}\/\d{4}\b/g },
 
     // Phone Numbers
-    { type: 'PHONE', regex: /(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g },
+    { type: 'PHONE', regex: /(?<!\w)(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g },
     { type: 'PHONE', regex: /\+\d{1,3}[ \t.-]+(?:\(?\d{1,4}\)?[ \t.-]+)?\d{2,8}(?:[ \t.-]+\d{2,8}){0,4}\b/g },
     { type: 'PHONE', regex: /\+?[1-9]\d{1,3}[\s.-]\(?\d{1,4}\)?[\s.-]\d{2,4}[\s.-]\d{4}/g },
     { type: 'PHONE', regex: /(?:\+44\s?7\d{3}|\(?07\d{3}\)?)\s?\d{3}\s?\d{3}\b/g },
@@ -119,6 +119,8 @@ let REGEX_RULES = [
     { type: 'NAME', regex: /(?<=^|[^\p{L}\p{N}_])\p{Lu}{2,}(?:[\p{Lu}'-]*\p{Lu})?(?:(?:[ \t\xA0]*\p{Lu}\.)+[ \t\xA0]*|[ \t\xA0]+)(?:\p{Lu}\p{Ll}[\p{Ll}'-]*|\p{Lu}[\p{Ll}'-]*[\p{Lu}'-][\p{Ll}'-]*)(?:'s)?(?=[^\p{L}\p{N}_]|$)(?![ \t\xA0]*:)/gu },
     // Names with Honorifics (with or without period, supporting single or multi-word full names) (Unicode-safe)
     { type: 'NAME', regex: /(?<=^|[^\p{L}\p{N}_])(?:Mr|Mrs|Ms|Dr|Prof|Hon|Mr\.|Mrs\.|Ms\.|Dr\.|Prof\.|Hon\.)[ \t\xA0]+(?:\p{Lu}[\p{Ll}'-]*\p{Ll}|\p{Lu}[\p{Ll}'-]*[\p{Lu}'-][\p{Ll}'-]*)(?:[ \t\xA0]+(?:\p{Lu}[\p{Ll}'-]*\p{Ll}|\p{Lu}[\p{Ll}'-]*[\p{Lu}'-][\p{Ll}'-]*))?(?=[^\p{L}\p{N}_]|$)(?![ \t\xA0]*:)/gu },
+    // Names with Quoted or Parenthetical Nicknames (e.g. Judith "Judy" Diaz, Robert (Bob) Smith)
+    { type: 'NAME', regex: /(?<=^|[^\p{L}\p{N}_])(?:\p{Lu}[\p{Ll}'-]+)[ \t\xA0]+(?:"[\p{Lu}\p{Ll}'-]+"|'[\p{Lu}\p{Ll}'-]+'|[“‘][\p{Lu}\p{Ll}'-]+[”’]|\([\p{Lu}\p{Ll}'-]+\))[ \t\xA0]+(?:\p{Lu}[\p{Ll}'-]+)(?:'s)?(?=[^\p{L}\p{N}_]|$)(?![ \t\xA0]*:)/gu },
     
     // W-2 Box c Employer Block (Name, Address, and Zip Code)
     { type: 'NAME', isContextName: true, regex: /(?:(?:\bBox\s+c\b|\bc\.\s*|\bc\s+(?=Employer))\s*(?:Employer(?:'s)?\s*)?(?:name[,\s]+address[,\s]+and\s+ZIP\s+code|name)?|(?:Employer(?:'s)?\s+name[,\s]+address[,\s]+and\s+ZIP\s+code))[\s:#]*([A-Za-z0-9&., \t\xA0'-]{2,45}?)(?=\r?\n|$|\s{3,}|\t|EIN|FEIN|Box|\d+\b|Wages|Federal|Social|Medicare)/gi },
@@ -129,7 +131,11 @@ let REGEX_RULES = [
     // Contextual Last Names (Last name, Surname, Family name)
     { type: 'NAME', isContextName: true, regex: /(?:(?:Employee(?:'s)?|Borrower(?:'s)?|Co-Borrower(?:'s)?|Applicant(?:'s)?|Candidate(?:'s)?|Worker(?:'s)?|Taxpayer(?:'s)?|Spouse(?:'s)?|Person(?:'s)?)\s+)?(?:Last\s+name|Surname|Family\s+name)[\s:#]+(?:\b|\b\s*)([A-Za-z'-]{2,30})/gi },
     // Contextual General Names (Employee, Principal Investigator, Physician, Doctor, etc.)
-    { type: 'NAME', isContextName: true, regex: /(?:(?:Employee|Employer|Borrower|Co-Borrower|Applicant|Candidate|Worker|Taxpayer|Spouse|Client|Customer|Patient|Claimant|Insured|Tenant|Landlord|Buyer|Seller|Plaintiff|Defendant|Testator|Author)\s+(?:Name|Full\s+Name)|(?:Principal\s+Investigator|Investigator|Physician|Doctor|Supervisor|Reporting\s+To|Prepared\s+By|Attention|Attn|Contact(?:\s+Person)?|Author)(?:\s+Name)?|(?:Employee|Employer|Borrower|Client|Customer|Patient|Claimant|Insured|Doctor|Attn|Signatory|Witness|Tenant|Landlord|Buyer|Seller|Plaintiff|Defendant|Author)\s*[:=#])[:\s#]*(?:\b|\b\s*)([A-Z\p{Lu}][A-Za-z0-9&.,\s'-]{1,35}?)(?=\r?\n|$|\s{3,}|\t|Employee|Employer|Address|Phone|SSN|EIN|FEIN|Date|Pay|Rate|Tax|W-2|OMB|Copy|Box|Status)/giu },
+    { type: 'NAME', isContextName: true, regex: /(?:(?:Employee|Employer|Borrower|Co-Borrower|Applicant|Candidate|Worker|Taxpayer|Spouse|Client|Customer|Patient|Claimant|Insured|Tenant|Landlord|Buyer|Seller|Plaintiff|Defendant|Testator|Author)\s+(?:Name|Full\s+Name)|(?:Principal\s+Investigator|Investigator|Physician|Doctor|Supervisor|Reporting\s+To|Prepared\s+By|Attention|Attn|(?<!Emergency\s+|ICE\s+)Contact(?:\s+Person)?|Author)(?:\s+Name)?|(?:Employee|Employer|Borrower|Client|Customer|Patient|Claimant|Insured|Doctor|Attn|Signatory|Witness|Tenant|Landlord|Buyer|Seller|Plaintiff|Defendant|Author)\s*[:=#])[:\s#|]*(?:\b|\b\s*)([A-Z\p{Lu}][A-Za-z0-9&.,\s'"“”()-]{1,35}?)(?=\r?\n|$|\s{3,}|\t|Employee|Employer|Address|Phone|SSN|EIN|FEIN|Date|Pay|Rate|Tax|W-2|OMB|Copy|Box|Status|\|)/giu },
+    // Contextual Nicknames & Preferred Names (e.g. "Nickname: Judy", "Preferred Name: Alex", "AKA: Bob", "Goes by: Sam")
+    { type: 'NAME', isContextName: true, regex: /(?:(?:Patient(?:'s)?|Client(?:'s)?|Child(?:'s)?|Employee(?:'s)?|Person(?:'s)?)\s+)?(?:Nickname|Nick\s+Name|Preferred\s+(?:First\s+)?Name|Also\s+Known\s+As|AKA|Alias|Goes\s+by)[\s:#]+(?:\b|\b\s*)([A-Z\p{Lu}][A-Za-z0-9&.,\s'-]{1,30}?)(?=\r?\n|$|\s{3,}|\t|DOB|Date|Phone|Address|Emergency|Relationship|Notes|MRN|\()/giu },
+    // Emergency Contacts (Standard, Inverted Last First, Single Name, Table Cells, Extended Relationships, Brackets & Phone Lookahead)
+    { type: 'NAME', isContextName: true, regex: /(?:(?:^|[^\p{L}\p{N}_]|\|)\s*(?:In\s+Case\s+of\s+Emergency(?:\s*\(ICE\))?|ICE(?:[ \t\xA0]*(?:Contact|Notification|Person|Name))?|Emergency(?:[ \t\xA0]*(?:Contact|Notification|Person|Info|Details))?|Primary\s+Emergency\s+Contact|Secondary\s+Emergency\s+Contact|Alternate\s+Emergency\s+Contact|Person\s+to\s+notify\s+(?:in\s+case\s+of\s+emergency|in\s+emergency))(?:[ \t\xA0]*(?:[12#]|#\s*\d|\(\d\)))?(?:[ \t\xA0]*(?:Person|Name|Full\s+Name))?(?:[ \t\xA0]*(?:[\/&+-]|and)[ \t\xA0]*(?:Relationship|Relation|Proxy|Guarantor|Guardian))?(?:[ \t\xA0]*\((?:Primary|Secondary|Name|Relationship|Relation|Proxy|Guarantor|Legal\s+Guardian|Full\s+Name)\))?)[:=#|\/\t\s-]*[:=#|\/\t-][ \t\xA0]*([A-Z\p{Lu}][A-Za-z0-9&.'’]*(?:[ \t\xA0]+[A-Za-z0-9&.'’]+)*(?:,[ \t\xA0]*(?!(?:Relationship|Relation|Rel|Mother|Father|Spouse|Wife|Husband|Partner|Son|Daughter|Child|Parent|Brother|Sister|Sibling|Friend|Aunt|Uncle|Cousin|Guardian|Caregiver|Carer|Neighbor|Relative|Family|Grandmother|Grandfather|Grandparent|Grandson|Granddaughter|Stepmother|Stepfather|Stepson|Stepdaughter|Step-mother|Step-father|In-law|Mother-in-law|Father-in-law|Sister-in-law|Brother-in-law|Son-in-law|Daughter-in-law|Fiancé|Fiance|Fiancee|Significant\s+Other|Domestic\s+Partner|Life\s+Partner|Roommate|Colleague|Coworker|Co-worker|Legal\s+Guardian|Case\s+Worker|Caseworker|Social\s+Worker|Foster\s+Parent|POA|Power\s+of\s+Attorney|Healthcare\s+Proxy|Medical\s+Proxy|Proxy|Next\s+of\s+Kin|Aide)\b)[A-Z\p{Lu}][A-Za-z0-9&.'’]*(?:[ \t\xA0]+[A-Za-z0-9&.'’]+)*)?)(?=[ \t\xA0]*(?:\([A-Za-z0-9\s\/&':.+–-]+\)|\[[A-Za-z0-9\s\/&':.+–-]+\]|\{[A-Za-z0-9\s\/&':.+–-]+\}|[,\/|\-–—]{1,3}\s*(?:Relationship|Relation|Rel|Mother|Father|Spouse|Wife|Husband|Partner|Son|Daughter|Child|Parent|Brother|Sister|Sibling|Friend|Aunt|Uncle|Cousin|Guardian|Caregiver|Carer|Neighbor|Relative|Family|Grandmother|Grandfather|Grandparent|Grandson|Granddaughter|Stepmother|Stepfather|Stepson|Stepdaughter|Step-mother|Step-father|In-law|Mother-in-law|Father-in-law|Sister-in-law|Brother-in-law|Son-in-law|Daughter-in-law|Fiancé|Fiance|Fiancee|Significant\s+Other|Domestic\s+Partner|Life\s+Partner|Roommate|Colleague|Coworker|Co-worker|Legal\s+Guardian|Case\s+Worker|Caseworker|Social\s+Worker|Foster\s+Parent|POA|Power\s+of\s+Attorney|Healthcare\s+Proxy|Medical\s+Proxy|Proxy|Next\s+of\s+Kin|Aide)\b|[,\/|\-–—]?[ \t\xA0]*(?:Phone|Tel|Cell|Mobile|Work|Home|Office|Direct|Telephone)[:\s#-]*|[,\/|\-–—]?[ \t\xA0]*(?:Relationship|Relation|Rel)[:\s#-]*|[,\/|\-–—]?[ \t\xA0]*(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b|[,\/|\-–—]?[ \t\xA0]*\d{3}[-.\s]?\d{4}\b|[ \t\xA0]*(?:\||\r?\n|$|\s{2,}|\t)))/gui },
     // Box e shorthand
     { type: 'NAME', isContextName: true, regex: /\b(?:Box\s+e)\s*[:#-]\s*([A-Za-z0-9&.,\s'-]{2,40})/gi }
 ];
@@ -181,7 +187,9 @@ let PROFILE_RULES = {
         { type: 'ID', regex: /\b(?:FEIN|EIN|TIN|Tax\s*ID)[:\s#]*(\d{2}-\d{7})\b/gi },
         { type: 'ID', regex: /\b(?:CRD|CIK|Advisor\s*ID|Broker\s*ID)[:\s#]*(\d{5,10})\b/gi },
         { type: 'ID', regex: /\b(?:LEI|LEGAL[\s-]ENTITY[\s-]IDENTIFIER)[:\s#-]*[0-9A-Z]{20}\b/gi },
-        { type: 'ID', regex: /\bBBG[0-9A-Z]{9}\b/g }
+        { type: 'ID', regex: /\bBBG[0-9A-Z]{9}\b/g },
+        { type: 'FINANCIAL', regex: /(?<=\b(?:Wire(?:\s+(?:Transfer|Amount))?|Transfer|Balance|Deposit|Withdrawal|Settlement|Principal|Interest|Remittance|Payout|Transaction(?:\s+Amount)?|Payment(?:\s+Amount)?|Total|Amount)[:\s]+)(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’]*\d[KMB]?\b|\b\d[0-9,.'’]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹])|[0-9,.'’]{3,}\b)/gi },
+        { type: 'FINANCIAL', regex: /(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’]*\d[KMB]?\b|\b\d[0-9,.'’]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹]))/gi }
     ],
     medical: [
         { type: 'PHI', regex: /\b(?:MRN|Patient ID|Medical Record (?:No\.?|Num(?:ber)?|#)|Patient (?:No\.?|Num(?:ber)?|#))[\s:#]+([A-Za-z0-9-]+)/gi },
@@ -409,7 +417,7 @@ let PROFILE_RULES = {
         { type: 'FINANCIAL', regex: /\b(?:Loss|Claim\s+Amount|Claim\s+Settlement|Settlement|Reserve|Indemnity)[:\s]+(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’]+\b/gi },
         { type: 'ID', regex: /\b(?:(?:Assigned\s+)?Adjuster\s+(?:ID|No)|Claim\s+Rep(?:\.|resentative)?)[:\s#]*[-A-Z0-9]{4,15}\b/gi },
         { type: 'ID', regex: /\bNAIC(?:\s+(?:Company\s+)?(?:Code|CoCode|No\.?|Number|#))?[:\s#]*(\d{5})\b/gi },
-        { type: 'FINANCIAL', regex: /\b(?:Deductible|Premium|Coverage\s+Amount)[:\s]+(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'']+\b/gi },
+        { type: 'FINANCIAL', regex: /\b(?:Deductible|Premium|Coverage\s+Amount)[:\s]+(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’\u2018\u2019]+\b/gi },
         { type: 'ID', regex: /\b[A-HJ-NPR-Z0-9]{17}\b/g },
         { type: 'ID', regex: /\b(?:Insured|Named\s+Insured)[:\s]+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+/g },
         { type: 'ID', regex: /\b(?:Agent|Producer)\s*(?:Code|No|ID)[:\s#]*[-A-Z0-9]{4,15}\b/gi },
@@ -421,11 +429,11 @@ let PROFILE_RULES = {
     accounting: [
         { type: 'ID', regex: /\b(?:EIN|FEIN|Tax\s+ID)[:\s#]*\d{2}-\d{7}\b/gi },
         { type: 'FINANCIAL', regex: /\b(?:AGI|Adjusted\s+Gross\s+Income|Taxable\s+Income|Total\s+Income)[:\s]+(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’]+\b/gi },
-        { type: 'FINANCIAL', regex: /\b(?:Form\s+|Withheld\s+)?Box\s+\d{1,2}[a-z]?(?:\s*:\s*[A-Z])?\s*[:\s]+(?:[$\u20ac\u00a3\u00a5\u20aa\u20bd\u20b9]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.\u2018\u2019]+\b/gi },
+        { type: 'FINANCIAL', regex: /\b(?:Form\s+|Withheld\s+)?Box\s+\d{1,2}[a-z]?(?:\s*:\s*[A-Z])?\s*[:\s]+(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’\u2018\u2019]+\b/gi },
         { type: 'ID', regex: /\b(?:Form|Schedule)\s+(?:1040|1040-SR|W-2|W-4|1099-[A-Z]{1,4}|K-1|941|990|4562)\b/gi },
-        { type: 'FINANCIAL', regex: /\b(?:Federal|State|Assessed)?\s*(?:Tax\s+Due|Balance\s+Due|Overpayment|Refund)[:\s]+(?:[$\u20ac\u00a3\u00a5\u20aa\u20bd\u20b9]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.\u2018\u2019]+\b/gi },
+        { type: 'FINANCIAL', regex: /\b(?:Federal|State|Assessed)?\s*(?:Tax\s+Due|Balance\s+Due|Overpayment|Refund)[:\s]+(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’\u2018\u2019]+\b/gi },
         { type: 'ID', regex: /\b(?:State\s+Tax\s+ID|SUI|UI\s+Account\s+No)[:\s#]*[A-Z]{0,3}[-]?\d{4,15}\b/gi },
-        { type: 'FINANCIAL', regex: /\b(?:Gross|Net|Medicare|Social\s+Security)\s+(?:Pay|Wages|Tips|Withholding)[:\s]+(?:[$\u20ac\u00a3\u00a5\u20aa\u20bd\u20b9]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.\u2018\u2019]+\b/gi },
+        { type: 'FINANCIAL', regex: /\b(?:Gross|Net|Medicare|Social\s+Security)\s+(?:Pay|Wages|Tips|Withholding)[:\s]+(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’\u2018\u2019]+\b/gi },
         { type: 'ID', regex: /\b(?:CAF(?:\s+ID)?|(?:Practitioner|Tax\s+Preparer)\s+(?:PIN|ID)|PTIN)[:\s#]*[A-Z0-9-]{6,12}\b/gi },
         { type: 'ID', regex: /\bEFIN[:\s#]*\d{6}\b/gi },
         { type: 'ID', regex: /\bGL[-_\s]*(?:Account|Acct|Code)?[:\s#]*\d{4,10}\b/gi },
@@ -829,7 +837,7 @@ const PROFILE_JARGON = {
         'underwriting': 'underwriting', 'lending': 'underwriting', 'mortgage': 'underwriting', 'loan': 'underwriting', 'income': 'underwriting', 'income_verification': 'underwriting', 'payroll': 'underwriting', 'w2': 'underwriting', 'paystub': 'underwriting',
         'medical': 'medical', 'healthcare': 'medical', 'health': 'medical', 'pharma': 'pharma', 'hipaa': 'medical',
         'engineering': 'engineering', 'dev': 'dev', 'api': 'dev', 'devops': 'engineering', 'tech': 'tech',
-        'finance': 'finance', 'bizops': 'bizops', 'sales': 'sales', 'wealthmgmt': 'wealthmgmt', 'wealth': 'wealthmgmt', 'insurance': 'insurance', 'accounting': 'accounting', 'pci': 'finance',
+        'finance': 'finance', 'financial': 'finance', 'bizops': 'bizops', 'sales': 'sales', 'wealthmgmt': 'wealthmgmt', 'wealth': 'wealthmgmt', 'insurance': 'insurance', 'accounting': 'accounting', 'pci': 'finance',
         'legal': 'legal', 'compliance': 'compliance', 'ccpa': 'ccpa', 'gdpr': 'compliance', 'soc2': 'compliance', 'iso27001': 'compliance', 'nist': 'compliance', 'dpo': 'compliance', 'grc': 'compliance',
         'hr': 'hr', 'security': 'security', 'marketing': 'marketing', 'support': 'support',
         'realestate': 'realestate', 'academic': 'academic', 'agents': 'agents', 'ai_agents': 'agents', 'creative': 'creative', 'personal': 'personal'
@@ -847,16 +855,18 @@ const PROFILE_JARGON = {
     }
 
     function stitchOrphanedNameLines(text, profile) {
-        if (profile === 'medical') {
-            text = text.replace(/Patient Name:\s*\n+([A-Z][a-zA-Z]+\s[A-Z][a-zA-Z]+)/g, 'Patient Name: $1');
-        } else if (profile === 'legal') {
-            text = text.replace(/Defendant:\s*\n+([A-Z][a-zA-Z]+\s[A-Z][a-zA-Z]+)/g, 'Defendant: $1');
+        if (!text || !text.includes('\n')) return text;
+        const prof = (profile || 'general').toLowerCase();
+        if (prof === 'medical' || prof === 'general') {
+            text = text.replace(/(Patient\s+Name|Emergency\s+Contact|In\s+Case\s+of\s+Emergency|ICE(?:\s+Contact)?):\s*\r?\n+([A-Z\p{Lu}][A-Za-z0-9&.,'’ \t-]*?[A-Za-z0-9\p{Lu}\p{Ll}])(?=\r?\n|$)/gui, '$1: $2');
+        } else if (prof === 'legal') {
+            text = text.replace(/Defendant:\s*\r?\n+([A-Z][a-zA-Z]+\s[A-Z][a-zA-Z]+)/g, 'Defendant: $1');
         }
         return text;
     }
 
     function detectMatches(text, activeProfile = 'general', customRules = [], nlpNames = [], enabledEntities = null, mlEntities = []) {
-        let textToProcess = text.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
+        let textToProcess = stitchOrphanedNameLines(text, activeProfile).replace(/[\u200b\u200c\u200d\ufeff]/g, '');
         textToProcess = textToProcess.replace(/([a-z])(Email|Phone|Mobile|Tel|Address|IP|ID|URL|SSN|Date):/g, '$1 $2:');
 
         let matches = [];
