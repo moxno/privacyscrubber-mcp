@@ -14,6 +14,7 @@
     "pii-masking-run.js",
     "scrubber-core.cjs",
     "ps-license-manager.js",
+    "ps-license-manager.cjs",
     "ps-pii-engine.cjs",
     "ps-pii-engine.js",
     "config-schema.json",

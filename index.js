@@ -38,7 +38,14 @@ const MCP_VERSION = require('./package.json').version;
 // Import the production core engine with 100% parity
 const scrubberCorePath = path.resolve(__dirname, './scrubber-core.cjs');
 const PrivacyScrubberCore = require(scrubberCorePath);
-let LicenseManager = require('./ps-license-manager.js');
+let LicenseManager;
+try {
+  LicenseManager = require('./ps-license-manager.cjs');
+} catch (e) {
+  try {
+    LicenseManager = require('./ps-license-manager.js');
+  } catch (err) {}
+}
 if (!LicenseManager || typeof LicenseManager.validate !== 'function') {
   LicenseManager = global.LicenseManager;
 }

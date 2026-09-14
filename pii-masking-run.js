@@ -84,7 +84,14 @@ const DEVOPS_SECRETS_DETECTOR = [
   { name: 'Database/API Secret', regex: /\b(DB|POSTGRES|REDIS|MYSQL|AWS|SECRET|PASSWORD|TOKEN|API|KEY)[A-Z0-9_]*\s*[:=]\s*[^ \t\r\n"']{8,}\b/gi }
 ];
 
-let LicenseManager = require('./ps-license-manager.js');
+let LicenseManager;
+try {
+  LicenseManager = require('./ps-license-manager.cjs');
+} catch (e) {
+  try {
+    LicenseManager = require('./ps-license-manager.js');
+  } catch (err) {}
+}
 if (!LicenseManager || typeof LicenseManager.validate !== 'function') {
   LicenseManager = global.LicenseManager;
 }
