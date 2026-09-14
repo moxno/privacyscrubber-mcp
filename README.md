@@ -1,9 +1,12 @@
 # @privacyscrubber/mcp-server
 
+[![CI](https://github.com/moxno/privacyscrubber-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/moxno/privacyscrubber-mcp/actions/workflows/ci.yml)
 [![NPM Version](https://img.shields.io/npm/v/@privacyscrubber/mcp-server?color=blue)](https://www.npmjs.com/package/@privacyscrubber/mcp-server)
 [![NPM Downloads](https://img.shields.io/npm/dm/@privacyscrubber/mcp-server?color=3b82f6)](https://www.npmjs.com/package/@privacyscrubber/mcp-server)
 [![NPM SDK](https://img.shields.io/npm/v/@privacyscrubber/sdk?label=%40privacyscrubber%2Fsdk&color=10b981)](https://www.npmjs.com/package/@privacyscrubber/sdk)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Trust Boundary](https://img.shields.io/badge/Trust%20Boundary-Documented-success)](SECURITY_MODEL.md)
+[![Patent Pending](https://img.shields.io/badge/Patent-Pending%20(ILPO%20331905)-06b6d4.svg)](https://privacyscrubber.com/patents/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22058770.svg)](https://zenodo.org/records/22058770)
 [![OSF DOI](https://img.shields.io/badge/OSF%20DOI-10.17605%2FOSF.IO%2F5BYJF-blue.svg)](https://osf.io/5byjf/)
 [![SSRN](https://img.shields.io/badge/SSRN-7335581-darkred.svg)](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7335581)
@@ -31,6 +34,18 @@ All sensitive parameters, identifiers, and variables are intercepted locally ins
                                │                                       │
 [Original Output] <─── [MCP reveal_text] <─────────────────────────────┘
 ```
+
+---
+
+## 🛡️ Trust Boundary & Threat Model
+
+PrivacyScrubber MCP is an **application-layer, in-process sanitization engine** designed to reduce data exposure risks in LLM workflows. It is **not** a mandatory network airlock or transparent socket proxy.
+
+For full architectural specifications, consult our [Security Model & Trust Boundary Specification](SECURITY_MODEL.md). Key boundary characteristics:
+- **In-Process Sanitization:** All redaction and tokenization run locally in Node.js volatile heap memory (RAM). Token maps are never written to disk or transmitted across networks.
+- **De-Tokenization Lifecycle:** Tools like `detokenize_text`, `reveal_text`, and `guard_apply_patch` restore original plaintext. To avoid re-exposing secrets to LLMs or shared logs, de-tokenization should only be performed at terminal boundaries (e.g. disk write or developer UI).
+- **Host Execution Scope:** Optional execution tools (`guard_exec`, `guard_read_file`, `guard_apply_patch`) run with host OS user permissions. For automated or untrusted agent environments, execution inside isolated containers (Docker/Podman) is recommended.
+- **Zero Network Egress:** Core sanitization makes zero outbound network requests and is 100% Airplane Mode verifiable.
 
 ---
 
@@ -290,6 +305,27 @@ npx ps-guard --rules
 Looking for real-time protection directly inside your web browser?
 *   **Chrome Extension:** Get the [PrivacyScrubber Chrome Extension](https://chromewebstore.google.com/detail/privacyscrubber-%E2%80%94-pii-red/pimoejgefeilajmmbpghifdmhdlkgjol) to sanitize prompts directly inside ChatGPT, Claude, and Gemini in real-time.
 *   **Web Sandbox:** Use the zero-server browser sanitization tools at [PrivacyScrubber Homepage](https://privacyscrubber.com/?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server).
+
+---
+
+## 🔗 Ecosystem & Production Architecture Guides
+
+- 🌐 **Web App**: [https://privacyscrubber.com](https://privacyscrubber.com)
+- 📦 **Node.js / TypeScript SDK**: [@privacyscrubber/sdk](https://www.npmjs.com/package/@privacyscrubber/sdk)
+- 🧩 **Chrome Extension**: [Chrome Web Store](https://chromewebstore.google.com/detail/privacyscrubber-%E2%80%94-zero-tr/pimoejgefeilajmmbpghifdmhdlkgjol)
+- 🛡️ **RAG & Vector Databases**: [Sanitizing PII Before Vector DB Ingestion](https://privacyscrubber.com/solutions/dev/rag-vector-database-pii-masking/)
+- 🤖 **LangChain & LlamaIndex**: [In-Memory PII Middleware for AI Agent Pipelines](https://privacyscrubber.com/solutions/agents/langchain-llamaindex-pii-anonymizer/)
+
+---
+
+## ⚖️ Intellectual Property & Virtual Patent Marking
+
+The Zero-Trust Data Sanitization (ZTDS) architecture, in-memory deterministic tokenization, cryptographic session handoff, and stdio execution methods implemented in this package are proprietary technology of Ilya Sibiryakov (BrandMeWeb) and are protected under **Patent Pending** status:
+
+- **Patent Office:** State of Israel Ministry of Justice, Patent Office (ILPO)
+- **Application Number:** `331905` (Tracking ID: `94221`)
+- **Filing / Priority Date:** September 14, 2026 (Paris Convention Art. 4 & 35 U.S.C. § 119 Priority)
+- **Virtual Patent Marking:** [privacyscrubber.com/patents/](https://privacyscrubber.com/patents/) in accordance with 35 U.S.C. § 287(a).
 
 ## 📄 License & Commercial Upgrade
 

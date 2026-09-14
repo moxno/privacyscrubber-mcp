@@ -32,7 +32,8 @@
     "privacyscrubber-mcp-install": "install.js"
   },
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node test-mcp.js && node test-mcp-deep.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
