@@ -78,7 +78,8 @@ import { wrapOpenAI } from '@privacyscrubber/sdk';
 const openai = wrapOpenAI(new OpenAI({ apiKey: process.env.OPENAI_API_KEY }));
 ```
 
-👉 [View @privacyscrubber/sdk on NPM](https://www.npmjs.com/package/@privacyscrubber/sdk) | Includes `wrapOpenAI()` middleware, TypeScript definitions, and 25 compliance profiles.
+👉 [View @privacyscrubber/sdk on NPM](https://www.npmjs.com/package/@privacyscrubber/sdk) | Includes `wrapOpenAI()` middleware, TypeScript definitions, and 25 compliance profiles.  
+👉 [Acquire Commercial Developer SDK License ($199/mo or $1,990/yr)](https://privacyscrubber.com/pricing?utm_source=npm&utm_medium=readme&utm_campaign=dev_sdk) for unrestricted batch throughput and multi-agent RAG pipelines.
 
 ---
 
@@ -329,25 +330,28 @@ The Zero-Trust Data Sanitization (ZTDS) architecture, in-memory deterministic to
 
 ## 📄 License & Commercial Upgrade
 
-By default, the server runs under the **Free Tier** (restricted to 15,000 characters per request and the basic `General` PII profile). To unlock 25 specialized engineering, medical, legal, and financial PII profiles, as well as team-wide custom rules, you can purchase a commercial license.
+By default, the server runs under the **Free Tier** (restricted to 15,000 characters per request and the basic `General` PII profile). For unrestricted engineering throughput, automated CI/CD pipelines, programmatic SDK integration (`wrapOpenAI`), and enterprise air-gapped deployments, commercial licenses are available.
 
-### Feature Comparison
+### Commercial & Enterprise Tiers
 
-| Feature | Free Tier | PRO Tier | TEAMS Tier |
-| :--- | :--- | :--- | :--- |
-| **Volatile Tokenization** | ✅ Yes | ✅ Yes | ✅ Yes |
-| **Standard PII Masking** | ✅ Yes | ✅ Yes | ✅ Yes |
-| **Max Character Length** | 15,000 chars | ♾️ Unlimited | ♾️ Unlimited |
-| **Industry Profiles** | General Only | 25 Profiles | 25 Profiles |
-| **Custom Regex Rules** | ❌ Locked | ♾️ Unlimited | ♾️ Unlimited |
-| **Team Rules Sync (GPO)** | ❌ No | ❌ No | ✅ Yes (Shared Link) |
-| **Licensing Cost** | $0 | **$110 Lifetime** | **$99/mo Flat Rate** |
+| Feature | Free Community | PRO Tier | TEAMS Tier | Developer SDK ($199/mo) | Enterprise Air-Gapped |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Volatile In-Memory Redaction** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
+| **Max Character Length** | 15,000 chars | ♾️ Unlimited | ♾️ Unlimited | ♾️ Unlimited | ♾️ Unlimited |
+| **Industry Compliance Profiles** | General Only | 25 Profiles | 25 Profiles | 25 Profiles | 25 Custom Profiles |
+| **Custom Regex Rules** | ❌ Locked | ♾️ Unlimited | ♾️ Unlimited | ♾️ Unlimited | ♾️ Unlimited |
+| **Programmatic Node/TS SDK** | ❌ No | ❌ No | ❌ No | ✅ `@privacyscrubber/sdk` | ✅ Full SDK + On-Prem Gateway |
+| **RAG & Agent Tool Middleware** | ❌ No | ❌ No | ❌ No | ✅ `wrapOpenAI` / LangChain | ✅ Custom Agent Middleware |
+| **Team Rules Sync (GPO)** | ❌ No | ❌ No | ✅ Yes (Shared Link) | ✅ Enterprise Config | ✅ Air-Gapped Fleet GPO |
+| **Support & SLA** | Community | Email | Priority | Dedicated Dev Support | 24/7 SLA + Chief Architect |
+| **Licensing Cost** | **$0** | **$110 Lifetime** | **$99/mo Flat** | **$199/mo ($1,990/yr)** | **Custom Retainer / Quote** |
 
-👉 **[Acquire a PRO / TEAMS License Key at privacyscrubber.com/pricing](https://privacyscrubber.com/pricing?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server)**
+👉 **[Acquire a Developer SDK or Commercial License at privacyscrubber.com/pricing](https://privacyscrubber.com/pricing?utm_source=mcp_readme&utm_medium=readme&utm_campaign=dev_sdk)**  
+👉 **[Need Custom Air-Gapped MCP Gateways? Consult BrandMeWeb Enterprise Architecture](https://brandmeweb.com/en/services/custom-ai-systems-enterprise-agents)**
 
 ---
 
-## 🔐 After Purchase: Activate PRO in Your MCP Client
+## 🔐 After Purchase: Activate Your Commercial Key in MCP Client
 
 After purchasing a PRO license at [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server), you will receive a license key. Add it to your MCP client config as an environment variable: `PRIVACYSCRUBBER_KEY`.
 
