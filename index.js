@@ -69,15 +69,8 @@ const colors = {
   reset: '\x1b[0m'
 };
 
-// Helper to log to both standard terminal (with colors) and MCP logging protocol
+// Helper to log to stderr (preserves stdout strictly for JSON-RPC MCP protocol messages)
 function mcpLog(msg) {
-  const clean = msg.replace(/\x1b\[[0-9;]*m/g, '').trim();
-  const level = clean.includes('⚠️') || clean.includes('Error') ? "warning" : "info";
-  try {
-    server.sendLoggingMessage({ level, data: clean });
-  } catch(e) {
-    // Ignore if server isn't fully connected yet
-  }
   process.stderr.write(msg);
 }
 

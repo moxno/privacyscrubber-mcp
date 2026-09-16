@@ -47,9 +47,9 @@ let REGEX_RULES = [
 
     // Professional IDs & Organizations
     { type: 'NAME', isContextName: true, isCorporateName: true, regex: /\b(?:[A-Z][A-Za-z0-9&.,'-]*[ \t\xA0]+){1,5}(?:Inc\.?|LLC|Corp\.?|Corporation|Ltd\.?|Limited|Co\.?|Company|Group|Holdings|Solutions|Services|Technologies|Logistics|Industries|Capital|Bank|Partners|LLP|PLLC)(?:\s+(?:LLC|Inc\.?|Corp\.?|Ltd\.?|USA|Group))?\b/g },
-    { type: 'ID', regex: /\b(?:Employee|Emp|EE|Worker|Staff|File|Badge|Member|Advisor|Producer|Agent|Borrower)\s*(?:#|ID|No\.?|Number)[:\s#]*[A-Z0-9-]{3,15}\b/gi },
+    { type: 'ID', regex: /\b(?:Employee|Emp|EE|Worker|Staff|File|Badge|Member|Advisor|Producer|Agent|Borrower)\s*(?:#|ID|No\.?|Number)[:\s#]*([A-Z0-9-]{3,15})\b/gi },
     { type: 'ID', regex: /\b(?:Pay\s+Group[:#\s]+[A-Za-z0-9_-]{2,30}|(?:Cost\s+Center|Dept|Department)[:#\s]+[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
-    { type: 'ID', regex: /(?:\b(?:Box\s+d\b|d\.\s*(?:Control|#)?|d\s+Control)\s*(?:Control\s+)?(?:number|no\.?|#|num)?[:\s#]+|\bControl\s*(?:number|no\.?|#|num)?[:\s#]+|\bControl[:#]\s*)([A-Za-z0-9-]{3,30})/gi },
+    { type: 'ID', regex: /(?:\b(?:Box\s+d\b|d\.\s*(?:Control|#|number|no\.?|num)|d\s+Control)\s*(?:Control\s+)?(?:number|no\.?|#|num)?[:\s#]+|\bControl\s*(?:number|no\.?|#|num)?[:\s#]+|\bControl[:#]\s*)([A-Za-z0-9-]{3,30})/gi },
     { type: 'ID', regex: /\bEEID[ -]?\d{4,}\b/gi },
     { type: 'ID', regex: /\bEMP[-_]\d{3,}\b/gi },
 
@@ -92,7 +92,7 @@ let REGEX_RULES = [
     { type: 'ID', regex: /\b\d{2}\/\d{2}\/\d{4}\b/g },
 
     // Phone Numbers
-    { type: 'PHONE', regex: /(?<!\w)(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g },
+    { type: 'PHONE', regex: /(?<!\w)(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?:\s*(?:ext\.?|x)\s*\d{1,5})?\b/gi },
     { type: 'PHONE', regex: /\+\d{1,3}[ \t.-]+(?:\(?\d{1,4}\)?[ \t.-]+)?\d{2,8}(?:[ \t.-]+\d{2,8}){0,4}\b/g },
     { type: 'PHONE', regex: /\+?[1-9]\d{1,3}[\s.-]\(?\d{1,4}\)?[\s.-]\d{2,4}[\s.-]\d{4}/g },
     { type: 'PHONE', regex: /(?:\+44\s?7\d{3}|\(?07\d{3}\)?)\s?\d{3}\s?\d{3}\b/g },
@@ -109,16 +109,16 @@ let REGEX_RULES = [
     // Generalized Name Detection (First [Middle] Last) — max 1 middle word to avoid grabbing job titles
     // Middle word must be: a particle (van/de/etc.), a single initial (A. or A), or a capitalized word of ≥2 lowercase letters
     { type: 'NAME', isAggressiveName: true, regex: /(?<=^|[^\p{L}\p{N}_])(?:\p{Lu}[\p{Ll}'-]*\p{Ll}|\p{Lu}[\p{Ll}'-]*[\p{Lu}'-][\p{Ll}'-]*)(?:[ \t\xA0]+(?:\p{Lu}[\p{Ll}'-]*\p{Ll}|\p{Lu}[\p{Ll}'-]*[\p{Lu}'-][\p{Ll}'-]*|\p{Lu}\.?|van|von|de|di|da|la|le|del|du|der|van[ \t\xA0]+de|van[ \t\xA0]+der)){0,1}[ \t\xA0]+(?:\p{Lu}[\p{Ll}'-]*\p{Ll}|\p{Lu}[\p{Ll}'-]*[\p{Lu}'-][\p{Ll}'-]*)(?:'s)?(?=[^\p{L}\p{N}_]|$)(?![ \t\xA0]*:)/gu },
-    // Payroll Format Names (e.g. "BARKER, KELLY", "BARKER, KELLY M", "DOE, JOHN M.")
-    { type: 'NAME', regex: /\b[A-Z]{2,25},\s+[A-Z]{2,25}(?:\s+[A-Z]\.?|\s+[A-Z]{2,25})*\b/g },
+    // Payroll & Inverted Format Names (e.g. "BARKER, KELLY", "Vance-Soto, Eleanor", "Kaufman-Alvarez, Liam T.")
+    { type: 'NAME', regex: /\b[A-Z][a-zA-Z'’-]+(?:-[A-Za-z'’-]+)?,\s+[A-Z][a-zA-Z'’-]+(?:\s+[A-Z]\.?(?!\w)|\s+[A-Z][a-zA-Z'’-]+)*\b/g },
     // All-Caps Names (2–3 words, supporting single-letter middle initial e.g. "KELLY M BARKER", "JOHN M BARKER")
     { type: 'NAME', regex: /(?<=^|[^\p{L}\p{N}_])\p{Lu}{2,}(?:[\p{Lu}'-]*\p{Lu})?(?:[ \t\xA0]+(?:\p{Lu}\.?|[A-Z][a-z]+))?[ \t\xA0]+\p{Lu}{2,}(?:[\p{Lu}'-]*\p{Lu})?(?:'s)?(?=[^\p{L}\p{N}_]|$)(?![ \t\xA0]*:)/gu },
     // ALL-CAPS first + middle initial(s) with optional spaces + ALL-CAPS last name
     { type: 'NAME', regex: /(?<=^|[^\p{L}\p{N}_])\p{Lu}{2,}(?:[\p{Lu}'-]*\p{Lu})?(?:[ \t\xA0]*\p{Lu}\.)+[ \t\xA0]*\p{Lu}{2,}(?:[\p{Lu}'-]*\p{Lu})?(?:'s)?(?=[^\p{L}\p{N}_]|$)(?![ \t\xA0]*:)/gu },
     // ALL-CAPS first name + optional middle initial(s) with optional spaces + Mixed-Case last name
     { type: 'NAME', regex: /(?<=^|[^\p{L}\p{N}_])\p{Lu}{2,}(?:[\p{Lu}'-]*\p{Lu})?(?:(?:[ \t\xA0]*\p{Lu}\.)+[ \t\xA0]*|[ \t\xA0]+)(?:\p{Lu}\p{Ll}[\p{Ll}'-]*|\p{Lu}[\p{Ll}'-]*[\p{Lu}'-][\p{Ll}'-]*)(?:'s)?(?=[^\p{L}\p{N}_]|$)(?![ \t\xA0]*:)/gu },
-    // Names with Honorifics (with or without period, supporting single or multi-word full names) (Unicode-safe)
-    { type: 'NAME', regex: /(?<=^|[^\p{L}\p{N}_])(?:Mr|Mrs|Ms|Dr|Prof|Hon|Mr\.|Mrs\.|Ms\.|Dr\.|Prof\.|Hon\.)[ \t\xA0]+(?:\p{Lu}[\p{Ll}'-]*\p{Ll}|\p{Lu}[\p{Ll}'-]*[\p{Lu}'-][\p{Ll}'-]*)(?:[ \t\xA0]+(?:\p{Lu}[\p{Ll}'-]*\p{Ll}|\p{Lu}[\p{Ll}'-]*[\p{Lu}'-][\p{Ll}'-]*))?(?=[^\p{L}\p{N}_]|$)(?![ \t\xA0]*:)/gu },
+    // Names with Honorifics (with or without period, supporting middle initials and hyphenated surnames) (Unicode-safe)
+    { type: 'NAME', regex: /(?<=^|[^\p{L}\p{N}_])(?:Mr|Mrs|Ms|Dr|Prof|Hon|Rev|Judge|Atty|Doctor|Professor)(?:\.|\b)[ \t\xA0]+(?:\p{Lu}[\p{L}'-]+)(?:[ \t\xA0]+(?:\p{Lu}\.?|\p{Lu}[\p{L}'-]+)){0,2}(?:[ \t\xA0]+(?:\p{Lu}[\p{L}'-]+))(?=[^\p{L}\p{N}_]|$)(?![ \t\xA0]*:)/gu },
     // Names with Quoted or Parenthetical Nicknames (e.g. Judith "Judy" Diaz, Robert (Bob) Smith)
     { type: 'NAME', regex: /(?<=^|[^\p{L}\p{N}_])(?:\p{Lu}[\p{Ll}'-]+)[ \t\xA0]+(?:"[\p{Lu}\p{Ll}'-]+"|'[\p{Lu}\p{Ll}'-]+'|[“‘][\p{Lu}\p{Ll}'-]+[”’]|\([\p{Lu}\p{Ll}'-]+\))[ \t\xA0]+(?:\p{Lu}[\p{Ll}'-]+)(?:'s)?(?=[^\p{L}\p{N}_]|$)(?![ \t\xA0]*:)/gu },
     
@@ -143,17 +143,29 @@ let REGEX_RULES = [
 let PROFILE_RULES = {
     general: [],
     legal: [
+        // Legal Party & Role-Prefixed Names (Claimant, Respondent, Plaintiff, Defendant, Petitioner, Appellant, Principal, Grantor, Attorney-in-Fact, Counsel)
+        { type: 'NAME', isContextName: true, regex: /\b(?:Registered\s+Representative|Claimant|Respondent|Plaintiff|Defendant|Petitioner|Appellant|Appellee|Principal|Grantor|Grantee|Trustee|Trustor|Fiduciary|Attorney-in-Fact|Designated\s+Attorney-in-Fact|Client\s*(?:\/\s*Principal)?|Lead\s+Counsel|Counsel|Managing\s+Partner|Escrow\s+(?:Trust\s+)?Officer)\s*[:#,]?\s*(?:(?:Dr|Mr|Mrs|Ms|Prof)\.?\s+)?([A-Z][a-zA-Z'’-]+(?:-[A-Z][a-zA-Z'’-]+)?(?:,\s+[A-Z][a-zA-Z'’-]+(?:\s+[A-Z]\.?)?|\s+(?:[A-Z]\.?\s+)?[A-Z][a-zA-Z'’-]+(?:-[A-Z][a-zA-Z'’-]+)?))/gi },
         { type: 'LEGAL', regex: /\bCASE[-_][A-Z0-9_-]{4,}\b/gi },
         { type: 'LEGAL', regex: /\bMATTER[-_][A-Z0-9_-]{4,}\b/gi },
         { type: 'LEGAL', regex: /\b[A-Z]{2,4}[- ]?\d{2}[- ]?\d{4,}\b/g },
-        { type: 'PRIVILEGE', regex: /ATTORNEY[- ]CLIENT[- ]PRIVILEGE/gi },
+        { type: 'PRIVILEGE', regex: /\bATTORNEY[- ]CLIENT[- ]PRIVILEGE[DS]?\b/gi },
         { type: 'LEGAL', regex: /\b(?:BATES|PROD|PLTF|DEFT|CONF|EXHIBIT)[-_ ]?[A-Z0-9]{2,10}[-_ ]?\d{4,10}\b/gi },
-        { type: 'LEGAL', regex: /\b(?:\d{1,2}:)?\d{2,4}[-_ ]?(?:CV|CR|MDL|BK|MC|MISC|MJ|PO|CA|AP|PR)[-_ ][A-Z0-9_-]{3,15}\b/gi },
-        { type: 'ID', regex: /\b(?:STATE\s+BAR|BAR\s+(?:NO\.?|#|ID)|SBN|ATTORNEY\s+REG(?:ISTRATION)?)[:\s#-]*\d{4,8}\b/gi },
+        // Case / Proceeding / Arbitration Numbers (including OCR homoglyphs O/0, I/1, l/1)
+        { type: 'LEGAL', regex: /\b(?:Case|Matter|Arbitration|Docket|Proceeding)\s*(?:(?:No\.?|Number|#)[:\s#]*|[:#]\s*)([A-Za-z0-9_-]{4,25})\b/gi },
+        { type: 'LEGAL', regex: /\b(?:\d{1,2}:)?\d{2,4}[-_ ]?(?:CV|CR|MDL|BK|MC|MISC|MJ|PO|CA|AP|PR|AR)[-_ ][A-Za-z0-9_-]{3,15}\b/gi },
+        // Bar registration & CRD / Broker / Representative IDs (including OCR homoglyphs)
+        { type: 'ID', regex: /\b(?:STATE\s+BAR|BAR\s+(?:NO\.?|#|ID)|SBN|ATTORNEY\s+REG(?:ISTRATION)?)[:\s#-]*([0-9OIloA-Za-z]{4,10})\b/gi },
+        { type: 'ID', regex: /\b(?:CRD|CIK|Broker\s*ID|Rep(?:resentative)?\s*ID|Advisor\s*ID|Registration\s*(?:No\.?|#)?)[:\s#]*([0-9OIloA-Za-z]{5,12})\b/gi },
         { type: 'LEGAL', regex: /\b(?:RETAINER|ENGAGEMENT|REPRESENTATION)[-_: ]*(?:AGREEMENT|ID|REF)?[:\s#-]*[A-Z0-9_-]{4,20}\b/gi },
         { type: 'LEGAL', regex: /\bECLI:[A-Z]{2}:[A-Za-z0-9]{1,7}:\d{4}:[A-Za-z0-9.]{1,25}\b/g },
         { type: 'ID', regex: /\bPCT\/[A-Z]{2}\d{4}\/\d{6}\b/g },
-        { type: 'ID', regex: /\b(?:TX|TXu|VA|VAu|PA|PAu|SR|SRu|SE|SEu|RE)\s*-?\d[-\d ]{5,9}\d\b/g }
+        { type: 'ID', regex: /\b(?:TX|TXu|VA|VAu|PA|PAu|SR|SRu|SE|SEu|RE)\s*-?\d[-\d ]{5,9}\d\b/g },
+        // Escrow / Trust / Settlement / Disputed Account Numbers & ABA Routing
+        { type: 'FINANCIAL', regex: /\b(?:Escrow\s+(?:Account|Acct|Deposit)|Trust\s+Account|Settlement\s+Account|Disputed\s+Account)\s*(?:Number|Num|No\.?|#)?[:\s#]+([A-Za-z0-9-]{5,25})\b/gi },
+        { type: 'FINANCIAL', regex: /\b(?:ABA\s+Routing|Routing\s+Transit|Fedwire\s+Routing)\s*(?:Number|Num|No\.?|#)?[:\s#]+(\d{9})\b/gi },
+        // Legal Financial Amounts (lookbehind + standalone)
+        { type: 'FINANCIAL', regex: /(?<=\b(?:Settlement(?:\s+Amount)?|Retainer(?:\s+Fee)?|Hourly\s+Rate|Damages(?:\s+Claimed)?|Legal\s+Fees?|Sanctions?|Judgement|Judgment|Disgorgement|Penalty|(?:Prejudgment\s+)?Interest|Escrow(?:\s+Funds?|\s+Amount)?|Fine|Restitution)(?:[\s:]+(?:of)?[\s:]*|[:\s]+))(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’]*\d[KMB]?\b|\b\d[0-9,.'’]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹])|[0-9,.'’]{3,}\b)/gi },
+        { type: 'FINANCIAL', regex: /(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’]*\d[KMB]?\b|\b\d[0-9,.'’]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹]))/gi }
     ],
     hr: [
         { type: 'NAME', isContextName: true, regex: /(?:Candidate|Applicant|Employee|Reporting To|Manager|Mentored by|Direct Report)[\s:]+([A-Z][a-z]*(?:\s+[A-Z][a-z]*)?)/g },
@@ -188,18 +200,25 @@ let PROFILE_RULES = {
         { type: 'ID', regex: /\b(?:CRD|CIK|Advisor\s*ID|Broker\s*ID)[:\s#]*(\d{5,10})\b/gi },
         { type: 'ID', regex: /\b(?:LEI|LEGAL[\s-]ENTITY[\s-]IDENTIFIER)[:\s#-]*[0-9A-Z]{20}\b/gi },
         { type: 'ID', regex: /\bBBG[0-9A-Z]{9}\b/g },
-        { type: 'FINANCIAL', regex: /(?<=\b(?:Wire(?:\s+(?:Transfer|Amount))?|Transfer|Balance|Deposit|Withdrawal|Settlement|Principal|Interest|Remittance|Payout|Transaction(?:\s+Amount)?|Payment(?:\s+Amount)?|Total|Amount)[:\s]+)(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’]*\d[KMB]?\b|\b\d[0-9,.'’]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹])|[0-9,.'’]{3,}\b)/gi },
-        { type: 'FINANCIAL', regex: /(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’]*\d[KMB]?\b|\b\d[0-9,.'’]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹]))/gi }
+        { type: 'FINANCIAL', regex: /(?<=\b(?:Wire(?:\s+(?:Transfer|Amount))?|Transfer|Balance|Deposit|Withdrawal|Settlement|Principal|Interest|Remittance|Payout|Transaction(?:\s+Amount)?|Payment(?:\s+Amount)?|Total|Amount)[:\s]+)(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’]*\d[KMB]?\b|\b\d[0-9,.'’]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹])|[0-9,.'’]{3,}\b)/gi }
     ],
     medical: [
-        { type: 'PHI', regex: /\b(?:MRN|Patient ID|Medical Record (?:No\.?|Num(?:ber)?|#)|Patient (?:No\.?|Num(?:ber)?|#))[\s:#]+([A-Za-z0-9-]+)/gi },
+        { type: 'NAME', isContextName: true, regex: /\b(?:PATIENT|Pt\.?|LEGAL\s+GUARDIAN(?:\/PROXY)?|PROXY|EMERGENCY\s+CONTACT|ATTENDING\s+PHYSICIAN|ATTENDING|SURGEON|PHYSICIAN|PROVIDER|SUBSCRIBER|GUARDIAN)\s*[:#|]?\s*(?!\b(?:NPI|MRN|DOB|ID|DATE|RECORD|PHONE)\b)(?:(?:Dr|Mr|Mrs|Ms|Prof)\.?\s+)?([A-Z][a-zA-Z'’-]+(?:-[A-Z][a-zA-Z'’-]+)?(?:,\s+[A-Z][a-zA-Z'’-]+(?:\s+[A-Z]\.?)?|\s+(?:[A-Z]\.?\s+)?[A-Z][a-zA-Z'’-]+(?:-[A-Z][a-zA-Z'’-]+)?))/gi },
+        // HL7 v2 PID-5 Caret-Delimited Patient / Provider Names (e.g. "Guillermo^Maricela^C", "Vance-Soto^Eleanor^M")
+        { type: 'NAME', isContextName: true, isHL7Name: true, regex: /\b[A-Za-z'’-]{2,}\^[A-Za-z'’-]{2,}(?:\^[A-Za-z'’.-]+){0,4}\b/g },
+        // HL7 v2 Segment Delimited Dates (YYYYMMDD in PID-7, MSH-7, etc. e.g. "||19820412|F")
+        { type: 'DATE', regex: /(?<=[|:])(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])(?=[|:\s])/g },
+        { type: 'PHI', regex: /\b(?:MRN|Patient\s+(?:ID|Number|No\.?|#)|Medical\s+Record\s+(?:No\.?|Num(?:ber)?|#)|EHR(?:\s*(?:ID|Record|Number|No\.?|#))?)[\s:#.]+([A-Za-z0-9\/-]+)/gi },
         { type: 'DATE', regex: /\b(?:DOB|Date of Birth|BIRTHDAY)[\s:]+([0-9./-]{6,10})\b/gi },
-        { type: 'PHI', regex: /\bMRN[-_ ]*[A-Za-z0-9_-]{4,}\b/gi },
+        { type: 'PHI', regex: /\b(?:MRN|EHR)[-_ .]*[A-Za-z0-9\/-]{4,}\b/gi },
         { type: 'ID', regex: /\b(?:Insurance\s+(?:ID|No\.?|Number|#)|Policy(?:\s*(?:ID|No\.?|Number|#)|[:#])|Member\s*(?:ID|No\.?|Number|#|[:#])|Subscriber\s*(?:ID|No\.?|Number|#|[:#])|Group\s*(?:ID|No\.?|Number|#|[:#])|Plan\s*(?:ID|No\.?|Number|#|[:#])|Health(?:\s+Plan)?\s*(?:ID|No\.?|Number|#)|Rx\s*(?:ID|No\.?|Number|Group|BIN|PCN|#))[:\s#]+([A-Za-z0-9-]{3,30})\b/gi },
         { type: 'ID', regex: /\b(?:Health\s+Plan(?:\s+Beneficiary)?|Beneficiary(?:\s+No\.?|\s+Number)?|HPN)[:\s#]+([A-Za-z0-9-]+)/gi },
         { type: 'ID', regex: /\bHPN[-_][A-Za-z0-9-]+\b/gi },
         { type: 'ID', regex: /\b(?:BCB|BCBS|AETNA|CIGNA|UHC|HUMANA|MEDICARE|MEDICAID)[-_A-Za-z0-9]+\b/gi },
-        { type: 'ID', regex: /\b(?:NPI|National Provider Identifier)[:\s#]*(\d{10})\b/gi },
+        { type: 'ID', regex: /\b(?:NPI|National\s+Provider\s+(?:Identifier|ID)|Provider\s+(?:NPI|ID)|Attending\s+(?:NPI|Provider\s+ID)|Physician\s+NPI)[:\s#.]*([0-9OIlo]{10})\b/gi },
+        { type: 'ID', regex: /\(01\)\d{14}(?:\(\d{2}\)[A-Za-z0-9-]+)+/g },
+        { type: 'LOCATION', regex: /\b(?:Pavilion|Ward|Bed|Room|Rm\.?|Suite|Bldg|Building|Floor|Wing|Tower|Unit)\s+[A-Za-z0-9-]+\b/gi },
+        { type: 'DATE', regex: /\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember))\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\b/gi },
         { type: 'ID', regex: /\b(?:Device\s+(?:Identifier|ID|Serial|No\.?|Number)|UDI)[:\s#]+([A-Za-z0-9-]+)/gi },
         { type: 'ID', regex: /\bUDI[-_][A-Za-z0-9-]+\b/gi },
         { type: 'ID', regex: /\b(?:Vehicle\s+(?:Serial|ID|Identification(?:\s+Number)?|No\.?|Number)|VIN)[:\s#]+([A-Za-z0-9-]+)/gi },
@@ -293,7 +312,7 @@ let PROFILE_RULES = {
         { type: 'ID', regex: /\bPARCEL[- ]?\d{5,15}\b/gi },
         { type: 'ID', regex: /\b(?:APN|Assessor(?:'s)?\s*Parcel(?:\s*Number)?|Parcel\s*(?:ID|Number|No\.?|#))[:\s#-]*(\d{2,5}[-\s]\d{2,5}[-\s]\d{2,5}(?:[-\s]\d{1,4})?|\d{6,15})\b/gi },
         { type: 'ID', regex: /\bTENANT[-_]ID[-_][0-9]{4,}\b/gi },
-        { type: 'FINANCIAL', regex: /(?<=\b(?:RENT|LEASE|ESCROW)[\s:]+)(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[0-9,.'’]{3,}\b/gi },
+        { type: 'FINANCIAL', regex: /(?<=\b(?:RENT|LEASE|ESCROW|Purchase\s+Price|Listing\s+Price|Asking\s+Price|Down\s+Payment|Mortgage(?:\s+Balance)?|Closing\s+Costs?|Appraisal(?:\s+Value)?)[\s:]+)(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’]*\d[KMB]?\b|\b\d[0-9,.'’]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹])|[0-9,.'’]{3,}\b)/gi },
         { type: 'SECRET', regex: /\b(?:GATE|DOOR|LOBBY)[-_ ](?:CODE|PIN)[\s:]*\d{4,6}\b/gi },
         { type: 'ID', regex: /\b(?:Escrow\s*(?:Number|No\.?|#|Account|File|Order)|Escrow)[:\s#]*([A-Za-z0-9-]{5,18})\b/gi },
         { type: 'ID', regex: /\b(?:Title\s*Policy|Title\s*Order|Title\s*Commitment)\s*(?:#|ID|No\.?)?[:\s#]*([A-Z0-9-]{6,20})\b/gi },
@@ -404,7 +423,7 @@ let PROFILE_RULES = {
         { type: 'FINANCIAL', regex: /\b(?:Policy|Contract)\s*(?:No\.?|Number|#)[:\s]+[A-Z0-9][A-Z0-9\-]{3,14}\b/gi },
         { type: 'ID', regex: /\bCRD\s*#?\s*\d{4,8}\b/gi },
         { type: 'FINANCIAL', regex: /\b(?:Annual\s+(?:Distribution|Withdrawal)|RMD|Required\s+Minimum\s+Distribution)[:\s]+(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’]+\b/gi },
-        { type: 'FINANCIAL', regex: /\b(?:Portfolio|Market\s+Value|Net\s+Worth|AUM|Total\s+Assets)[:\s]+(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’]+[KMB]?\b/gi },
+        { type: 'FINANCIAL', regex: /(?<=\b(?:Portfolio(?:\s+Value)?|Market\s+Value|Net\s+Worth|AUM|Total\s+Assets)[:\s]+)(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’]*\d[KMB]?\b|\b\d[0-9,.'’]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹])|[0-9,.'’]{3,}\b)/gi },
         { type: 'FINANCIAL', regex: /\b(?:Roth\s+)?(?:IRA|401k|401\(k\)|403b|403\(b\)|SEP|SIMPLE)\s*(?:Account|Acct|Plan)?\s*(?:No|Number|#)?[:\s#]*[A-Z0-9]{4,15}\b/gi },
         { type: 'ID', regex: /\bCUSIP[:\s#]*([0-9A-Z]{9})\b/gi },
         { type: 'ID', regex: /\bISIN[:\s#]*([A-Z]{2}[0-9A-Z]{9}[0-9])\b/gi },
@@ -437,7 +456,9 @@ let PROFILE_RULES = {
         { type: 'ID', regex: /\b(?:CAF(?:\s+ID)?|(?:Practitioner|Tax\s+Preparer)\s+(?:PIN|ID)|PTIN)[:\s#]*[A-Z0-9-]{6,12}\b/gi },
         { type: 'ID', regex: /\bEFIN[:\s#]*\d{6}\b/gi },
         { type: 'ID', regex: /\bGL[-_\s]*(?:Account|Acct|Code)?[:\s#]*\d{4,10}\b/gi },
-        { type: 'ID', regex: /\b(?:Cost\s+Center|CC)[-_\s]*(?:ID|Code|#)?[:\s#]*[A-Z0-9_-]*\d[A-Z0-9_-]*\b/gi }
+        { type: 'ID', regex: /\b(?:Cost\s+Center|CC)[-_\s]*(?:ID|Code|#)?[:\s#]*[A-Z0-9_-]*\d[A-Z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:Invoice|Inv|Purchase\s+Order|PO|Bill|Check|Voucher|Remittance)\s*(?:Number|Num|No\.?|#)?[:\s#]+([A-Za-z0-9_-]{4,25})\b/gi },
+        { type: 'FINANCIAL', regex: /(?<=\b(?:Invoice(?:\s+Total)?|Amount\s+Due|Subtotal|Total\s+Due|Payment(?:\s+Amount)?|Ledger\s+Balance|Credit|Debit|Net\s+Amount|Total\s+Paid|Billed|Remittance)[:\s]+)(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’]*\d[KMB]?\b|\b\d[0-9,.'’]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹])|[0-9,.'’]{3,}\b)/gi }
     ],
     pharma: [
         { type: 'ID', regex: /\b(?:Subject|Patient|Participant)\s+(?:ID|No)[:\s#]*[-A-Z0-9]{3,15}\b/gi },
@@ -596,7 +617,7 @@ const CORPORATE_SUFFIXES = new Set([
 let NOT_NAME_WORDS = new Set([
     'uk', 'eu', 'us', 'usa', 'dpa', 'ico', 'dpo', 'ciso', 'ssrn', 'elsevier', 'gdpr', 'ccpa', 'cpra', 'hipaa', 'soc2', 'iso27001', 'governance', 'regulatory', 'framework', 'mandate', 'mandates', 'guidance', 'statute', 'statutes', 'jurisdiction', 'jurisdictions', 'recital', 'article', 'articles', 'treatise', 'workstation', 'device', 'endpoint', 'blueprint', 'personal', 'cross-border', 'cross', 'border', 'transfer', 'retrieval', 'augmented', 'generation', 'limitation', 'discrimination', 'imposes', 'heavy', 'identifiable', 'bypasses', 'author', 'authors', 'contact', 'contacts', 'keywords', 'keyword', 'keys', 'key', 'separation', 'pre-print', 'preprint', 'abstract', 'structured', 'background', 'methods', 'results', 'discussion', 'conclusion', 'conclusions', 'introduction', 'overview', 'workflow', 'paradigm', 'nomenclature', 'repository', 'classification', 'phenotypes', 'biomedical', 'bioinformatics', 'identifiers', 'de-identification', 'sanitization', 'ephemeral', 'validation', 'validating', 'genomic', 'genomics', 'clinical', 'phenotype', 'target', 'corresponding', 'subject', 'biorxiv', 'medrxiv', 'arxiv', 'privacyscrubber', 'research', 'lead', 'architect', 'chief', 'founder', 'symbols', 'gene', 'genes', 'sample', 'barcode', 'pipeline', 'downstream', 'pedigree', 'trees', 'exposes', 'violates', 'protecting', 'anonymization', 'redacted', 'redaction', 'zero-trust', 'ztds',
     'conventional', 'model', 'models', 'potential', 'multi', 'million', 'dollar', 'dollars', 'surrogate', 'surrogates', 'geographic', 'subdivisions', 'subdivision', 'inference', 'response', 'responses', 'latency', 'benchmarks', 'benchmark', 'experimental', 'methodology', 'informatics', 'ethics', 'accountability', 'civil', 'rights', 'perimeter', 'network', 'requirements', 'requirement', 'statutory', 'categories', 'category', 'regulations', 'regulation', 'penalties', 'penalty', 'disclosure', 'disclosures', 'clinician', 'terminal', 'transport', 'inpatient', 'discharge', 'summaries', 'operative', 'reports', 'outpatient', 'psychiatric', 'telehealth', 'consultation', 'pathology', 'sequencing', 'laboratory', 'sensitivity', 'specificity', 'proxy', 'gateways', 'gateway', 'packet', 'packets', 'inspection', 'declarations', 'availability', 'competing', 'interests', 'interventions', 'multicenter', 'multi-center', 'institution', 'institutional', 'protocol', 'deviations', 'adverse', 'events', 'abbreviations', 'agents', 'agent', 'committee', 'committees', 'board', 'boards', 'nih', 'pubmed', 'central', 'open', 'access', 'policy', 'trial', 'trials', 'crf', 'crfs', 'ehr', 'ehrs', 'baa', 'baas', 'hitech', 'safe', 'harbor', 'section',
-    'retirement', 'roth', 'ira', 'acct', 'custodial', 'brokerage', 'portfolio', 'annuity', 'dividend', 'distribution', 'reconciliation', 'withholding', 'remuneration', 'pin', 'lobby', 'passcode', 'code', 'gate', 'door', 'access', 'tenant', 'landlord', 'escrow', 'cadastral', 'claim', 'claims', 'adjuster', 'insured', 'carrier', 'indemnity', 'underwriter', 'underwriting', 'deductible', 'premium', 'settlement', 'loss', 'cargo', 'writers', 'guild', 'ghostwriter', 'actor', 'screenplay', 'audiovisual', 'cinematic', 'co-production', 'alumnus', 'alumni', 'registrar', 'transcript', 'diploma', 'orchestration', 'runtime', 'helpdesk', 'freshdesk', 'intercom', 'zendesk', 'investigational', 'pharmacovigilance', 'reaction', 'medication', 'manufacturing', 'lot', 'industrial', 'electronics', 'driver', 'drivers', 'license', 'licence', 'clearing', 'house', 'automated', 'central', 'securities', 'depository', 'arbitration', 'tribunal', 'instrument', 'infrastructure', 'talent', 'dossier',
+    'retirement', 'roth', 'ira', 'acct', 'custodial', 'brokerage', 'portfolio', 'annuity', 'dividend', 'distribution', 'reconciliation', 'withholding', 'remuneration', 'pin', 'lobby', 'passcode', 'code', 'gate', 'door', 'access', 'tenant', 'landlord', 'escrow', 'cadastral', 'claim', 'claims', 'adjuster', 'insured', 'carrier', 'indemnity', 'underwriter', 'underwriting', 'deductible', 'premium', 'settlement', 'loss', 'cargo', 'writers', 'guild', 'ghostwriter', 'actor', 'screenplay', 'audiovisual', 'cinematic', 'co-production', 'alumnus', 'alumni', 'registrar', 'transcript', 'diploma', 'orchestration', 'runtime', 'helpdesk', 'freshdesk', 'intercom', 'zendesk', 'investigational', 'pharmacovigilance', 'reaction', 'medication', 'manufacturing', 'lot', 'industrial', 'electronics', 'driver', 'drivers', 'license', 'licence', 'clearing', 'house', 'automated', 'central', 'securities', 'depository', 'arbitration', 'tribunal', 'instrument', 'infrastructure', 'talent', 'dossier', 'tel', 'phone', 'fax', 'mobile', 'cell', 'email', 'dpoa', 'poa',
     // Grammatical & Sentence Starters
     'the', 'a', 'an', 'this', 'that', 'these', 'those', 'my', 'your', 'his', 'her', 'their', 'our', 'its', 'it', 'he', 'she', 'they', 'we', 'i', 'you', 'who', 'whom', 'which', 'what', 'whose', 'why', 'how', 'when', 'where', 'with', 'for', 'from', 'by', 'to', 'at', 'in', 'on', 'of', 'about', 'as', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'and', 'but', 'or', 'so', 'yet', 'im', "i'm", "you're", "they're", "we're", "it's", "he's", "she's", "that's", "there's", "what's", "who's", "i've", "you've", "we've", "they've", "i'll", "you'll", "we'll", "they'll", "i'd", "you'd", "we'd", "they'd",
     // Verbs, Auxiliaries, Commands & Imperatives
@@ -735,7 +756,7 @@ const PROFILE_JARGON = {
         'insurance', 'bcbs', 'bronchitis', 'amoxicillin', 'penicillin', 'antibiotic', 'antibiotics', 'vital',
         'vitals', 'bp', 'hr', 'bpm', 'mmhg', 'allergies', 'dosage', 'parenchyma', 'ventricles', 'fazekas',
         'ischemia', 'lesion', 'cardiology', 'atherosclerotic', 'aortocoronary', 'bypass', 'graft', 'hyperlipidemia',
-        'diverticulitis', 'resection', 'colon', 'superbill', 'encounter', 'cpt', 'hcpcs', 'icd-10'
+        'diverticulitis', 'resection', 'colon', 'superbill', 'encounter', 'cpt', 'hcpcs', 'icd-10', 'pt'
     ],
     realestate: [
         'escrow', 'tenant', 'landlord', 'lease', 'mortgage', 'appraisal', 'broker', 'property', 'zoning',
@@ -752,7 +773,13 @@ const PROFILE_JARGON = {
         'recitals', 'whereas', 'confidential', 'information', 'care', 'term', 'exhibit', 'party', 'parties',
         'disclosing', 'receiving', 'witnesseth', 'standard', 'indemnification', 'liability', 'governing',
         'law', 'docket', 'deponent', 'reporter', 'appearances', 'examination', 'services', 'scope', 'work',
-        'master', 'msa'
+        'master', 'msa',
+        'finra', 'sec', 'disciplinary', 'arbitration', 'proceeding', 'proceedings', 'dispute', 'resolution',
+        'escrow', 'claimant', 'respondent', 'petitioner', 'appellant', 'appellee', 'trustee', 'trustor',
+        'grantor', 'grantee', 'fiduciary', 'principal', 'agent', 'officer', 'counsel', 'lead', 'attorney',
+        'partner', 'associate', 'representative', 'broker', 'primary', 'privilege', 'privileged', 'doctrine',
+        'work-product', 'power', 'durable', 'evidence', 'rules', 'rule', 'statutory', 'disqualification',
+        'acquisition', 'file', 'securities', 'exchange'
     ],
     academic: [
         'institutional', 'review', 'board', 'irb', 'protocol', 'national', 'institutes', 'health', 'nih',
@@ -866,7 +893,7 @@ const PROFILE_JARGON = {
     }
 
     function detectMatches(text, activeProfile = 'general', customRules = [], nlpNames = [], enabledEntities = null, mlEntities = []) {
-        let textToProcess = stitchOrphanedNameLines(text, activeProfile).replace(/[\u200b\u200c\u200d\ufeff]/g, '');
+        let textToProcess = stitchOrphanedNameLines(text, activeProfile).replace(/[\u200b\u200c\u200d\ufeff\u00ad]/gi, '');
         textToProcess = textToProcess.replace(/([a-z])(Email|Phone|Mobile|Tel|Address|IP|ID|URL|SSN|Date):/g, '$1 $2:');
 
         let matches = [];
@@ -944,9 +971,9 @@ const PROFILE_JARGON = {
                     if (!val || NAME_STOP_LIST.has(val) || currentJargon.has(val) || NOT_NAME_WORDS.has(val)) continue;
                     
                     if (rule.type === 'NAME') {
-                        let words = val.split(/[ \t\xA0]+/);
+                        let words = val.split(/[ \t\xA0\^]+/);
                         if (!rule.isContextName) {
-                            let origWords = matchedText.split(/[ \t\xA0]+/);
+                            let origWords = matchedText.split(/[ \t\xA0\^]+/);
                             while (words.length > 2 && (currentJargon.has(words[0]) || (words[0].length > 1 && NOT_NAME_WORDS.has(words[0])) || (words[0].replace(/[^\p{L}]/gu, '').length > 1 && NOT_NAME_WORDS.has(words[0].replace(/[^\p{L}]/gu, ''))))) {
                                 origWords.shift();
                                 words.shift();
@@ -966,7 +993,7 @@ const PROFILE_JARGON = {
                                 if (cleanW.length <= 1) return false;
                                 return currentJargon.has(w) || NOT_NAME_WORDS.has(w) || NOT_NAME_WORDS.has(cleanW) || NAME_STOP_LIST.has(w) || NAME_STOP_LIST.has(cleanW);
                             }) ||
-                            val.split(/[ \t\xA0-]+/).some(sw => {
+                            val.split(/[ \t\xA0\^\-]+/).some(sw => {
                                 const cleanSW = sw.replace(/[^\p{L}]/gu, '');
                                 if (cleanSW.length <= 1) return false;
                                 return currentJargon.has(sw) || NOT_NAME_WORDS.has(sw) || NOT_NAME_WORDS.has(cleanSW) || NAME_STOP_LIST.has(sw) || NAME_STOP_LIST.has(cleanSW);
@@ -984,6 +1011,7 @@ const PROFILE_JARGON = {
 
                         if (rule.isContextName && words.length > 0 && words.some(w => {
                             const cleanW = w.replace(/[^\p{L}]/gu, '');
+                            if (cleanW.length <= 1) return false;
                             if (rule.isCorporateName && (CORPORATE_SUFFIXES.has(cleanW) || US_STATES_SET.has(cleanW))) {
                                 return false;
                             }
@@ -1178,7 +1206,12 @@ const PROFILE_JARGON = {
         cleaned = cleaned.replace(/^(?:Here (?:is|are) (?:the )?(?:redacted|scrubbed|sanitized|processed|clean|updated|modified) (?:text|output|version|data).*?[:\n]+|\*\*Scrubbed Text\*\*[:\n]+|### Scrubbed Text[:\n]+)/i, '');
         cleaned = cleaned.replace(/^\s*Edit\s*\n+/i, "");
         cleaned = cleaned.replace(/\s*\bEdit\s+in\s+a\s+page\b\s*$/i, "");
-        // 3. Strip stray leading colons, semicolons, or separators left by stripped icons/artifact headers
+        // 3. Strip echoed system instructions and PrivacyScrubber pseudonymization disclaimers
+        cleaned = cleaned.replace(/^\s*(?:Understood|Acknowledged|Got it|Sure|OK|Okay|Note taken|Understood[.,!])[^\n]*\n+/i, "");
+        cleaned = cleaned.replace(/(?:^|\n*)\s*\[(?:Privacy Note|Context: identifiers|Privacy Scrubber Mode|SYSTEM INSTRUCTION: DATA PRIVACY MODE)[\s\S]*?exactly as formatted in your response\.?\]\s*(?:\n*|$)/gi, "\n\n");
+        cleaned = cleaned.replace(/(?:^|\n*)\s*\[(?:Privacy Note|Context: identifiers|Privacy Scrubber Mode|SYSTEM INSTRUCTION: DATA PRIVACY MODE)[^\]]*\]\s*(?:\n*|$)/gi, "\n\n");
+        cleaned = cleaned.replace(/(?:^|\n*)\s*(?:Direct identifiers in this prompt were pseudonymized|I will retain all bracketed tokens)[^\n]*(?:\n*|$)/gi, "\n\n");
+        // 4. Strip stray leading colons, semicolons, or separators left by stripped icons/artifact headers
         cleaned = cleaned.replace(/^[:;|\-\—\–]+(?=\n|$)/, "");
         cleaned = cleaned.replace(/^[:;]+\s*/, "");
         return cleaned.trim();

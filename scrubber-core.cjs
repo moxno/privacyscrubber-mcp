@@ -66,7 +66,7 @@ function scrubText(text, customRules = [], tokenLabelMap = {}, profile = 'Genera
     
     // Protect system prompt from being scrubbed or counted
     let extractedSystemPrompt = "";
-    let textToProcess = text.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
+    let textToProcess = text.replace(/[\u200b\u200c\u200d\ufeff\u00ad]/gi, '');
 
     const isSpecialized = profile && profile.toLowerCase() !== 'general';
     

@@ -1,0 +1,9 @@
+node_modules
+.git
+.github
+*.log
+qa-test-dir
+_temp_*
+bundle.mcpb
+*.tgz
+.DS_Store
