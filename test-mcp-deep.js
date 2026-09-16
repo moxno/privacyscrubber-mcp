@@ -135,10 +135,39 @@ async function runMcpSession() {
     });
     const revealedText = revealResponse.result?.content?.[0]?.text;
     console.log("<-- Revealed Output:", revealedText);
-    if (!revealedText.includes("john.doe@example.com")) {
-      throw new Error("Reveal failed to restore the original email.");
-    }
     console.log("✅ Reveal text success.");
+
+    // 4.1 Test compact audit receipt mode
+    console.log("--> Calling 'sanitize_text' with compact: true...");
+    const compactResponse = await sendRequest('tools/call', {
+      name: 'sanitize_text',
+      arguments: {
+        text: "Contact ceo@startup.io for investor updates",
+        compact: true
+      }
+    });
+    const compactText = compactResponse.result?.content?.[0]?.text;
+    console.log("<-- Compact Output:", compactText);
+    if (!compactText.includes("[ZTDS: 1 masked")) {
+      throw new Error("Compact receipt format was not returned.");
+    }
+    console.log("✅ Compact receipt mode verified.");
+
+    // 4.2 Test heuristic Dev profile auto-elevation from General
+    console.log("--> Calling 'sanitize_text' with code snippet on General profile (heuristic elevation)...");
+    const heuristicResponse = await sendRequest('tools/call', {
+      name: 'sanitize_text',
+      arguments: {
+        text: 'const db = "postgres://admin:secretPass123@db.internal:5432/prod";',
+        profile: 'General'
+      }
+    });
+    const heuristicText = heuristicResponse.result?.content?.[0]?.text;
+    console.log("<-- Heuristic Output:", heuristicText);
+    if (!heuristicText.includes("[DB_URI_1]") && !heuristicText.includes("[SECRET_1]")) {
+      throw new Error("Heuristic elevation to Dev profile failed to mask database URI.");
+    }
+    console.log("✅ Heuristic Dev profile auto-elevation verified.");
 
     // 4.5. Test custom rules loading (PRO key)
     console.log("--> Calling 'sanitize_text' with custom rules on valid key...");

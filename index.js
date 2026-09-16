@@ -222,7 +222,18 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
     };
 }
 
-function formatAuditReceipt(telemetry) {
+function formatAuditReceipt(telemetry, compact = false) {
+  const isCompact = compact === true || process.env.PRIVACYSCRUBBER_COMPACT_RECEIPT === '1' || process.env.PRIVACYSCRUBBER_COMPACT_RECEIPT === 'true';
+  if (isCompact) {
+    if (telemetry.totalCount === 0) {
+      return "\n\n> [ZTDS: CLEAN (ZERO PII DETECTED)]\n";
+    }
+    const entitiesList = Object.entries(telemetry.entities)
+      .map(([type, count]) => `${count} ${type}`)
+      .join(', ');
+    return `\n\n> [ZTDS: ${telemetry.totalCount} masked (${entitiesList}) | Risk: ${telemetry.riskLevel} | Compliance: ${telemetry.frameworksList.join(', ')}]\n`;
+  }
+
   if (telemetry.totalCount === 0) {
     return "\n\n> 🛡️ **PrivacyScrubber Audit Receipt**: CLEAN (ZERO PII DETECTED)\n> * ⭐ **Star on GitHub:** [moxno/privacyscrubber-mcp](https://github.com/moxno/privacyscrubber-mcp) | **SDK & Enterprise:** [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing)\n";
   }
@@ -270,6 +281,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: "string",
               description: "The detection profile to use. Available: 'General' (Free), or PRO profiles: 'Dev' (Engineering/Code), 'Medical', 'Pharma', 'Legal', 'Compliance', 'CCPA', 'Finance', 'Bizops', 'Sales', 'WealthMgmt', 'Insurance', 'Accounting', 'HR', 'Security', 'Marketing', 'Support', 'RealEstate', 'Agents', 'Academic', 'Creative', 'Tech', 'Personal'. Defaults to 'General'."
             },
+            compact: {
+              type: "boolean",
+              description: "Optional. When true, returns a compact 1-line audit summary saving token overhead in AI IDEs (Cursor, Claude Desktop)."
+            },
             ignore_list: {
               type: "array",
               items: { type: "string" },
@@ -306,6 +321,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             profile: {
               type: "string",
               description: "The detection profile to use. Available: 'General' (Free), or PRO profiles: 'Dev' (Engineering/Code), 'Medical', 'Pharma', 'Legal', 'Compliance', 'CCPA', 'Finance', 'Bizops', 'Sales', 'WealthMgmt', 'Insurance', 'Accounting', 'HR', 'Security', 'Marketing', 'Support', 'RealEstate', 'Agents', 'Academic', 'Creative', 'Tech', 'Personal'. Defaults to 'General'."
+            },
+            compact: {
+              type: "boolean",
+              description: "Optional. When true, returns a compact 1-line audit summary saving token overhead in AI IDEs (Cursor, Claude Desktop)."
             }
           },
           required: ["file_path"]
@@ -673,7 +692,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   try {
     if (name === "sanitize_text") {
-      const { text, profile = "General", ignore_list } = args || {};
+      const { text, profile = "General", ignore_list, compact = false } = args || {};
 
       // Merge per-call ignore_list into persistent sessionIgnoreList
       if (Array.isArray(ignore_list)) {
@@ -697,6 +716,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const isAdvanced = targetProfile.toLowerCase() !== "general";
       const license = checkLicenseStatus();
       let finalProfile = targetProfile;
+      let isAutoElevated = false;
+
+      // Heuristic auto-detection: if profile is General and text contains obvious DevOps credentials or code syntax, auto-activate Dev
+      const DEV_HEURISTIC_REGEX = /(?:AKIA[0-9A-Z]{16}|ghp_[a-zA-Z0-9]{36}|sk-[a-zA-Z0-9]{20,}|-----BEGIN (?:RSA )?PRIVATE KEY-----|Bearer\s+eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+|(?:postgres|postgresql|mysql|mongodb|redis):\/\/[^\s"'>]+|export\s+(?:AWS_|DATABASE_|API_KEY|SECRET)|const\s+\w+\s*=\s*require\(|import\s+.*\s+from\s+['"])/i;
+
+      if (!isAdvanced && DEV_HEURISTIC_REGEX.test(text)) {
+        finalProfile = "Dev";
+        isAutoElevated = true;
+        mcpLog(`${colors.cyan}🔍 [PrivacyScrubber] Auto-detected code/DevOps secrets. Activated 'Dev' profile rules.${colors.reset}\n`);
+      }
 
       const limitStatus = checkFreeTierLimit(license.isPro);
       if (limitStatus.blocked) {
@@ -706,7 +735,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
+      const charLimit = (isAdvanced && !isAutoElevated && !license.isPro) ? 5000 : 15000;
       if (isAdvanced && !license.isPro) {
         mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char limit).${colors.reset}\n`);
       }
@@ -716,7 +745,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { scrubbedText, newTokens } = performSanitization(processedText, finalProfile, sessionIgnoreList);
       
       const telemetry = buildCisoAuditTelemetry(newTokens);
-      const receiptMd = formatAuditReceipt(telemetry);
+      const receiptMd = formatAuditReceipt(telemetry, compact);
 
       return {
         content: [
@@ -810,7 +839,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           ]
         };
       }
-      const { profile = "General" } = args;
+      const { profile = "General", compact = false } = args;
       const filePath = rawPath;
       
       const resolvedPath = path.resolve(filePath);
@@ -881,7 +910,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const sanitized = performSanitization(processedContent, finalProfile, sessionIgnoreList);
           const { scrubbedText, newTokens } = sanitized;
           const telemetry = buildCisoAuditTelemetry(newTokens);
-          const receiptMarkdown = formatAuditReceipt(telemetry);
+          const receiptMarkdown = formatAuditReceipt(telemetry, compact);
           const combinedOutput = `${scrubbedText}\n\n${receiptMarkdown}`;
 
           return {
@@ -927,7 +956,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const sanitized = performSanitization(content, finalProfile, sessionIgnoreList);
             const { scrubbedText, newTokens } = sanitized;
             const telemetry = buildCisoAuditTelemetry(newTokens);
-            const receiptMarkdown = formatAuditReceipt(telemetry);
+            const receiptMarkdown = formatAuditReceipt(telemetry, compact);
             const combinedOutput = `${scrubbedText}\n\n${receiptMarkdown}`;
 
             return {
@@ -960,7 +989,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const sanitized = performSanitization(content, finalProfile, sessionIgnoreList);
             const { scrubbedText, newTokens } = sanitized;
             const telemetry = buildCisoAuditTelemetry(newTokens);
-            const receiptMarkdown = formatAuditReceipt(telemetry);
+            const receiptMarkdown = formatAuditReceipt(telemetry, compact);
             const combinedOutput = `${scrubbedText}\n\n${receiptMarkdown}`;
 
             return {
@@ -1004,6 +1033,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const isAdvanced = targetProfile.toLowerCase() !== "general";
       const license = checkLicenseStatus();
       let finalProfile = targetProfile;
+      let isAutoElevated = false;
+
+      const ext = path.extname(resolvedPath).toLowerCase();
+      const CODE_EXTENSIONS = new Set(['.js', '.ts', '.jsx', '.tsx', '.py', '.go', '.rs', '.java', '.rb', '.php', '.cs', '.sh', '.bash', '.zsh', '.env', '.yaml', '.yml', '.toml', '.sql']);
+      const DEV_HEURISTIC_REGEX = /(?:AKIA[0-9A-Z]{16}|ghp_[a-zA-Z0-9]{36}|sk-[a-zA-Z0-9]{20,}|-----BEGIN (?:RSA )?PRIVATE KEY-----|Bearer\s+eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+|(?:postgres|postgresql|mysql|mongodb|redis):\/\/[^\s"'>]+|export\s+(?:AWS_|DATABASE_|API_KEY|SECRET)|const\s+\w+\s*=\s*require\(|import\s+.*\s+from\s+['"])/i;
+
+      if (!isAdvanced && (CODE_EXTENSIONS.has(ext) || DEV_HEURISTIC_REGEX.test(content))) {
+        finalProfile = "Dev";
+        isAutoElevated = true;
+        mcpLog(`${colors.cyan}🔍 [PrivacyScrubber] Auto-detected code/DevOps file '${path.basename(resolvedPath)}'. Activated 'Dev' profile rules.${colors.reset}\n`);
+      }
 
       const limitStatus = checkFreeTierLimit(license.isPro);
       if (limitStatus.blocked) {
@@ -1013,7 +1053,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
+      const charLimit = (isAdvanced && !isAutoElevated && !license.isPro) ? 5000 : 15000;
       if (isAdvanced && !license.isPro) {
         mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char limit).${colors.reset}\n`);
       }
@@ -1022,7 +1062,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const { scrubbedText, newTokens } = performSanitization(processedContent2, finalProfile, sessionIgnoreList);
       const telemetry = buildCisoAuditTelemetry(newTokens);
-      const receiptMd = formatAuditReceipt(telemetry);
+      const receiptMd = formatAuditReceipt(telemetry, compact);
 
       return {
         content: [
