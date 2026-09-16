@@ -614,7 +614,7 @@ async function runMcpSession() {
     });
     const truncatedResult = truncateResponse.result?.content?.[0]?.text || "";
     console.log("<-- Truncated text length:", truncatedResult.length);
-    if (truncatedResult.length < 15000 || truncatedResult.length > 15200) {
+    if (truncatedResult.length < 15000 || truncatedResult.length > 15300) {
       throw new Error(`Expected text length of ~15000 after truncation, but got ${truncatedResult.length}`);
     }
     if (!stderr2.includes("Input truncated to 15,000 characters")) {

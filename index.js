@@ -224,7 +224,7 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
 
 function formatAuditReceipt(telemetry) {
   if (telemetry.totalCount === 0) {
-    return "\\n\\n> 🛡️ **PrivacyScrubber Audit Receipt**: CLEAN (ZERO PII DETECTED)\\n";
+    return "\n\n> 🛡️ **PrivacyScrubber Audit Receipt**: CLEAN (ZERO PII DETECTED)\n> * ⭐ **Star on GitHub:** [moxno/privacyscrubber-mcp](https://github.com/moxno/privacyscrubber-mcp) | **SDK & Enterprise:** [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing)\n";
   }
   
   const entitiesList = Object.entries(telemetry.entities)
@@ -233,7 +233,7 @@ function formatAuditReceipt(telemetry) {
 
   const icon = telemetry.riskLevel.includes('CRITICAL') ? '🔴' : (telemetry.riskLevel.includes('MODERATE') ? '🟠' : '🟢');
 
-  return `\\n\\n> 🛡️ **PrivacyScrubber Audit Receipt**\\n> * **Risk Level:** ${icon} ${telemetry.riskLevel}\\n> * **Compliance Enforced:** ${telemetry.frameworksList.join(', ')}\\n> * **Tokens Masked:** ${telemetry.totalCount} (${entitiesList})\\n`;
+  return `\n\n> 🛡️ **PrivacyScrubber Audit Receipt**\n> * **Risk Level:** ${icon} ${telemetry.riskLevel}\n> * **Compliance Enforced:** ${telemetry.frameworksList.join(', ')}\n> * **Tokens Masked:** ${telemetry.totalCount} (${entitiesList})\n> * ⭐ **Star on GitHub:** [moxno/privacyscrubber-mcp](https://github.com/moxno/privacyscrubber-mcp) | **SDK & Enterprise:** [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing)\n`;
 }
 
 // Create the MCP server
@@ -1837,6 +1837,7 @@ server.connect(transport).then(() => {
   mcpLog(`${colors.greenBold}✅ PrivacyScrubber ZTDS MCP Server v${MCP_VERSION} started successfully.${colors.reset}\n`);
   mcpLog(`${colors.cyan}📦 Need programmatic in-code redaction? Try: npm install @privacyscrubber/sdk${colors.reset}\n`);
   mcpLog(`${colors.yellowBold}⭐ Star us on GitHub: https://github.com/moxno/privacyscrubber-mcp${colors.reset}\n`);
+  mcpLog(`${colors.cyan}👉 Developer SDK & Enterprise: https://privacyscrubber.com/pricing${colors.reset}\n`);
 }).catch((error) => {
   console.error("Failed to connect MCP server transport:", error);
   process.exit(1);
