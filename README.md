@@ -1,12 +1,9 @@
 # @privacyscrubber/mcp-server
 
-[![CI](https://github.com/moxno/privacyscrubber-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/moxno/privacyscrubber-mcp/actions/workflows/ci.yml)
 [![NPM Version](https://img.shields.io/npm/v/@privacyscrubber/mcp-server?color=blue)](https://www.npmjs.com/package/@privacyscrubber/mcp-server)
 [![NPM Downloads](https://img.shields.io/npm/dm/@privacyscrubber/mcp-server?color=3b82f6)](https://www.npmjs.com/package/@privacyscrubber/mcp-server)
 [![NPM SDK](https://img.shields.io/npm/v/@privacyscrubber/sdk?label=%40privacyscrubber%2Fsdk&color=10b981)](https://www.npmjs.com/package/@privacyscrubber/sdk)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Trust Boundary](https://img.shields.io/badge/Trust%20Boundary-Documented-success)](SECURITY_MODEL.md)
-[![Patent Pending](https://img.shields.io/badge/Patent-Pending%20(ILPO%20331905)-06b6d4.svg)](https://privacyscrubber.com/patents/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22058770.svg)](https://zenodo.org/records/22058770)
 [![OSF DOI](https://img.shields.io/badge/OSF%20DOI-10.17605%2FOSF.IO%2F5BYJF-blue.svg)](https://osf.io/5byjf/)
 [![SSRN](https://img.shields.io/badge/SSRN-7335581-darkred.svg)](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7335581)
@@ -17,6 +14,7 @@
 [![There's An AI For That](https://img.shields.io/badge/There's_An_AI_For_That-Live-06b6d4.svg)](https://theresanaiforthat.com/ai/privacy-scrubber/)
 [![Security: 100% Local](https://img.shields.io/badge/Security-100%25%20Local-emerald)](https://privacyscrubber.com)
 [![Parity: 100% Core Match](https://img.shields.io/badge/Parity-100%25%20Core%20Match-blueviolet)](https://privacyscrubber.com)
+[![Patent Pending](https://img.shields.io/badge/Patent-Pending%20(ILPO%20331905)-06b6d4.svg)](https://privacyscrubber.com/patents/)
 [![GitHub Stars](https://img.shields.io/github/stars/moxno/privacyscrubber-mcp?style=social)](https://github.com/moxno/privacyscrubber-mcp)
 
 **CISO-Approved Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Windsurf, and Claude Desktop.**
@@ -35,18 +33,6 @@ All sensitive parameters, identifiers, and variables are intercepted locally ins
                                │                                       │
 [Original Output] <─── [MCP reveal_text] <─────────────────────────────┘
 ```
-
----
-
-## 🛡️ Trust Boundary & Threat Model
-
-PrivacyScrubber MCP is an **application-layer, in-process sanitization engine** designed to reduce data exposure risks in LLM workflows. It is **not** a mandatory network airlock or transparent socket proxy.
-
-For full architectural specifications, consult our [Security Model & Trust Boundary Specification](SECURITY_MODEL.md). Key boundary characteristics:
-- **In-Process Sanitization:** All redaction and tokenization run locally in Node.js volatile heap memory (RAM). Token maps are never written to disk or transmitted across networks.
-- **De-Tokenization Lifecycle:** Tools like `detokenize_text`, `reveal_text`, and `guard_apply_patch` restore original plaintext. To avoid re-exposing secrets to LLMs or shared logs, de-tokenization should only be performed at terminal boundaries (e.g. disk write or developer UI).
-- **Host Execution Scope:** Optional execution tools (`guard_exec`, `guard_read_file`, `guard_apply_patch`) run with host OS user permissions. For automated or untrusted agent environments, execution inside isolated containers (Docker/Podman) is recommended.
-- **Zero Network Egress:** Core sanitization makes zero outbound network requests and is 100% Airplane Mode verifiable.
 
 ---
 
@@ -79,8 +65,7 @@ import { wrapOpenAI } from '@privacyscrubber/sdk';
 const openai = wrapOpenAI(new OpenAI({ apiKey: process.env.OPENAI_API_KEY }));
 ```
 
-👉 [View @privacyscrubber/sdk on NPM](https://www.npmjs.com/package/@privacyscrubber/sdk) | Includes `wrapOpenAI()` middleware, TypeScript definitions, and 25 compliance profiles.  
-👉 [Acquire Commercial Developer SDK License ($199/mo or $1,990/yr)](https://privacyscrubber.com/pricing?utm_source=npm&utm_medium=readme&utm_campaign=dev_sdk) for unrestricted batch throughput and multi-agent RAG pipelines.
+👉 [View @privacyscrubber/sdk on NPM](https://www.npmjs.com/package/@privacyscrubber/sdk) | Includes `wrapOpenAI()` middleware, TypeScript definitions, and 25 compliance profiles.
 
 ---
 
@@ -261,7 +246,7 @@ Returns a visual dashboard showing your current tier, session request count, act
 *   **Response Example (Free Tier):**
     ```
     ╔══════════════════════════════════════════════════╗
-    ║       PrivacyScrubber MCP Server v2.2.0          ║
+    ║       PrivacyScrubber MCP Server v2.2.2          ║
     ╠══════════════════════════════════════════════════╣
     ║  🔓 Tier: FREE                                   ║
     ║  📊 Session requests: 5                          ║
@@ -308,51 +293,27 @@ Looking for real-time protection directly inside your web browser?
 *   **Chrome Extension:** Get the [PrivacyScrubber Chrome Extension](https://chromewebstore.google.com/detail/privacyscrubber-%E2%80%94-pii-red/pimoejgefeilajmmbpghifdmhdlkgjol) to sanitize prompts directly inside ChatGPT, Claude, and Gemini in real-time.
 *   **Web Sandbox:** Use the zero-server browser sanitization tools at [PrivacyScrubber Homepage](https://privacyscrubber.com/?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server).
 
----
-
-## 🔗 Ecosystem & Production Architecture Guides
-
-- 🌐 **Web App**: [https://privacyscrubber.com](https://privacyscrubber.com)
-- 📦 **Node.js / TypeScript SDK**: [@privacyscrubber/sdk](https://www.npmjs.com/package/@privacyscrubber/sdk)
-- 🧩 **Chrome Extension**: [Chrome Web Store](https://chromewebstore.google.com/detail/privacyscrubber-%E2%80%94-zero-tr/pimoejgefeilajmmbpghifdmhdlkgjol)
-- 🛡️ **RAG & Vector Databases**: [Sanitizing PII Before Vector DB Ingestion](https://privacyscrubber.com/solutions/dev/rag-vector-database-pii-masking/)
-- 🤖 **LangChain & LlamaIndex**: [In-Memory PII Middleware for AI Agent Pipelines](https://privacyscrubber.com/solutions/agents/langchain-llamaindex-pii-anonymizer/)
-
----
-
-## ⚖️ Intellectual Property & Virtual Patent Marking
-
-The Zero-Trust Data Sanitization (ZTDS) architecture, in-memory deterministic tokenization, cryptographic session handoff, and stdio execution methods implemented in this package are proprietary technology of Ilya Sibiryakov (BrandMeWeb) and are protected under **Patent Pending** status:
-
-- **Patent Office:** State of Israel Ministry of Justice, Patent Office (ILPO)
-- **Application Number:** `331905` (Tracking ID: `94221`)
-- **Filing / Priority Date:** September 14, 2026 (Paris Convention Art. 4 & 35 U.S.C. § 119 Priority)
-- **Virtual Patent Marking:** [privacyscrubber.com/patents/](https://privacyscrubber.com/patents/) in accordance with 35 U.S.C. § 287(a).
-
 ## 📄 License & Commercial Upgrade
 
-By default, the server runs under the **Free Tier** (restricted to 15,000 characters per request and the basic `General` PII profile). For unrestricted engineering throughput, automated CI/CD pipelines, programmatic SDK integration (`wrapOpenAI`), and enterprise air-gapped deployments, commercial licenses are available.
+By default, the server runs under the **Free Tier** (restricted to 15,000 characters per request and the basic `General` PII profile). To unlock 30 specialized engineering, medical, legal, and financial PII profiles, as well as team-wide custom rules, you can purchase a commercial license.
 
-### Commercial & Enterprise Tiers
+### Feature Comparison
 
-| Feature | Free Community | PRO Tier | TEAMS Tier | Developer SDK ($199/mo) | Enterprise Air-Gapped |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Volatile In-Memory Redaction** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
-| **Max Character Length** | 15,000 chars | ♾️ Unlimited | ♾️ Unlimited | ♾️ Unlimited | ♾️ Unlimited |
-| **Industry Compliance Profiles** | General Only | 25 Profiles | 25 Profiles | 25 Profiles | 25 Custom Profiles |
-| **Custom Regex Rules** | ❌ Locked | ♾️ Unlimited | ♾️ Unlimited | ♾️ Unlimited | ♾️ Unlimited |
-| **Programmatic Node/TS SDK** | ❌ No | ❌ No | ❌ No | ✅ `@privacyscrubber/sdk` | ✅ Full SDK + On-Prem Gateway |
-| **RAG & Agent Tool Middleware** | ❌ No | ❌ No | ❌ No | ✅ `wrapOpenAI` / LangChain | ✅ Custom Agent Middleware |
-| **Team Rules Sync (GPO)** | ❌ No | ❌ No | ✅ Yes (Shared Link) | ✅ Enterprise Config | ✅ Air-Gapped Fleet GPO |
-| **Support & SLA** | Community | Email | Priority | Dedicated Dev Support | 24/7 SLA + Chief Architect |
-| **Licensing Cost** | **$0** | **$110 Lifetime** | **$99/mo Flat** | **$199/mo ($1,990/yr)** | **Custom Retainer / Quote** |
+| Feature | Free Tier | PRO Tier | TEAMS Tier |
+| :--- | :--- | :--- | :--- |
+| **Volatile Tokenization** | ✅ Yes | ✅ Yes | ✅ Yes |
+| **Standard PII Masking** | ✅ Yes | ✅ Yes | ✅ Yes |
+| **Max Character Length** | 15,000 chars | ♾️ Unlimited | ♾️ Unlimited |
+| **Industry Profiles** | General Only | 30 Profiles | 30 Profiles |
+| **Custom Regex Rules** | ❌ Locked | ♾️ Unlimited | ♾️ Unlimited |
+| **Team Rules Sync (GPO)** | ❌ No | ❌ No | ✅ Yes (Shared Link) |
+| **Licensing Cost** | $0 | **$110 Lifetime** | **$99/mo Flat Rate** |
 
-👉 **[Acquire a Developer SDK or Commercial License at privacyscrubber.com/pricing](https://privacyscrubber.com/pricing?utm_source=mcp_readme&utm_medium=readme&utm_campaign=dev_sdk)**  
-👉 **[Need Custom Air-Gapped MCP Gateways? Consult BrandMeWeb Enterprise Architecture](https://brandmeweb.com/en/services/custom-ai-systems-enterprise-agents)**
+👉 **[Acquire a PRO / TEAMS License Key at privacyscrubber.com/pricing](https://privacyscrubber.com/pricing?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server)**
 
 ---
 
-## 🔐 After Purchase: Activate Your Commercial Key in MCP Client
+## 🔐 After Purchase: Activate PRO in Your MCP Client
 
 After purchasing a PRO license at [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server), you will receive a license key. Add it to your MCP client config as an environment variable: `PRIVACYSCRUBBER_KEY`.
 
@@ -415,7 +376,16 @@ After adding the key, ask your AI agent to call `check_status`:
 Use the check_status tool from PrivacyScrubber MCP
 ```
 
-The dashboard should show **Tier: PRO** and all profiles unlocked.
+---
+
+## 🔗 Ecosystem & Production Architecture Guides
+
+- 🌐 **Web App**: [https://privacyscrubber.com](https://privacyscrubber.com)
+- 📦 **Node.js / TypeScript SDK**: [@privacyscrubber/sdk](https://www.npmjs.com/package/@privacyscrubber/sdk)
+- 🧩 **Chrome Extension**: [Chrome Web Store](https://chromewebstore.google.com/detail/privacyscrubber-%E2%80%94-zero-tr/pimoejgefeilajmmbpghifdmhdlkgjol)
+- 🛡️ **RAG & Vector Databases**: [Sanitizing PII Before Vector DB Ingestion (Pinecone, Chroma, Qdrant)](https://privacyscrubber.com/solutions/dev/rag-vector-database-pii-masking/)
+- 🤖 **LangChain & LlamaIndex**: [In-Memory PII Middleware for AI Agent Pipelines](https://privacyscrubber.com/solutions/agents/langchain-llamaindex-pii-anonymizer/)
+- ⚡ **AWS Comprehend Alternative**: [In-Memory Redaction Without Egress or Cloud Overhead](https://privacyscrubber.com/solutions/dev/aws-comprehend-pii-alternative/)
 
 ---
 
@@ -448,5 +418,17 @@ PrivacyScrubber and the Zero-Trust Data Sanitization (ZTDS) protocol are backed 
 ## 📄 License
 
 MIT © [Ilya Sibiryakov](https://privacyscrubber.com) (BrandMeWeb)
+
+---
+
+## ⚖️ Intellectual Property & Virtual Patent Marking
+
+The Zero-Trust Data Sanitization (ZTDS) architecture, in-memory deterministic tokenization, cryptographic session handoff, and stdio execution methods implemented in this package are proprietary technology of Ilya Sibiryakov (BrandMeWeb) and are protected under **Patent Pending** status:
+
+- **Patent Office:** State of Israel Ministry of Justice, Patent Office (ILPO)
+- **Application Number:** `331905` (Tracking ID: `94221`)
+- **Filing / Priority Date:** September 14, 2026 (Paris Convention Art. 4 & 35 U.S.C. § 119 Priority)
+- **Official Title:** *SYSTEM AND METHOD FOR CLIENT-SIDE ZERO-TRUST DATA SANITIZATION AND CRYPTOGRAPHIC SESSION HANDOFF IN ARTIFICIAL INTELLIGENCE WORKFLOWS*
+- **Virtual Patent Marking:** [privacyscrubber.com/patents/](https://privacyscrubber.com/patents/) in accordance with 35 U.S.C. § 287(a).
 
 
