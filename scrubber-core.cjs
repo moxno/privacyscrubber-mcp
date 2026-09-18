@@ -119,6 +119,32 @@ function scrubText(text, customRules = [], tokenLabelMap = {}, profile = 'Genera
         });
     }
 
+    // Pre-scan input text for pre-existing tokens ([TYPE_N], <TYPE_N>, {{TYPE_N}}, __TYPE_N__)
+    // to advance counters and avoid counter collisions or overwriting literal quoted tokens
+    if (typeof textToProcess === 'string' && textToProcess) {
+        const existingTokenRegex = /(?:\[|<|\{\{|__)([A-Za-z0-9_]+)_(\d+)(?:\]|>|\}\}|__)/g;
+        let tMatch;
+        while ((tMatch = existingTokenRegex.exec(textToProcess)) !== null) {
+            const rawLabel = tMatch[1].toUpperCase();
+            const idx = parseInt(tMatch[2], 10);
+            if (!isNaN(idx)) {
+                let mappedType = rawLabel;
+                for (const [baseType, customLabel] of Object.entries(tokenLabelMap || {})) {
+                    if (String(customLabel).replace(/[^A-Za-z0-9_]/g, '_').toUpperCase() === rawLabel) {
+                        mappedType = baseType;
+                        break;
+                    }
+                }
+                mappedType = resolveTypeFromTokenLabel(mappedType);
+                if (counters[mappedType] !== undefined) {
+                    counters[mappedType] = Math.max(counters[mappedType], idx);
+                } else {
+                    customCounters[mappedType] = Math.max(customCounters[mappedType] || 0, idx);
+                }
+            }
+        }
+    }
+
     
     // Default labels
     const labels = {
@@ -287,6 +313,15 @@ function getLabelAliases(label) {
     aliases.add(label.replace(/ /g, '_'));
     aliases.add(label.replace(/-/g, '_'));
     return Array.from(aliases);
+}
+
+function resolveTypeFromTokenLabel(label) {
+    if (!label) return 'CUSTOM';
+    const upper = String(label).toUpperCase();
+    for (const [type, aliases] of Object.entries(LABEL_ALIASES)) {
+        if (aliases.includes(upper)) return type;
+    }
+    return upper;
 }
 
 function formatToken(label, index, format = 'brackets') {
@@ -1089,6 +1124,16 @@ function hydrateRegex(rule) {
                 child = next;
             }
         }
+
+        // Fuse adjacent text nodes that were split across chunk boundaries during LLM streaming mutations
+        try {
+            const assistantContainers = document.querySelectorAll(ASSISTANT_SELECTORS);
+            for (let i = 0; i < assistantContainers.length; i++) {
+                if (typeof assistantContainers[i].normalize === 'function') {
+                    assistantContainers[i].normalize();
+                }
+            }
+        } catch (_) {}
 
         walkTextNodes(document.documentElement);
 

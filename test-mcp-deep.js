@@ -643,8 +643,11 @@ async function runMcpSession() {
     });
     const truncatedResult = truncateResponse.result?.content?.[0]?.text || "";
     console.log("<-- Truncated text length:", truncatedResult.length);
-    if (truncatedResult.length < 15000 || truncatedResult.length > 15300) {
-      throw new Error(`Expected text length of ~15000 after truncation, but got ${truncatedResult.length}`);
+    if (truncatedResult.length < 15000 || truncatedResult.length > 15600) {
+      throw new Error(`Expected text length of ~15000-15500 after truncation, but got ${truncatedResult.length}`);
+    }
+    if (!truncatedResult.includes("https://privacyscrubber.com/pricing")) {
+      throw new Error("Upsell pricing link missing in truncated result.");
     }
     if (!stderr2.includes("Input truncated to 15,000 characters")) {
       throw new Error("Truncation warning not found in stderr.");
@@ -802,6 +805,27 @@ async function runMcpSession() {
     }
     fs.rmSync(tempCliWs, { recursive: true, force: true });
     console.log('✅ pii-masking-run --rules pass.');
+
+    // Test 10: --json structured output
+    const cli10 = await runCli(['--json'], 'Contact support at support@privacyscrubber.com or call 555-0199');
+    let jsonParsed;
+    try {
+      jsonParsed = JSON.parse(cli10.stdout.trim());
+    } catch (e) {
+      throw new Error(`pii-masking-run Test 10 (--json) failed to parse stdout as JSON. Output: ${cli10.stdout}`);
+    }
+    if (!jsonParsed.scrubbedText.includes('[EMAIL_') || !jsonParsed.tokenMap || jsonParsed.count < 1 || !jsonParsed.telemetry) {
+      throw new Error(`pii-masking-run Test 10 (--json) payload missing required fields. Got: ${JSON.stringify(jsonParsed)}`);
+    }
+    console.log('✅ pii-masking-run --json structured output pass.');
+
+    // Test 11: --restore --token-map restoration
+    const tokenMapJson = JSON.stringify(jsonParsed.tokenMap);
+    const cli11 = await runCli(['--restore', '--token-map', tokenMapJson], jsonParsed.scrubbedText);
+    if (!cli11.stdout.includes('support@privacyscrubber.com')) {
+      throw new Error(`pii-masking-run Test 11 (--restore) failed. Expected cleartext restored. Got: ${cli11.stdout}`);
+    }
+    console.log('✅ pii-masking-run --restore --token-map pass.');
 
     console.log("\n🎉 All deep integration, hardening, and CLI tests passed successfully!");
     // ─────────────────────────────────────────────────────────────────────

@@ -17,20 +17,34 @@
  */
 
 let DEVOPS_SECRETS = [
+    // Multi-line and Header Cryptographic Private Keys (Evaluated first to prevent sub-rule fragmentation)
+    { name: 'Private Cryptographic Key (PEM Block)', type: 'SECRET', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----[\s\S]{10,8192}?-----END (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g },
+    { name: 'Private Cryptographic Key (Header)', type: 'SECRET', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g },
+
+    // Connection URIs & Credentials
+    { name: 'Database Connection URI', type: 'SECRET', regex: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql):\/\/[^\s"']+/gi },
+    { name: 'Embedded Credentials URI', type: 'SECRET', regex: /\b(?:https?|s?ftp):\/\/[a-zA-Z0-9_.%+-]+:[^\s/@:"']+@[a-zA-Z0-9_.-]+(?::\d+)?(?:\/[^\s"']*)?/gi },
+    { name: 'URL Query Parameter Secret', type: 'SECRET', regex: /(?<=[?&](?:api_key|apikey|access_token|client_secret|auth_token|token|secret|password|private_key)=)[^\s"'\x26#)>]{8,}/gi },
+    { name: 'Bearer / Auth Header Token', type: 'SECRET', regex: /(?<=\b(?:Bearer|Token)\s+)[a-zA-Z0-9_\-\.~+/=]{16,}\b/gi },
+
     // Secrets & API Keys
-    { name: 'AWS Credentials', type: 'SECRET', regex: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA)[A-Z0-9]{16}\b/g },
+    { name: 'AWS Credentials', type: 'SECRET', regex: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA)[A-Z0-9]{12,28}\b/g },
+    { name: 'AWS Resource Name (ARN)', type: 'ID', regex: /\barn:(?:aws|aws-cn|aws-us-gov):[a-z0-9-]+:[a-z0-9-]*:(?:\d{12})?:[a-zA-Z0-9-_\/.:*]+\b/gi },
+    { name: 'AWS Account ID', type: 'ID', regex: /(?<=\b(?:accountId|account_id|account-id|AWS\s+Account|Account)\s*[:=]\s*["']?)\d{12}\b/gi },
+    { name: 'GCP Resource / Secret Path', type: 'ID', regex: /\bprojects\/[a-z0-9-]+(?:\/secrets\/[a-zA-Z0-9_.-]+|\/serviceAccounts\/[a-zA-Z0-9_.-]+|\/subscriptions\/[a-zA-Z0-9_.-]+)(?:\/versions\/[a-zA-Z0-9_.-]+)?\b/gi },
+    { name: 'Azure Resource ID', type: 'ID', regex: /\/subscriptions\/[0-9a-fA-F-]{36}\/resourceGroups\/[a-zA-Z0-9_.-]+\/providers\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.\/-]+/g },
+    { name: 'Kubernetes Secret Data / Kubeconfig Key', type: 'SECRET', regex: /(?<=\b(?:tls\.key|tls\.crt|ca\.crt|client-certificate-data|client-key-data)\s*:\s*["']?)[A-Za-z0-9+/=]{16,}/g },
+    { name: 'Kubernetes Service DNS', type: 'ID', regex: /\b(?:[a-z0-9](?:[-a-z0-9]*[a-z0-9])?\.)+svc\.cluster\.local\b/g },
     { name: 'JSON Web Token (JWT)', type: 'SECRET', regex: /\beyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b/g },
     { name: 'API Token/Key (GitHub/Slack/NPM)', type: 'SECRET', regex: /\b(?:ghp|gho|ghu|ghs|ghr|glpat|npm|xox[baprs])[-_][A-Za-z0-9_-]{10,}\b/g },
     { name: 'Stripe API Key', type: 'SECRET', regex: /\b(?:[rs]k)_(?:test|live)_[a-zA-Z0-9]{14,}\b/g },
     { name: 'OpenAI Project API Key', type: 'SECRET', regex: /\b(?:sk|pk)-(?:proj-)?[a-zA-Z0-9_-]{16,}\b/gi },
-    { name: 'Database Connection URI', type: 'SECRET', regex: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql):\/\/[^\s"']+/gi },
     { name: 'Generic Secret/Key', type: 'SECRET', regex: /\b(?:sk|pk|secret|key|token|auth)(?:[-_][a-zA-Z0-9_-]{3,}|(?=[a-zA-Z0-9_-]{5,}\b)(?=[a-zA-Z_-]*[0-9])[a-zA-Z0-9_-]{5,})\b/gi },
     { name: 'Hash / Hex Key (32-64 chars)', type: 'SECRET', regex: /\b[a-fA-F0-9]{32,64}\b/g },
     { name: 'CVE Identifier', type: 'SECRET', regex: /\bCVE-\d{4}-\d{4,}\b/gi },
     { name: 'Cryptographic Hash', type: 'SECRET', regex: /\b(?:MD5|SHA1|SHA256)[:\s][a-f0-9]{32,64}\b/gi },
-    { name: 'Database/API Secret', type: 'SECRET', regex: /\b(?:DB|POSTGRES|REDIS|MYSQL|AWS|SECRET|PASSWORD|TOKEN|API)[A-Z0-9_]*\s*[:=]\s*[^\s"']+\b|\b(?:API_KEY|SECRET_KEY|PRIVATE_KEY|ACCESS_KEY|AUTH_KEY|ENCRYPTION_KEY)\s*[:=]\s*[^\s"']+\b/gi },
-    { name: 'Proprietary IP / Confidential', type: 'SECRET', regex: /\b(?:CONFIDENTIAL|PROPRIETARY|TRADE SECRET|DO NOT DISTRIBUTE|INTERNAL USE ONLY)\b/gi },
-    { name: 'Private Cryptographic Key', type: 'SECRET', regex: /-----BEGIN (?:RSA |EC |PGP |DSA )?PRIVATE KEY-----/g }
+    { name: 'Database/API Secret', type: 'SECRET', regex: /(?<![?&])\b(?:(?:DB|POSTGRES|REDIS|MYSQL|DATABASE)[-_]?(?:PASSWORD|PASS|SECRET|KEY|PWD|CREDENTIALS?|TOKEN|AUTH)|AWS[-_]?(?:SECRET_ACCESS_KEY|SECRET_KEY|SESSION_TOKEN|SECURITY_TOKEN)|API[-_]?(?:KEY|SECRET|TOKEN|PASS|PASSWORD|AUTH|CREDENTIALS?)|[A-Za-z0-9_]*SECRET[A-Za-z0-9_]*|[A-Za-z0-9_]*PASSWORD[A-Za-z0-9_]*|[A-Za-z0-9_]*PASSWD[A-Za-z0-9_]*|[A-Za-z0-9_]*TOKEN[A-Za-z0-9_]*|ENCRYPTION[-_]KEY)[ \t]*[:=][ \t]*["']?([^\s"'&;\r\n]+)\b["']?/gi },
+    { name: 'Proprietary IP / Confidential', type: 'SECRET', regex: /\b(?:CONFIDENTIAL|PROPRIETARY|TRADE SECRET|DO NOT DISTRIBUTE|INTERNAL USE ONLY)\b/gi }
 ];
 
 let REGEX_RULES = [
@@ -46,7 +60,7 @@ let REGEX_RULES = [
     { type: 'FINANCIAL', regex: /\b(?:ABA|Routing|RTN)\s*(?:#|ID|No\.?|Number)?[:\s#]*\d{9}\b/gi },
 
     // Professional IDs & Organizations
-    { type: 'NAME', isContextName: true, isCorporateName: true, regex: /\b(?:[A-Z][A-Za-z0-9&.,'-]*[ \t\xA0]+){1,5}(?:Inc\.?|LLC|Corp\.?|Corporation|Ltd\.?|Limited|Co\.?|Company|Group|Holdings|Solutions|Services|Technologies|Logistics|Industries|Capital|Bank|Partners|LLP|PLLC)(?:\s+(?:LLC|Inc\.?|Corp\.?|Ltd\.?|USA|Group))?\b/g },
+    { type: 'NAME', isContextName: true, isCorporateName: true, regex: /\b(?:[A-Z][A-Za-z0-9&.,'-]*[ \t\xA0]+){1,5}(?:Inc\.?|LLC|Corp\.?|Corporation|Ltd\.?|Limited|Co\.?|Company|Group|Holdings|Solutions|Services|Servicing|Technologies|Logistics|Industries|Capital|Bank|Partners|LLP|PLLC)(?:\s+(?:LLC|Inc\.?|Corp\.?|Ltd\.?|USA|Group))?\b/g },
     { type: 'ID', regex: /\b(?:Employee|Emp|EE|Worker|Staff|File|Badge|Member|Advisor|Producer|Agent|Borrower)\s*(?:#|ID|No\.?|Number)[:\s#]*([A-Z0-9-]{3,15})\b/gi },
     { type: 'ID', regex: /\b(?:Pay\s+Group[:#\s]+[A-Za-z0-9_-]{2,30}|(?:Cost\s+Center|Dept|Department)[:#\s]+[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
     { type: 'ID', regex: /(?:\b(?:Box\s+d\b|d\.\s*(?:Control|#|number|no\.?|num)|d\s+Control)\s*(?:Control\s+)?(?:number|no\.?|#|num)?[:\s#]+|\bControl\s*(?:number|no\.?|#|num)?[:\s#]+|\bControl[:#]\s*)([A-Za-z0-9-]{3,30})/gi },
@@ -57,6 +71,10 @@ let REGEX_RULES = [
     { type: 'ADDRESS', isContextAddress: true, regex: /(?:(?:Borrower(?:'s)?|Co-Borrower(?:'s)?|Employee(?:'s)?|Employer(?:'s)?|Home|Mailing|Property|Physical)\s+address)[\s:#]+([A-Za-z0-9#.,\s-]{4,55}?)(?=\r?\n|$|\s{3,}|\t|City|State|ZIP|SSN|EIN|Phone|Box|\d+\b)/gi },
     { type: 'ADDRESS', regex: /\b\d{1,6}[ \t\xA0]+(?:[A-Za-z0-9.-]+[ \t\xA0]+){0,4}(?:St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Ln|Lane|Dr|Drive|Way|Ct|(?<!District |Supreme |Circuit |Appellate |Bankruptcy |High |Federal |Trial )Court|Pl|Place|Terrace|Pkwy|Parkway|Sq|Square|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Row|Pike|Bishopsgate|Gate|Walk|Close|Hill|Crescent|Gardens|Grove|Mews|Yard|PO Box|P\.O\.[ \t\xA0]*Box)\b(?:[ \t\xA0]*,?[ \t\xA0]*(?:Apt|Apartment|Suite|Ste|Unit|#|Fl|Floor|Bldg|Building)\.?[ \t\xA0]*[A-Za-z0-9-]+)?/gi },
     { type: 'ADDRESS', regex: /\b(?:P\.?O\.?[ \t\xA0]*Box|PO[ \t\xA0]*Box)[ \t\xA0]+\d{1,6}\b/gi },
+    // European Street Addresses (Romance: France, Spain, Italy, Portugal, etc.)
+    { type: 'ADDRESS', regex: /(?:(?:\b\d{1,4}[a-zA-Z]?[, \t\xA0]+)?\b(?:Rue|(?:(?<!\b(?:Fed|Federal|State|Local|U\.?S\.?)\.?\s+)R\.(?!\s+(?:Civ|Crim|App|Evid|Bankr|Pro|Proc|Jud)\b))|Avenue|Av\.|Avda\.|Boulevard|Blvd|Bd|Allée|Allee|Chemin|Place|Pl\.|Quai|Impasse|Square|Sq\.|Route(?!\s+(?:Group|Table|Map|Policy|Target|Reflector|Distinguisher)\b)|Rte|Cours|Passage|Voie|Calle|C\/|Paseo|P\.º|Rambla|Plaza|Plza\.|Ronda|Travesía|Travesia|(?:(?<!\b(?:sent|executed|shipped|delivered|via|routed|available|transferred|transfer|transfers|convey|conveys|conveyed|grant|granted|grants|accessible|authenticated|verified|signed|recorded|record|evaluated|administered|assessed|measured|determined|reported|tested|analyzed|handled|managed|operated|provided|arranged|booked|conducted|performed)\s+)Via(?!\s+(?:DOCUSIGN|TRANSCRIPT|EMAIL|API|PORTAL|FEED|SERVICE|WEBHOOK|SMS|HTTP|HTTPS|FTP|TCP|IP|VPN|SSH|APP|LINK|AUTH|METHOD|ID|NUMBER|NO|REF|CODE|Federal(?:\s+Reserve)?|Fedwire|SWIFT|ACH|RTGS|CHIPS|SEPA|BACS|Target2|Bank|Wire|Grant(?:\s+Deed)?|Warranty(?:\s+Deed)?|Quitclaim(?:\s+Deed)?|Deed|CTCAE|MedDRA|WHO|FDA|EMA|ICH|GCP|IV|SC|Oral)\b))|V\.|Viale|V\.le|Corso|C\.so|Piazza|P\.zza|Largo|Vicolo|Avenida|Praceta|Praça|Praca|Alameda|Travessa|Calçada|Calcada)[ \t\xA0]+(?:(?:de[ \t\xA0]+la|de[ \t\xA0]+l'|de[ \t\xA0]+l’|de[ \t\xA0]+los|de[ \t\xA0]+las|de[ \t\xA0]+|des[ \t\xA0]+|du[ \t\xA0]+|del[ \t\xA0]+|dels[ \t\xA0]+|delle[ \t\xA0]+|degli[ \t\xA0]+|dei[ \t\xA0]+|d'|d’|da[ \t\xA0]+|do[ \t\xA0]+|dos[ \t\xA0]+|das[ \t\xA0]+)[ \t\xA0]*)?[\p{L}'’.-]+(?:[ \t\xA0]+[\p{L}'’.-]+){0,4}(?:[, \t\xA0]+(?:nº|n°|no\.?|num\.?|#)?[ \t\xA0]*\b\d{1,4}[a-zA-Z]?\b(?!\d))?(?:[, \t\xA0]+(?:(?:F-|D-|ES-|IT-|FR-|NL-|CH-|AT-|PT-)?\d{4,5}(?:-\d{3,4})?)[ \t\xA0]+[\p{Lu}][\p{L}'-]+)?)/giu },
+    // European Street Addresses (Germanic: Germany, Austria, Switzerland, etc.)
+    { type: 'ADDRESS', regex: /\b(?:(?:Am|An\s+der|An\s+dem|Unter\s+den|Auf\s+dem|Auf\s+der|Beim|Zum|Vor\s+dem)[ \t\xA0]+[\p{Lu}][\p{L}.-]+(?:[ \t\xA0]+[\p{Lu}][\p{L}.-]+)?|(?:[\p{Lu}][\p{L}.-]+[ \t\xA0]+(?:Straße|Strasse|Weg|Gasse|Allee|Damm|Ring|Platz|Ufer|Chaussee|Pfad|Zeile|Markt|Tor|Str\.)|[\p{Lu}][\p{L}.-]*(?:straße|strasse|str\.|weg|gasse|allee|damm|ring|platz|ufer|chaussee|pfad|zeile|graben|markt|tor)))\b[ \t\xA0]+\b\d{1,4}[a-zA-Z]?\b(?!\d)(?:[ \t\xA0]*,?[ \t\xA0]*(?:Wohnung|Whg|App|Zimmer|Stock|Etage|OG|EG)\.?[ \t\xA0]*[A-Za-z0-9-]+)?(?:[, \t\xA0]+(?:D-|AT-|CH-)?\d{4,5}[ \t\xA0]+[\p{Lu}][\p{L}'-]+)?/giu },
     { type: 'ADDRESS', regex: /\b[A-Za-z][a-zA-Z\s.-]{1,25},?\s+(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|PR)\s+\d{5}(?:-\d{4})?\b/g },
     { type: 'ADDRESS', regex: /\b(?:ZIP|Postal|Code)?\s*(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|PR)\s+\d{5}(?:-\d{4})?\b/g },
     { type: 'ADDRESS', regex: /\b\d{5}-\d{4}\b/g },
@@ -73,30 +91,40 @@ let REGEX_RULES = [
     { type: 'DATE', regex: /\b(?:DOB|BIRTHDAY|Date of Birth)[\s:]+([0-9./-]{6,10})\b/gi },
     { type: 'SECRET', regex: /\b(?:PASSWORD|PWD|SECRET)\s*[:=]\s*["']?[\S]{4,}["']?/gi },
 
-    // Standard IDs (SSN, EIN, Passport, VAT)
+    // Standard IDs (SSN, EIN, Passport, VAT, European National IDs)
     { type: 'ID', regex: /\b\d{3}-\d{2}-\d{4}\b/g },
     { type: 'ID', regex: /\b(?:XXX|xxx|\*\*\*)[ -]?(?:XX|xx|\*\*)[ -]?\d{4}\b/g },
     { type: 'ID', regex: /\b\d{2}-\d{7}\b/g },
     { type: 'ID', regex: /(?:(?:[A-Za-z]:\\|\/(?:usr|var|etc|home|root|Users|private|tmp|opt|bin|sbin|dev|Applications|Library)\/)[a-zA-Z0-9_.-]+(?:[\/\\][a-zA-Z0-9_.-]+)*|\/(?:[a-zA-Z0-9_.-]+\/)+[a-zA-Z0-9_.-]+\.(?:txt|pdf|docx|xlsx|csv|js|ts|json|env|log|key|pem|crt|conf|yaml|yml|xml|html|sql|py|go|rs|c|cpp|h|sh|bin|zip|tar|gz|png|jpg|jpeg|svg|webp|wasm)\b)/g },
+    // UK National Insurance Number (NINO)
     { type: 'ID', regex: /\b[A-CEGHJ-PR-TW-Z]{1}[A-CEGHJ-NPR-TW-Z]{1}[0-9]{6}[A-DFM]{1}\b/gi },
+    // European National & Citizen IDs (NL BSN, DE Steuer-ID/IdNr, IT Codice Fiscale, ES DNI/NIE/CIF, FR NIR/INSEE, NL KvK)
+    { type: 'ID', regex: /\b(?:BSN(?:-nummer)?|Burgerservicenummer|SOFI(?:-nummer)?)[^\S\r\n]*(?:[:#=-]|\bis\b)?[^\S\r\n]*(\d{8,9})\b/gi },
+    { type: 'ID', regex: /\b(?:Steuer-?ID|IdNr|Steuernummer)[^\S\r\n]*(?:[:#=-]|\bist\b)?[^\S\r\n]*(\d{2,4}\/?\d{3,4}\/?\d{3,5}|\d{11})\b/gi },
+    { type: 'ID', regex: /\b(?:Codice\s+Fiscale|CF)[^\S\r\n]*[:#=-]?[^\S\r\n]*([A-Za-z]{6}\d{2}[A-Za-z]\d{2}[A-Za-z]\d{3}[A-Za-z])\b/gi },
+    { type: 'ID', regex: /\b[A-Z]{6}\d{2}[A-EHLMPR-T]\d{2}[A-Z]\d{3}[A-Z]\b/g },
+    { type: 'ID', regex: /\b(?:DNI|NIE|CIF|NIF)[^\S\r\n]*[:#=-]?[^\S\r\n]*([XYZxyz]?\d{7,8}[A-Za-z])\b/gi },
+    { type: 'ID', regex: /\b(?:NIR|INSEE|N°\s*Sécu(?:rité\s+sociale)?|Numéro\s+de\s+sécurité\s+sociale)[^\S\r\n]*[:#=-]?[^\S\r\n]*([12]\s*\d{2}\s*\d{2}\s*\d{2}\s*\d{3}\s*\d{3}(?:\s*\d{2})?)\b/gi },
+    { type: 'ID', regex: /\b(?:KvK|Kamer\s+van\s+Koophandel)[^\S\r\n]*[:#=-]?[^\S\r\n]*(\d{8})\b/gi },
     { type: 'ID', regex: /\b[A-Z]{2}[0-9]{6,12}\b/gi },
     { type: 'ID', regex: /[A-Z0-9<]{30,44}/g },
     
     // IT / Technical IDs
-    { type: 'IP', regex: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g },
+    { type: 'IP', regex: /(?<!\b(?:Chrome|Version|Firefox|Safari|Edge|Edg|OPR|Opera|Brave|V8|Node|Electron)\/)\b(?!(?:0\.0\.0\.0|127\.0\.0\.1)\b)(?:\d{1,3}\.){3}\d{1,3}\/(?:[0-9]|[12]\d|3[0-2])\b/g },
+    { type: 'IP', regex: /(?<!\b(?:Chrome|Version|Firefox|Safari|Edge|Edg|OPR|Opera|Brave|V8|Node|Electron)\/)\b(?!(?:0\.0\.0\.0|127\.0\.0\.1)\b)(?:\d{1,3}\.){3}\d{1,3}\b/g },
     { type: 'IP', regex: /\b(?:[a-fA-F0-9]{1,4}:){7}[a-fA-F0-9]{1,4}\b/g },
     { type: 'ID', regex: /\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b/g },
-    { type: 'ID', regex: /(?<![:/A-Za-z0-9])(?:\/[a-zA-Z0-9_.-]+(?:[\/\\][a-zA-Z0-9_.-]+)+|\b[a-zA-Z]:\\[\w.-]+(?:\\[\w.-]+)*)/g },
+    { type: 'ID', regex: /(?<!\b(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|CONNECT|TRACE)\s+)(?<![:/A-Za-z0-9])(?:\/[a-zA-Z0-9_.-]+(?:[\/\\][a-zA-Z0-9_.-]+)+|\b[a-zA-Z]:\\[\w.-]+(?:\\[\w.-]+)*)/g },
     { type: 'ID', regex: /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}(?::\d{2})?)?\b/g },
-    { type: 'ID', regex: /\b\d{4}-\d{2}-\d{2}\b/g },
-    { type: 'ID', regex: /\b\d{2}\/\d{2}\/\d{4}\b/g },
+    { type: 'ID', regex: /(?<!\[)\b\d{4}-\d{2}-\d{2}\b(?![ \t\xA0]*(?:,\s*)?\d{1,2}:\d{2})/g },
+    { type: 'ID', regex: /(?<!\[)\b\d{2}\/\d{2}\/\d{4}\b(?![ \t\xA0]*(?:,\s*)?\d{1,2}:\d{2})/g },
 
     // Phone Numbers
-    { type: 'PHONE', regex: /(?<!\w)(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?:\s*(?:ext\.?|x)\s*\d{1,5})?\b/gi },
+    { type: 'PHONE', regex: /(?<!\b(?:DFARS|FAR|CFR)\s+)(?<!\w)(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?:\s*(?:ext\.?|x)\s*\d{1,5})?\b/gi },
     { type: 'PHONE', regex: /\+\d{1,3}[ \t.-]+(?:\(?\d{1,4}\)?[ \t.-]+)?\d{2,8}(?:[ \t.-]+\d{2,8}){0,4}\b/g },
     { type: 'PHONE', regex: /\+?[1-9]\d{1,3}[\s.-]\(?\d{1,4}\)?[\s.-]\d{2,4}[\s.-]\d{4}/g },
     { type: 'PHONE', regex: /(?:\+44\s?7\d{3}|\(?07\d{3}\)?)\s?\d{3}\s?\d{3}\b/g },
-    { type: 'PHONE', regex: /\b(?:\d{3}[-.\s]\d{4}|\(\d{3}\)\s??\d{3}[-.\s]??\d{4}|\d{3}[-.\s]??\d{3}[-.\s]??\d{4})\b/g },
+    { type: 'PHONE', regex: /(?<!\b(?:DFARS|FAR|CFR)\s+)(?<![A-Za-z0-9.-])\b(?:\d{3}[-.\s]\d{4}|\(\d{3}\)\s??\d{3}[-.\s]??\d{4}|\d{3}[-.\s]??\d{3}[-.\s]??\d{4})\b(?![A-Za-z0-9-])/g },
     
     // Geolocation (Lat/Long)
     { type: 'LOCATION', regex: /\b-?\d{1,3}\.\d{4,6}[° ]?[NSns],\s*-?\d{1,3}\.\d{4,6}[° ]?[EWew]\b/g },
@@ -106,11 +134,12 @@ let REGEX_RULES = [
     { type: 'ID', regex: /\bDL[ -]?\d{6,12}\b/gi },
     { type: 'ID', regex: /\bDRIVER[S]?\s+LICENSE[ -]?\d{6,15}\b/gi },
 
-    // Generalized Name Detection (First [Middle] Last) — max 1 middle word to avoid grabbing job titles
-    // Middle word must be: a particle (van/de/etc.), a single initial (A. or A), or a capitalized word of ≥2 lowercase letters
-    { type: 'NAME', isAggressiveName: true, regex: /(?<=^|[^\p{L}\p{N}_])(?:\p{Lu}[\p{Ll}'-]*\p{Ll}|\p{Lu}[\p{Ll}'-]*[\p{Lu}'-][\p{Ll}'-]*)(?:[ \t\xA0]+(?:\p{Lu}[\p{Ll}'-]*\p{Ll}|\p{Lu}[\p{Ll}'-]*[\p{Lu}'-][\p{Ll}'-]*|\p{Lu}\.?|van|von|de|di|da|la|le|del|du|der|van[ \t\xA0]+de|van[ \t\xA0]+der)){0,1}[ \t\xA0]+(?:\p{Lu}[\p{Ll}'-]*\p{Ll}|\p{Lu}[\p{Ll}'-]*[\p{Lu}'-][\p{Ll}'-]*)(?:'s)?(?=[^\p{L}\p{N}_]|$)(?![ \t\xA0]*:)/gu },
-    // Payroll & Inverted Format Names (e.g. "BARKER, KELLY", "Vance-Soto, Eleanor", "Kaufman-Alvarez, Liam T.")
-    { type: 'NAME', regex: /\b[A-Z][a-zA-Z'’-]+(?:-[A-Za-z'’-]+)?,\s+[A-Z][a-zA-Z'’-]+(?:\s+[A-Z]\.?(?!\w)|\s+[A-Z][a-zA-Z'’-]+)*\b/g },
+    // European & Initial-Prefixed Names (e.g. "J. de Ruiter", "P. van Gameren", "J.A. van der Meer", "M. de Jong", "J. Smith")
+    { type: 'NAME', isAggressiveName: true, regex: /(?<=^|[^\p{L}\p{N}_])(?<!\b(?:Fed|Federal|State|Local|U\.?S\.?)\.?\s+)(?:\p{Lu}\.(?:[ \t\xA0]*\p{Lu}\.)*)(?!\s*(?:Civ|Crim|App|Evid|Bankr|Pro|Proc|Jud)\b)[ \t\xA0]+(?:(?:van|von|de|di|da|do|dos|das|la|le|del|dels|du|der|den|te|ten|ter|in[ \t\xA0]+['’]t|van[ \t\xA0]+['’]t|['’]t|af|av|d['’]|l['’]|van[ \t\xA0]+de|van[ \t\xA0]+der|van[ \t\xA0]+den|de[ \t\xA0]+la|de[ \t\xA0]+las|de[ \t\xA0]+los|de[ \t\xA0]+l['’]|von[ \t\xA0]+der|von[ \t\xA0]+und[ \t\xA0]+zu)[ \t\xA0]+){0,2}(?:(?:d['’]|l['’])?\p{Lu}[\p{Ll}'’]+(?:-\p{Lu}[\p{Ll}'’]+)*)(?:'s)?(?![‘'’–-]\p{L})(?![&/]\p{L})(?=[^\p{L}\p{N}_]|$)(?![ \t\xA0]*:)/gu },
+    // Generalized Name Detection (First [Middle] Last) — supporting European particles, apostrophes (d', l'), multi-hyphens, and Spanish conjunctions
+    { type: 'NAME', isAggressiveName: true, regex: /(?<=^|[^\p{L}\p{N}_])(?:(?:d['’]|l['’])?\p{Lu}[\p{Ll}'’]*(?:-\p{Lu}[\p{Ll}'’]*)*)(?:[ \t\xA0]+(?:(?:van|von|de|di|da|do|dos|das|la|le|del|dels|du|der|den|te|ten|ter|in[ \t\xA0]+['’]t|van[ \t\xA0]+['’]t|['’]t|af|av|d['’]|l['’]|van[ \t\xA0]+de|van[ \t\xA0]+der|van[ \t\xA0]+den|de[ \t\xA0]+la|de[ \t\xA0]+las|de[ \t\xA0]+los|de[ \t\xA0]+l['’]|von[ \t\xA0]+der|von[ \t\xA0]+und[ \t\xA0]+zu)|(?:(?:d['’]|l['’])?\p{Lu}[\p{Ll}'’]*(?:-\p{Lu}[\p{Ll}'’]*)*)|\p{Lu}\.?)){0,2}[ \t\xA0]+(?:(?:d['’]|l['’])?\p{Lu}[\p{Ll}'’]*(?:-\p{Lu}[\p{Ll}'’]*)*)(?:[ \t\xA0]+(?:y|i)[ \t\xA0]+(?:(?:d['’]|l['’])?\p{Lu}[\p{Ll}'’]*(?:-\p{Lu}[\p{Ll}'’]*)*))?(?:'s)?(?![‘'’–-]\p{L})(?![&/]\p{L})(?=[^\p{L}\p{N}_]|$)(?![ \t\xA0]*:)/gu },
+    // Payroll & Inverted Format Names (e.g. "BARKER, KELLY", "Vance-Soto, Eleanor", "Lefèvre-Saint-Germain, Hélène")
+    { type: 'NAME', regex: /(?<=^|[^\p{L}\p{N}_])\p{Lu}[\p{L}'’–-]+(?:-[\p{Lu}\p{Ll}'’–-]+)?,[ \t\xA0]+(?:(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]+)(?:[ \t\xA0]+\p{Lu}\.?(?!\p{L})|[ \t\xA0]+(?:(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]+))*(?=[^\p{L}\p{N}_]|$)/gu },
     // All-Caps Names (2–3 words, supporting single-letter middle initial e.g. "KELLY M BARKER", "JOHN M BARKER")
     { type: 'NAME', regex: /(?<=^|[^\p{L}\p{N}_])\p{Lu}{2,}(?:[\p{Lu}'-]*\p{Lu})?(?:[ \t\xA0]+(?:\p{Lu}\.?|[A-Z][a-z]+))?[ \t\xA0]+\p{Lu}{2,}(?:[\p{Lu}'-]*\p{Lu})?(?:'s)?(?=[^\p{L}\p{N}_]|$)(?![ \t\xA0]*:)/gu },
     // ALL-CAPS first + middle initial(s) with optional spaces + ALL-CAPS last name
@@ -144,14 +173,14 @@ let PROFILE_RULES = {
     general: [],
     legal: [
         // Legal Party & Role-Prefixed Names (Claimant, Respondent, Plaintiff, Defendant, Petitioner, Appellant, Principal, Grantor, Attorney-in-Fact, Counsel)
-        { type: 'NAME', isContextName: true, regex: /\b(?:Registered\s+Representative|Claimant|Respondent|Plaintiff|Defendant|Petitioner|Appellant|Appellee|Principal|Grantor|Grantee|Trustee|Trustor|Fiduciary|Attorney-in-Fact|Designated\s+Attorney-in-Fact|Client\s*(?:\/\s*Principal)?|Lead\s+Counsel|Counsel|Managing\s+Partner|Escrow\s+(?:Trust\s+)?Officer)\s*[:#,]?\s*(?:(?:Dr|Mr|Mrs|Ms|Prof)\.?\s+)?([A-Z][a-zA-Z'’-]+(?:-[A-Z][a-zA-Z'’-]+)?(?:,\s+[A-Z][a-zA-Z'’-]+(?:\s+[A-Z]\.?)?|\s+(?:[A-Z]\.?\s+)?[A-Z][a-zA-Z'’-]+(?:-[A-Z][a-zA-Z'’-]+)?))/gi },
+        { type: 'NAME', isContextName: true, regex: /(?<=^|[^\p{L}\p{N}_])(?:(?:Senior\s+)?Managing\s+Partner|Lead\s+Counsel|Co-Counsel|Special\s+Counsel|Of\s+Counsel|Counsel(?:\s+for\s+(?:the\s+)?(?:Claimant|Respondent|Plaintiff|Defendant|Petitioner|Appellant|Appellee|Debtor|Creditor|Party))?|Attorney(?:\s+for\s+(?:the\s+)?(?:Claimant|Respondent|Plaintiff|Defendant|Petitioner|Appellant|Appellee|Debtor|Creditor|Party))?|Registered\s+Representative|Claimant|Respondent|Plaintiff|Defendant|Petitioner|Appellant|Appellee|Principal|Grantor|Grantee|Trustee|Trustor|Fiduciary|Attorney-in-Fact|Designated\s+Attorney-in-Fact|Client\s*(?:\/\s*Principal)?|Escrow\s+(?:Trust\s+)?Officer)\s*[:#,]?\s*(?:(?:Dr|Mr|Mrs|Ms|Prof)\.?\s+)?((?:(?:d['’]|l['’]|(?:(?:van|von|de|di|da|do|dos|das|la|le|del|dels|du|der|den|ten|ter|af|av)\s+)+)\s*)?\p{Lu}[\p{L}'’–-]*(?:-[\p{Lu}\p{Ll}'’–-]+)*(?:,\s+(?:(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]+)(?:\s+\p{Lu}\.?)?(?:,\s*(?:Jr\.?|Sr\.?|III|IV|II))?|\s+(?:(?:van|von|de|di|da|do|dos|das|la|le|del|du|der|d['’]|l['’]|de\s+la|de\s+los|von\s+der)\s+)?(?:(?:\p{Lu}\.?\s+)?(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]*(?:-[\p{Lu}\p{Ll}'’–-]+)*))(?:\s+(?:y|i)\s+(?:(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]+))?)/giu },
         { type: 'LEGAL', regex: /\bCASE[-_][A-Z0-9_-]{4,}\b/gi },
         { type: 'LEGAL', regex: /\bMATTER[-_][A-Z0-9_-]{4,}\b/gi },
         { type: 'LEGAL', regex: /\b[A-Z]{2,4}[- ]?\d{2}[- ]?\d{4,}\b/g },
         { type: 'PRIVILEGE', regex: /\bATTORNEY[- ]CLIENT[- ]PRIVILEGE[DS]?\b/gi },
         { type: 'LEGAL', regex: /\b(?:BATES|PROD|PLTF|DEFT|CONF|EXHIBIT)[-_ ]?[A-Z0-9]{2,10}[-_ ]?\d{4,10}\b/gi },
         // Case / Proceeding / Arbitration Numbers (including OCR homoglyphs O/0, I/1, l/1)
-        { type: 'LEGAL', regex: /\b(?:Case|Matter|Arbitration|Docket|Proceeding)\s*(?:(?:No\.?|Number|#)[:\s#]*|[:#]\s*)([A-Za-z0-9_-]{4,25})\b/gi },
+        { type: 'LEGAL', regex: /\b(?<!\b(?:Seat|Place|Venue|Rules)\s+of\s+)(?:Case|Matter|Arbitration|Docket|Proceeding)\s*(?:(?:No\.?|Number|#)[:\s#]*|[:#]\s*)([A-Za-z0-9_-]{4,25})\b/gi },
         { type: 'LEGAL', regex: /\b(?:\d{1,2}:)?\d{2,4}[-_ ]?(?:CV|CR|MDL|BK|MC|MISC|MJ|PO|CA|AP|PR|AR)[-_ ][A-Za-z0-9_-]{3,15}\b/gi },
         // Bar registration & CRD / Broker / Representative IDs (including OCR homoglyphs)
         { type: 'ID', regex: /\b(?:STATE\s+BAR|BAR\s+(?:NO\.?|#|ID)|SBN|ATTORNEY\s+REG(?:ISTRATION)?)[:\s#-]*([0-9OIloA-Za-z]{4,10})\b/gi },
@@ -168,7 +197,19 @@ let PROFILE_RULES = {
         { type: 'FINANCIAL', regex: /(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’]*\d[KMB]?\b|\b\d[0-9,.'’]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹]))/gi }
     ],
     hr: [
-        { type: 'NAME', isContextName: true, regex: /(?:Candidate|Applicant|Employee|Reporting To|Manager|Mentored by|Direct Report)[\s:]+([A-Z][a-z]*(?:\s+[A-Z][a-z]*)?)/g },
+        { type: 'NAME', isContextName: true, regex: /(?<=^|[^\p{L}\p{N}_])(?:Candidate|Applicant|Employee|Reporting\s+To|Manager|Mentored\s+by|Direct\s+Report|Chief\s+Human\s+Resources\s+Officer|CHRO|Chief\s+People\s+Officer|CPO|Head\s+of\s+People|VP\s+of\s+People|VP\s+of\s+Talent|HR\s+Business\s+Partner|HRBP|Compensation\s+Committee\s+Chair|Comp\s+Committee\s+Member|Comp\s+Committee\s+Chair|Global\s+Mobility\s+Manager|Immigration\s+Specialist|Immigration\s+Counsel|Ethics\s+Officer|Investigator|Lead\s+Investigator|Ombudsperson|Ombuds|Works\s+Council\s+Representative|Works\s+Council\s+Chair|Grievant|Complainant)[\s:]+((?:(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]*(?:-[\p{Lu}\p{Ll}'’–-]+)*)(?:\s+(?:(?:van|von|de|di|da|do|dos|das|la|le|del|du|der|d['’]|l['’]|de\s+la|de\s+los|von\s+der)\s+)?(?:(?:\p{Lu}\.?\s+)?(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]*(?:-[\p{Lu}\p{Ll}'’–-]+)*))(?:\s+(?:y|i)\s+(?:(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]+))?)/giu },
+        // Corporate Chat Dumps (Slack, Teams, Discord): Speaker headers with timestamps
+        { type: 'NAME', isContextName: true, regex: /(?:^|\r?\n)[\[(][^\])\r\n]{4,35}[\])][ \t\xA0]+([A-Z][a-zA-Z'’.-]+(?:[ \t\xA0]+[A-Z][a-zA-Z'’.-]+){0,3})(?:[ \t\xA0]*\([^)\r\n]+\))?[ \t\xA0]*:/gu },
+        { type: 'NAME', isContextName: true, regex: /(?:^|\r?\n)([A-Z][a-zA-Z'’.-]+(?:[ \t\xA0]+[A-Z][a-zA-Z'’.-]+){0,3})[ \t\xA0]+[\[(][^\])\r\n]{4,35}[\])][ \t\xA0]*:/gu },
+        // Employee Mentions (@username) excluding system broadcast channels
+        { type: 'USER', regex: /(?<=^|[\s,;:(<])@(?!(?:here|channel|everyone|all|someone)\b)[a-zA-Z0-9][a-zA-Z0-9._-]{1,30}\b/g },
+        // Blind Hiring: Demographic Markers & Pronouns
+        { type: 'DEMOGRAPHIC', regex: /\b(?:Pronouns?[ \t\xA0]*:[ \t\xA0]+)?(?:She\/Her(?:\/Hers?)?|He\/Him(?:\/His)?|They\/Them(?:\/Theirs?)?|Ze\/Zir(?:\/Zirs?)?|[Ss]he\/[Hh]er|[Hh]e\/[Hh]im|[Tt]hey\/[Tt]hem)\b/gi },
+        { type: 'DEMOGRAPHIC', regex: /\b(?:Marital|Civil)[ \t\xA0]+Status[ \t\xA0]*:[ \t\xA0]*(?:Married|Single|Divorced|Widowed|Separated|Domestic[ \t\xA0]+Partnership|Civil[ \t\xA0]+Union)\b/gi },
+        { type: 'DEMOGRAPHIC', regex: /\b(?:Candidate[ \t\xA0]+Age|Applicant[ \t\xA0]+Age|Age)[ \t\xA0]*:[ \t\xA0]*(?:\d{1,2}(?:[ \t\xA0]+years?(?:[ \t\xA0]+old)?)?)\b/gi },
+        { type: 'DEMOGRAPHIC', regex: /\b(?:\d{1,2}[ \t\xA0]+years?[ \t\xA0]+old)\b/gi },
+        { type: 'DEMOGRAPHIC', regex: /\b(?:Society[ \t\xA0]+of[ \t\xA0]+Hispanic[ \t\xA0]+Professional[ \t\xA0]+Engineers|National[ \t\xA0]+Society[ \t\xA0]+of[ \t\xA0]+Black[ \t\xA0]+Engineers|Society[ \t\xA0]+of[ \t\xA0]+Women[ \t\xA0]+Engineers|Women[ \t\xA0]+in[ \t\xA0]+Technology|Out[ \t\xA0]+in[ \t\xA0]+Tech|Black[ \t\xA0]+Girls[ \t\xA0]+Code|Lesbians[ \t\xA0]+Who[ \t\xA0]+Tech|Association[ \t\xA0]+of[ \t\xA0]+Latino[ \t\xA0]+Professionals(?:[ \t\xA0]+for[ \t\xA0]+America)?|SHPE|NSBE|SWE|ALPFA)\b/gi },
+        { type: 'DEMOGRAPHIC', regex: /\b(?:Race(?:\/Ethnicity)?|Ethnicity|Gender|Sexual[ \t\xA0]+Orientation)[ \t\xA0]*:[ \t\xA0]*[A-Za-z\/-]+(?:[ \t\xA0]+[A-Za-z\/-]+){0,3}\b/gi },
         { type: 'ID', regex: /\bEEID[ -]?\d{4,}\b/gi },
         { type: 'ID', regex: /\bEMP[-_]\d{3,}\b/gi },
         { type: 'ID', regex: /\bRESUME[-_]?[A-Z0-9]{4,}\b/gi },
@@ -184,14 +225,52 @@ let PROFILE_RULES = {
         { type: 'ADDRESS', regex: /\b\d{1,6}\s+(?:[A-Z0-9][a-zA-Z0-9-]*\s+){1,3}(?:St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Ln|Lane|Drive|Way|Ct|(?<!District |Supreme |Circuit |Appellate |Bankruptcy |High |Federal |Trial )Court|Pl|Place|Terrace|Pkwy|Parkway|Sq|Square|Highway|Hwy|Circle|Cir|Trail|Trl|Dr(?!\.?\s+[A-Z][a-z]+))\b/g },
         { type: 'ID', regex: /\b(?:AOID|Associate\s+ID)[:\s#]*([A-Z0-9]{8,12})\b/gi },
         { type: 'ID', regex: /\b(?:E-Verify\s*(?:Case|Verification)?\s*(?:No\.?|#|Number)?)[:\s#]*(\d{12,15})\b/gi },
-        { type: 'ID', regex: /\b(?:EEOC\s*(?:Charge|Case)?\s*(?:No\.?|#|Number)?)[:\s#-]*(\d{2,3}-\d{4}-\d{5})\b/gi },
-        { type: 'ID', regex: /\b(?:A-?Number|USCIS\s*(?:#|No\.?))[:\s#]*(?:A[- ]?)?(\d{9})\b/gi }
+        { type: 'ID', regex: /\b(?:EEOC\s*(?:Charge|Case)?\s*(?:No\.?|#|Number)?)[:\s#-]*(\d{2,3}-\d{4}-\d{4,6}|[A-Z0-9-]{7,20})\b/gi },
+        { type: 'ID', regex: /\bEEOC[-_: ]+[A-Z0-9_-]*\d[A-Z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:Alien\s+Registration(?:\s+(?:Number|No\.?|#))?|A-?Number|USCIS\s*(?:#|No\.?))[:\s#]*(?:A[- ]?)?(\d{9})\b/gi },
+        { type: 'ID', regex: /\bA[- ]\d{9}\b/gi },
+
+        // --- Package 17: HCM, Executive Compensation & Global Mobility ---
+        // 1. Equity, Stock Option Grants, Share Allocations & Certificates
+        { type: 'ID', regex: /\b(?:GRANT|ESOP|RSU|ISO|NSO|SAR|PSU|LTIP)[-_][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:CS|OP|CN|CERT)[-_]\d{3,10}\b/gi },
+        { type: 'ID', regex: /\b(?:Equity\s+Grant|Option\s+Grant|RSU\s+Grant|Stock\s+Option|Grant\s+Agreement|Grant\s+Notice|Award\s+ID|Award\s+Agreement|Vesting\s+Schedule|Carta\s+Cert(?:ificate)?|Shareworks|Pulley\s+Cert(?:ificate)?)(?:\s*(?:ID|Number|No\.?|#|Ref))?\s*[:#=-]\s*([A-Za-z0-9_-]{4,25})\b/gi },
+        { type: 'FINANCIAL', regex: /(?<=\b(?:Number\s+of\s+(?:Options?|Shares?|Units?|RSUs?)|Total\s+(?:Options?|Shares?|Units?)|Option\s+Pool\s+Allocation|Equity\s+Award|Shares?\s+Granted|Options?\s+Granted|Vested\s+(?:Shares?|Units?)|Unvested\s+(?:Shares?|Units?))\s*[:=]\s*)(?:[0-9,]{2,12})\b/gi },
+        { type: 'FINANCIAL', regex: /(?<=\b(?:Exercise\s+Price|Strike\s+Price|Option\s+Strike|Per-Share\s+Price|Price\s+Per\s+Share|409A\s+(?:Valuation|FMV|Fair\s+Market\s+Value)|Fair\s+Market\s+Value(?:\s+\(FMV\))?|Current\s+FMV|FMV)\s*[:=]\s*)(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’]*\d|\d[0-9,.'’]*\d?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹]))/gi },
+
+        // 2. Global Mobility, Visas & Immigration Filings (ETA LCA, PERM, USCIS, CoS, LMIA)
+        { type: 'ID', regex: /\bI-200-\d{5}-\d{6}\b/gi },
+        { type: 'ID', regex: /\b(?:ETA\s+Case(?:\s+Number)?|LCA\s+Number|LCA\s+Case|LCA\s+ID|LCA\s+Ref)\s*[:\s#-]+\s*(I-200-\d{5}-\d{6})\b/gi },
+        { type: 'ID', regex: /\bPERM[-_](?:A-)?\d{5}-\d{5}\b/gi },
+        { type: 'ID', regex: /\b(?:PERM\s+Case(?:\s+Number)?|ETA\s+Case(?:\s+Number)?|Labor\s+Cert(?:ification)?\s*(?:#|ID|No\.?))\s*[:\s#-]+\s*(A-\d{5}-\d{5})\b/gi },
+        { type: 'ID', regex: /\b(?:WAC|EAC|LIN|SRC|IOE|MSC|VSC|TSC|NSC)[-_]?\d{2}[-_]?\d{3}[-_]?\d{5}\b/gi },
+        { type: 'ID', regex: /\b(?:USCIS\s+(?:Receipt|Notice|Petition|Case)(?:\s+Number)?|Receipt\s+Number|Form\s+I-(?:129|140|485|765|131)\s*(?:Receipt|#|No\.?))\s*[:\s#-]+\s*([A-Z]{3}[-_]?\d{10}|[A-Z]{3}[-_]?\d{2}[-_]?\d{3}[-_]?\d{5})\b/gi },
+        { type: 'ID', regex: /\bCOS[-_][A-Z0-9]{6,12}\b/gi },
+        { type: 'ID', regex: /\b(?:Certificate\s+of\s+Sponsorship|CoS(?:\s+Number)?|SMS\s+Ref(?:erence)?|CoS\s+Assigned|Sponsorship\s+License)\s*[:\s#-]+\s*([A-Z0-9]{11,15}|COS[-_][A-Z0-9]{6,12})\b/gi },
+        { type: 'ID', regex: /\bLMIA[-_]\d{6,10}\b/gi },
+        { type: 'ID', regex: /\b(?:LMIA|Labour\s+Market\s+Impact\s+Assessment)(?:\s*(?:#|No\.?|Number|File))?\s*[:#=-]\s*(\d{7,10}|LMIA[-_][A-Z0-9]{4,12})\b/gi },
+        { type: 'ID', regex: /\b(?:Blue\s+Card|EU\s+Blue\s+Card|Work\s+Permit|Residence\s+Permit|Visa\s+D|Schengen\s+Permit)(?:\s+(?:Number|No\.?|ID|#|Ref))?\s*[:#=-]\s*([A-Z0-9-]{6,20})\b/gi },
+
+        // 3. Expatriate Relocation Packages & Mobility Stipends
+        { type: 'FINANCIAL', regex: /(?<=\b(?:Relocation\s+(?:Allowance|Package|Grant|Budget)|Cost\s+of\s+Living\s+(?:Adjustment|Allowance)|COLA(?:\s+Allowance)?|Tax\s+Equalization(?:\s+Settlement)?|Hypo(?:thetical)?\s+Tax(?:\s+Deduction)?|Housing\s+(?:Stipend|Allowance)|Temporary\s+Housing\s+Budget|Expatriate\s+Premium|Hardship\s+Allowance|Home\s+Leave\s+Allowance|Schooling\s+Allowance|Mobility\s+Bonus)\s*[:=]\s*)(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’]*\d[KMB]?\b|\b\d[0-9,.'’]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹]))/gi },
+
+        // 4. Executive Compensation, Golden Parachutes, Deferred Comp & Severance
+        { type: 'FINANCIAL', regex: /(?<=\b(?:Golden\s+Parachute(?:\s+Payment)?|(?:IRC\s+)?Section\s+280G(?:\s+(?:Parachute(?:\s+Payment)?|Payment|Cap|Excise\s+Tax))?|280G\s+(?:Parachute(?:\s+Payment)?|Payment|Cap)|(?:IRC\s+)?Section\s+409A(?:\s+(?:Deferred(?:\s+Compensation|\s+Comp)?|Distribution|Balance|Liability))?|409A\s+(?:Deferred\s+Comp(?:ensation)?|Balance)|Executive\s+Severance(?:\s+Payout)?|Severance\s+(?:Payout|Settlement|Package|Amount)|Retention\s+Bonus|Sign-on\s+Bonus|Signing\s+Bonus|Performance\s+Bonus|Discretionary\s+Bonus|Annual\s+Incentive\s+Plan|Short-Term\s+Incentive|STI(?:\s+Target)?|Long-Term\s+Incentive|LTI(?:\s+Target)?|Target\s+(?:Annual\s+)?Incentive|Clawback\s+(?:Amount|Assessment))\s*[:=]\s*)(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’]*\d[KMB]?\b|\b\d[0-9,.'’]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹]))/gi },
+
+        // 5. Workplace Investigations, Ethics Hotline, Statutory Leaves & Agreements
+        { type: 'ID', regex: /\b(?:WB|WHISTLEBLOWER|ETHICS|HOTLINE|NAVEX|ETHICPOINT)[-_][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:Whistleblower\s+(?:Report|Complaint|Docket)|Ethics\s+(?:Hotline|Report|Ticket)|Navex\s+(?:Report|Case)|Incident\s+Intake)(?:\s+(?:ID|Number|No\.?|#|Ticket|Docket|Case))?\s*[:#=-]\s*([A-Za-z0-9-]{4,25})\b/gi },
+        { type: 'ID', regex: /\b(?:TITLE-IX|TITLE-VII|DISCRIMINATION|HARASSMENT|RETALIATION|GRIEVANCE)[-_][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:Title\s+IX\s+Case|Title\s+VII\s+Case|Grievance\s+Number|Disciplinary\s+Record|Investigation\s+Docket)(?:\s*(?:ID|Number|No\.?|#))?\s*[:#=-]\s*([A-Za-z0-9-]{4,25})\b/gi },
+        { type: 'ID', regex: /\b(?:SEPARATION-AGREEMENT|SEPARATION|RELEASE-OF-CLAIMS|SETTLEMENT-AGREEMENT)[-_][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:FMLA-CASE|FMLA-CLAIM|STD-CLAIM|LTD-CLAIM|ADA-ACCOMMODATION)[-_][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:FMLA\s+(?:Case|Claim)|Short-Term\s+Disability\s+Claim|Long-Term\s+Disability\s+Claim|ADA\s+Accommodation\s+Request)(?:\s*(?:ID|Number|No\.?|#))?\s*[:#=-]\s*([A-Za-z0-9-]{4,25})\b/gi }
     ],
     finance: [
         { type: 'FINANCIAL', regex: /\b[A-Z]{4}(?:AD|AE|AF|AG|AI|AL|AM|AO|AQ|AR|AS|AT|AU|AW|AX|AZ|BA|BB|BD|BE|BF|BG|BH|BI|BJ|BL|BM|BN|BO|BQ|BR|BS|BT|BV|BW|BY|BZ|CA|CC|CD|CF|CG|CH|CI|CK|CL|CM|CN|CO|CR|CU|CV|CW|CX|CY|CZ|DE|DJ|DK|DM|DO|DZ|EC|EE|EG|EH|ER|ES|ET|FI|FJ|FK|FM|FO|FR|GA|GB|GD|GE|GF|GG|GH|GI|GL|GM|GN|GP|GQ|GR|GS|GT|GU|GW|GY|HK|HM|HN|HR|HT|HU|ID|IE|IL|IM|IN|IO|IQ|IR|IS|IT|JE|JM|JO|JP|KE|KG|KH|KI|KM|KN|KP|KR|KW|KY|KZ|LA|LB|LC|LI|LK|LR|LS|LT|LU|LV|LY|MA|MC|MD|ME|MF|MG|MH|MK|ML|MM|MN|MO|MP|MQ|MR|MS|MT|MU|MV|MW|MX|MY|MZ|NA|NC|NE|NF|NG|NI|NL|NO|NP|NR|NU|NZ|OM|PA|PE|PF|PG|PH|PK|PL|PM|PN|PR|PS|PT|PW|PY|QA|RE|RO|RS|RU|RW|SA|SB|SC|SD|SE|SG|SH|SI|SJ|SK|SL|SM|SN|SO|SR|SS|ST|SV|SX|SY|SZ|TC|TD|TF|TG|TJ|TK|TL|TM|TN|TO|TR|TT|TV|TW|TZ|UA|UG|UM|US|UY|UZ|VA|VC|VE|VG|VI|VN|VU|WF|WS|YE|YT|ZA|ZM|ZW)[A-Z2-9][A-NP-Z0-9](?:[A-Z0-9]{3})?\b/g },
         { type: 'FINANCIAL', regex: /\b[A-Z]{2}[0-9]{2}[a-zA-Z0-9]{4}[0-9]{7}[a-zA-Z0-9]{0,16}\b/g },
         { type: 'FINANCIAL', regex: /\bPORTFOLIO[-_][A-Z0-9_-]{5,}\b/gi },
-        { type: 'FINANCIAL', regex: /\b(?:Account|Acct|Brokerage|IRA|401k|403b|Roth|Trust|Custodial|Portfolio)\s*(?:Number|Num|No\.?|#)?[:\s#]+(?!GL[-_])([A-Za-z0-9-]{6,20})\b/gi },
+        { type: 'FINANCIAL', regex: /\b(?:Account|Acct|Brokerage|IRA|401k|403b|Roth|Trust|Custodial|Portfolio)\s*(?:Number|Num|No\.?|#)?[:\s#]+(?!GL[-_])((?=.*\d)[A-Za-z0-9-]{6,20})\b/gi },
         { type: 'ID', regex: /\bCUSIP[:\s#]*([0-9A-Z]{9})\b/gi },
         { type: 'ID', regex: /\bISIN[:\s#]*([A-Z]{2}[0-9A-Z]{9}[0-9])\b/gi },
         { type: 'ID', regex: /\bSEDOL[:\s#]*([0-9B-DF-HJ-NP-TV-Z]{6}[0-9])\b/gi },
@@ -200,24 +279,43 @@ let PROFILE_RULES = {
         { type: 'ID', regex: /\b(?:CRD|CIK|Advisor\s*ID|Broker\s*ID)[:\s#]*(\d{5,10})\b/gi },
         { type: 'ID', regex: /\b(?:LEI|LEGAL[\s-]ENTITY[\s-]IDENTIFIER)[:\s#-]*[0-9A-Z]{20}\b/gi },
         { type: 'ID', regex: /\bBBG[0-9A-Z]{9}\b/g },
-        { type: 'FINANCIAL', regex: /(?<=\b(?:Wire(?:\s+(?:Transfer|Amount))?|Transfer|Balance|Deposit|Withdrawal|Settlement|Principal|Interest|Remittance|Payout|Transaction(?:\s+Amount)?|Payment(?:\s+Amount)?|Total|Amount)[:\s]+)(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’]*\d[KMB]?\b|\b\d[0-9,.'’]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹])|[0-9,.'’]{3,}\b)/gi }
+        { type: 'FINANCIAL', regex: /(?<=(?:^|[\r\n\t.;])\s*(?<!\b(?:Trade(?:\s+execution)?|Net|Gross|Base|Loan|Transfer)\s+)(?:Wire(?:\s+(?:Transfer|Amount))?|Direct\s+Wire|Balance|Deposit|Withdrawal|Settlement|Principal|Interest|Remittance|Payout|Transaction(?:\s+Amount)?|Payment(?:\s+Amount)?|Total|Amount)[:\s]+)(?:(?:\((?:[$€£¥₪₽₹]\s*)?[0-9,.'’\u2018\u2019]+[KMB]?\)|(?:[$€£¥₪₽₹]\s*)\([0-9,.'’\u2018\u2019]+[KMB]?\))|(?:[-−](?:[$€£¥₪₽₹]\s*)?[0-9,.'’\u2018\u2019]+[KMB]?|(?:[$€£¥₪₽₹]\s*)[-−][0-9,.'’\u2018\u2019]+[KMB]?)|(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’\u2018\u2019]*\d[KMB]?\b|\b\d[0-9,.'’\u2018\u2019]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹]))|[0-9,.'’]{3,}\b)/gi },
+        // Interbank Wire Transcripts & Payment Messaging
+        { type: 'FINANCIAL', regex: /\b(?:(?:SWIFT(?:\s+MT\d{3})?\s+)?(?:Field\s+2[01]|F2[01])(?:\s+Transaction\s+Reference)?|TRN|Transaction\s+Reference(?:\s+Number)?|SWIFT\s+Ref)[:\s#-]+([A-Za-z0-9\/-]{8,30})\b/gi },
+        { type: 'FINANCIAL', regex: /\bFT\d{10,14}\b/gi },
+        { type: 'ID', regex: /\b(?:IMAD|Input\s+Message\s+Accountability\s+Data)(?:\s*\([A-Za-z0-9_-]+\))?[:\s#]*([0-9]{8}[-_ ]?[A-Za-z0-9]{4,6}[-_ ]?[0-9]{6,8})\b/gi },
+        { type: 'ID', regex: /\b(?:OMAD|Output\s+Message\s+Accountability\s+Data)(?:\s*\([A-Za-z0-9_-]+\))?[:\s#]*([0-9]{8}[-_ ]?[A-Za-z0-9]{4,6}[-_ ]?[0-9]{6,8}[A-Za-z]?)\b/gi },
+        { type: 'ID', regex: /\b(?:CHIPS(?:\s+(?:Sequence|Ref|Reference|Participant|Number|No\.?|#))*\s*[:=]\s*([A-Za-z0-9-]{6,20})|CHIPS[-_][A-Za-z0-9-]{4,15})\b/gi },
+        // FinCEN BSA/AML Regulatory Filings
+        { type: 'ID', regex: /\b(?:FinCEN\s+)?(?:SAR|BSAR|Suspicious\s+Activity\s+Report)(?:\s+(?:ID|Tracking|Ref|Number|No\.?|#|Case))*\s*[:\s#=-]+(?!(?:Tracking|Ref|ID|Number|No|Case)\b)([A-Za-z0-9-]{4,25})\b/gi },
+        { type: 'ID', regex: /\bBSAR[:\s#]*(\d{14})\b/gi },
+        { type: 'ID', regex: /\b(?:FinCEN\s+)?CTR(?:\s+(?:ID|Tracking|Ref|Number|No\.?|#))*\s*[:\s#=-]+(?!(?:Tracking|Ref|ID|Number|No)\b)([A-Za-z0-9-]{4,25})\b/gi },
+        { type: 'ID', regex: /\b(?:Currency\s+Transaction\s+Report)(?:\s+(?:ID|Tracking|Ref|Number|No\.?|#))*\s*[:\s#=-]+(?!(?:Tracking|Ref|ID|Number|No)\b)([A-Za-z0-9-]{4,25})\b/gi },
+        { type: 'ID', regex: /\b(?:AML|KYC|EDD|CDD|Enhanced\s+Due\s+Diligence|Customer\s+Due\s+Diligence)(?:\s+(?:Case|Alert|Investigation|Ticket|Ref|File|Review|Audit))*\s*(?:ID|Number|No\.?|#)?[:\s#-]+([A-Za-z0-9-]{4,25})\b/gi },
+        { type: 'ID', regex: /\b(?:OFAC|SDN)(?:\s+(?:Match|Ref|Case|Alert|List))*\s*(?:ID|Number|No\.?|#)?[:\s#-]+([A-Za-z0-9-]{4,20})\b/gi },
+        { type: 'ID', regex: /\b(?:PEP|Politically\s+Exposed\s+Person)(?:[-_ ]+(?:ID|MATCH|REF|Case|Alert|Record|Match))*\s*[:\s#-]+([A-Za-z0-9-]{4,20})\b/gi },
+        // Commercial Lending & UCC-1 Secured Credit
+        { type: 'ID', regex: /\b(?:SBA\s+(?:Loan|Application|App|File|Ref)|SBA[-_ ](?:7\s*\(a\)|504)|SBA\s+Form\s+(?:1919|1244))[ \t\xA0]*(?:#|ID|No\.?|Number|Ref)?[ \t\xA0]*[:#-][ \t\xA0]*(\d{10}|\d{4}[-_ ]?\d{6}|[A-Za-z0-9-]{8,20})\b/gi },
+        { type: 'ID', regex: /\b(?:UCC[- ]?1(?:\s+Financing\s+Statement)?|UCC\s+Filing|UCC\s+Financing\s+Statement)[ \t\xA0]*(?:(?:File|Filing|Ref|No\.?|Number|#)[ \t\xA0]*)*[:#-][ \t\xA0]*(\d{4}[-_ ]?\d{6,8}[-_ ]?\d?|[A-Za-z0-9-]{8,25})\b/gi },
+        { type: 'ID', regex: /\b(?:Lockbox|DACA|Deposit\s+Account\s+Control\s+Agreement|Blocked\s+Account(?:\s+Agreement)?)[ \t\xA0]*(?:Account|ID|Ref|No\.?|#)?[ \t\xA0]*[:#-][ \t\xA0]*([A-Za-z0-9-]{4,25})\b/gi }
     ],
     medical: [
-        { type: 'NAME', isContextName: true, regex: /\b(?:PATIENT|Pt\.?|LEGAL\s+GUARDIAN(?:\/PROXY)?|PROXY|EMERGENCY\s+CONTACT|ATTENDING\s+PHYSICIAN|ATTENDING|SURGEON|PHYSICIAN|PROVIDER|SUBSCRIBER|GUARDIAN)\s*[:#|]?\s*(?!\b(?:NPI|MRN|DOB|ID|DATE|RECORD|PHONE)\b)(?:(?:Dr|Mr|Mrs|Ms|Prof)\.?\s+)?([A-Z][a-zA-Z'’-]+(?:-[A-Z][a-zA-Z'’-]+)?(?:,\s+[A-Z][a-zA-Z'’-]+(?:\s+[A-Z]\.?)?|\s+(?:[A-Z]\.?\s+)?[A-Z][a-zA-Z'’-]+(?:-[A-Z][a-zA-Z'’-]+)?))/gi },
+        { type: 'NAME', isContextName: true, regex: /(?<=^|[^\p{L}\p{N}_])(?:PATIENT|Pt\.?|LEGAL\s+GUARDIAN(?:\/PROXY)?|PROXY|EMERGENCY\s+CONTACT|(?:ATTENDING|CONSULTING|ADMITTING|REFERRING|TREATING|ORDERING|PRIMARY\s+CARE|RESIDENT|STAFF|SUPERVISING|EMERGENCY)\s+(?:PHYSICIAN|PROVIDER|DOCTOR|SURGEON|CLINICIAN|SPECIALIST|NEUROLOGIST|CARDIOLOGIST|ONCOLOGIST|RADIOLOGIST|PATHOLOGIST|PSYCHIATRIST|PEDIATRICIAN|ANESTHESIOLOGIST|HOSPITALIST|PCP)|ATTENDING|SURGEON|PHYSICIAN|PROVIDER|CLINICIAN|PCP|(?:CLINICAL\s+)?SCRIBE|TRANSCRIBED\s+BY|DICTATED\s+BY|NURSE\s+PRACTITIONER|PHYSICIAN\s+ASSISTANT|REGISTERED\s+NURSE|SUBSCRIBER|GUARDIAN)\s*[:#|]?\s*(?!\b(?:NPI|MRN|DOB|ID|DATE|RECORD|PHONE)\b)(?:(?:Dr|Doctor|Prof|Professor|Mr|Mrs|Ms)\.?\s+)?((?:(?:d['’]|l['’]|(?:(?:van|von|de|di|da|do|dos|das|la|le|del|dels|du|der|den|ten|ter|af|av)\s+)+)\s*)?\p{Lu}[\p{L}'’–-]*(?:-[\p{Lu}\p{Ll}'’–-]+)*(?:,\s+(?:(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]+)(?:\s+\p{Lu}\.?)?(?:,\s*(?:Jr\.?|Sr\.?|III|IV|II))?|\s+(?:(?:van|von|de|di|da|do|dos|das|la|le|del|du|der|d['’]|l['’]|de\s+la|de\s+los|von\s+der)\s+)?(?:(?:\p{Lu}\.?\s+)?(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]*(?:-[\p{Lu}\p{Ll}'’–-]+)*))(?:\s+(?:y|i)\s+(?:(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]+))?)(?=[ \t\xA0]*,?[ \t\xA0]*(?:(?:MD|DO|MBBS|PhD|MSN|BSN|RN|NP|FNP|DNP|PA-C|PA|DDS|DMD|PharmD|OD|DPT|DC|CRNA|CNM|FACS|FAAP|FACC|FACP)\b|[^\p{L}\p{N}]|$))/giu },
         // HL7 v2 PID-5 Caret-Delimited Patient / Provider Names (e.g. "Guillermo^Maricela^C", "Vance-Soto^Eleanor^M")
         { type: 'NAME', isContextName: true, isHL7Name: true, regex: /\b[A-Za-z'’-]{2,}\^[A-Za-z'’-]{2,}(?:\^[A-Za-z'’.-]+){0,4}\b/g },
         // HL7 v2 Segment Delimited Dates (YYYYMMDD in PID-7, MSH-7, etc. e.g. "||19820412|F")
         { type: 'DATE', regex: /(?<=[|:])(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])(?=[|:\s])/g },
-        { type: 'PHI', regex: /\b(?:MRN|Patient\s+(?:ID|Number|No\.?|#)|Medical\s+Record\s+(?:No\.?|Num(?:ber)?|#)|EHR(?:\s*(?:ID|Record|Number|No\.?|#))?)[\s:#.]+([A-Za-z0-9\/-]+)/gi },
+        { type: 'PHI', regex: /\b(?:MRN|Patient|Medical\s+Record|EHR|Subject|Participant|Screening|Randomization|Cohort|Site)\s*(?:ID|Number|No\.?|#)?[:\s#.]+([A-Za-z0-9\/_-]+)/gi },
+        { type: 'PHI', regex: /\b(?:SUBJ|PARTICIPANT|RAND|SCR)[-_][A-Za-z0-9\/_-]{3,}\b/gi },
         { type: 'DATE', regex: /\b(?:DOB|Date of Birth|BIRTHDAY)[\s:]+([0-9./-]{6,10})\b/gi },
-        { type: 'PHI', regex: /\b(?:MRN|EHR)[-_ .]*[A-Za-z0-9\/-]{4,}\b/gi },
+        { type: 'PHI', regex: /\b(?:MRN|EHR)[-_ .]*[A-Za-z0-9\/_-]{4,}\b/gi },
         { type: 'ID', regex: /\b(?:Insurance\s+(?:ID|No\.?|Number|#)|Policy(?:\s*(?:ID|No\.?|Number|#)|[:#])|Member\s*(?:ID|No\.?|Number|#|[:#])|Subscriber\s*(?:ID|No\.?|Number|#|[:#])|Group\s*(?:ID|No\.?|Number|#|[:#])|Plan\s*(?:ID|No\.?|Number|#|[:#])|Health(?:\s+Plan)?\s*(?:ID|No\.?|Number|#)|Rx\s*(?:ID|No\.?|Number|Group|BIN|PCN|#))[:\s#]+([A-Za-z0-9-]{3,30})\b/gi },
         { type: 'ID', regex: /\b(?:Health\s+Plan(?:\s+Beneficiary)?|Beneficiary(?:\s+No\.?|\s+Number)?|HPN)[:\s#]+([A-Za-z0-9-]+)/gi },
         { type: 'ID', regex: /\bHPN[-_][A-Za-z0-9-]+\b/gi },
         { type: 'ID', regex: /\b(?:BCB|BCBS|AETNA|CIGNA|UHC|HUMANA|MEDICARE|MEDICAID)[-_A-Za-z0-9]+\b/gi },
         { type: 'ID', regex: /\b(?:NPI|National\s+Provider\s+(?:Identifier|ID)|Provider\s+(?:NPI|ID)|Attending\s+(?:NPI|Provider\s+ID)|Physician\s+NPI)[:\s#.]*([0-9OIlo]{10})\b/gi },
         { type: 'ID', regex: /\(01\)\d{14}(?:\(\d{2}\)[A-Za-z0-9-]+)+/g },
-        { type: 'LOCATION', regex: /\b(?:Pavilion|Ward|Bed|Room|Rm\.?|Suite|Bldg|Building|Floor|Wing|Tower|Unit)\s+[A-Za-z0-9-]+\b/gi },
+        { type: 'LOCATION', regex: /\b(?<!\bEmergency\s+)(?:Pavilion|Ward|Bed|Room|Rm\.?|Suite|Bldg|Building|Floor|Wing|Tower|Unit)\s+(?!\b(?:trauma|encounter|visit|care|admission|procedure|department|services?)\b)[A-Za-z0-9-]+\b/gi },
         { type: 'DATE', regex: /\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember))\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\b/gi },
         { type: 'ID', regex: /\b(?:Device\s+(?:Identifier|ID|Serial|No\.?|Number)|UDI)[:\s#]+([A-Za-z0-9-]+)/gi },
         { type: 'ID', regex: /\bUDI[-_][A-Za-z0-9-]+\b/gi },
@@ -232,6 +330,8 @@ let PROFILE_RULES = {
     ],
     security: [
         ...DEVOPS_SECRETS,
+        { type: 'USER', regex: /(?<=\b(?:Failed|Accepted)\s+(?:password|publickey|keyboard-interactive)\s+for\s+(?:invalid\s+user\s+)?)(?!(?:root|admin|ubuntu|daemon|nobody)\b)([a-zA-Z0-9_.-]+)(?=\s+from\b)/g },
+        { type: 'USER', regex: /(?<=(?:["']?userName["']?|["']?username["']?|["']?user_name["']?)\s*[:=]\s*["'])([^"'\r\n]+)(?=["'])/g },
         { type: 'SECRET', regex: /\b(?:INCIDENT|BREACH)[-_: ]?ID[-_: ]?[0-9]{4,10}\b/gi },
         { type: 'ID', regex: /\b(?:APT|UNC|FIN|TA|LAPSUS\$|DEV|Storm)[-_ ]?\d{1,4}\b/gi },
         { type: 'ID', regex: /\b(?:TA|T|M|G|S|C|DS)\d{4}(?:\.\d{3})?\b/g },
@@ -242,6 +342,7 @@ let PROFILE_RULES = {
         { type: 'SECRET', regex: /\b(?:sha256|SHA256)[:\s=]+[a-fA-F0-9]{64}\b/gi },
         { type: 'SECRET', regex: /\b(?:md5|MD5)[:\s=]+[a-fA-F0-9]{32}\b/gi },
         { type: 'SECRET', regex: /\b(?:sha1|SHA1)[:\s=]+[a-fA-F0-9]{40}\b/gi },
+        { type: 'SECRET', regex: /-----BEGIN OPENSSH PRIVATE KEY-----[\s\S]{10,8192}?-----END OPENSSH PRIVATE KEY-----/g },
         { type: 'SECRET', regex: /-----BEGIN OPENSSH PRIVATE KEY-----/g },
         { type: 'SECRET', regex: /\b(?:GHSA|USN|RHSA|ALAS|VMSA|MS)[-_ ]?\d{2,4}[-_ ][A-Za-z0-9_-]{1,12}\b/gi },
         { type: 'ID', regex: /\bhxxps?:\/\/[^\s"']+\b/gi },
@@ -249,14 +350,17 @@ let PROFILE_RULES = {
     ],
     dev: [
         ...DEVOPS_SECRETS,
+        { type: 'USER', regex: /(?<=\b(?:Failed|Accepted)\s+(?:password|publickey|keyboard-interactive)\s+for\s+(?:invalid\s+user\s+)?)(?!(?:root|admin|ubuntu|daemon|nobody)\b)([a-zA-Z0-9_.-]+)(?=\s+from\b)/g },
+        { type: 'USER', regex: /(?<=(?:["']?userName["']?|["']?username["']?|["']?user_name["']?)\s*[:=]\s*["'])([^"'\r\n]+)(?=["'])/g },
         { type: 'SECRET', regex: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql):\/\/[^\s"']+/gi },
         { type: 'SECRET', regex: /\b(?:ghp|gho|ghu|ghs|ghr|glpat|npm|xox[baprs])[-_][A-Za-z0-9_-]{10,}\b/g },
         { type: 'SECRET', regex: /\b(?:[rs]k)_(?:test|live)_[a-zA-Z0-9]{14,}\b/g },
         { type: 'SECRET', regex: /\b(?:whsec|webhook[-_]secret|signing[-_]secret)[-_: =]*[a-zA-Z0-9_-]{16,}\b/gi },
         { type: 'SECRET', regex: /\bBearer\s+eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b/gi },
-        { type: 'SECRET', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH )?PRIVATE KEY-----/g },
+        { type: 'SECRET', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----[\s\S]{10,8192}?-----END (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g },
+        { type: 'SECRET', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g },
         { type: 'IP', regex: /\b(?:(?:10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}|localhost):\d{2,5}\b/g },
-        { type: 'SECRET', regex: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g },
+        { type: 'SECRET', regex: /\b(?:AKIA|ASIA)[0-9A-Z]{16,28}\b/g },
         { type: 'SECRET', regex: /\bAIza[0-9A-Za-z\-_]{35}\b/g },
         { type: 'SECRET', regex: /\bsk-ant-(?:api03|admin01)-[a-zA-Z0-9_\-]{80,}\b/g },
         { type: 'SECRET', regex: /\bsk-(?:proj-|admin-)?[a-zA-Z0-9_\-]{48,164}\b/g },
@@ -266,16 +370,114 @@ let PROFILE_RULES = {
         { type: 'SECRET', regex: /\bdckr_pat_[a-zA-Z0-9_\-]{27,36}\b/g }
     ],
     marketing: [
-        { type: 'ID', regex: /\b(?:LEAD|PROSPECT)[-_: ]*[A-Z0-9_-]*[0-9][A-Z0-9_-]*\b/gi },
-        { type: 'ID', regex: /\b(?:CAMPAIGN|CLID|GCLID|FBCLID)[-_:=]*[A-Za-z0-9_-]{10,}\b/gi },
-        { type: 'FINANCIAL', regex: /(?<=\b(?:LTV|CAC)[\s:]*)(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[0-9,.'’]+\b/gi },
-        { type: 'ID', regex: /\b(?:SEGMENT|COHORT)[-_: ]*[0-9]{4,8}\b/gi },
+        // 1. Contextual Marketing, Growth & Agency Roles
+        {
+            type: 'NAME',
+            isContextName: true,
+            regex: /(?:^|[^\p{L}\p{N}_])(?:Campaign\s+Manager|Performance\s+Marketer|Paid\s+Media\s+Buyer|Media\s+Buyer|Growth\s+Lead|Growth\s+Marketer|PPC\s+Specialist|Paid\s+Search\s+Lead|Paid\s+Social\s+Manager|SEO\s+Specialist|Marketing\s+Director|VP\s+(?:of\s+)?Marketing|CMO|Chief\s+Marketing\s+Officer|Brand\s+Director|Creative\s+Director|Content\s+Creator|Influencer|Brand\s+Ambassador|Agency\s+Partner|Account\s+Director|Affiliate\s+Manager|Digital\s+Strategist|Marketing\s+Analyst|Reported\s+[Bb]y)[^\S\r\n]*[:=#][^\S\r\n]*(?:(?:Mr|Mrs|Ms|Dr)\.?\s+)?([A-Z\p{Lu}][A-Za-z'’.-]*(?:[ \t\xA0]+[A-Z\p{Lu}][A-Za-z'’.-]*){0,3})/giu
+        },
+
+        // 2. Ad Platforms & Ad Account Identifiers
+        { type: 'ID', regex: /\b(?:Google\s+Ads\s+(?:CID|Account|Customer\s+ID|ID)|AdWords\s+(?:ID|Account)|Google\s+CID)[^\S\r\n]*[:=#-][^\S\r\n]*(\d{3}-\d{3}-\d{4}|\d{10})\b/gi },
+        { type: 'ID', regex: /\bact_\d{10,20}\b/g },
+        { type: 'ID', regex: /\b(?:Meta|Facebook|FB)\s+(?:Ad\s+Account|Account\s+ID|Account\s+#)[^\S\r\n]*[:=#-][^\S\r\n]*(?:act_)?(\d{10,20})\b/gi },
+        { type: 'ID', regex: /\b(?:(?:LinkedIn|LI)\s+)?(?:Ad\s+Account|Account\s+ID|Campaign(?:\s+ID|\s+Group\s+ID)?|Creative\s+ID)[^\S\r\n]*[:=#-][^\S\r\n]*(\d{6,14})\b/gi },
+        { type: 'ID', regex: /\b(?:TikTok|TT)\s+Advertiser(?:\s+ID)?[^\S\r\n]*[:=#-][^\S\r\n]*(\d{15,22})\b/gi },
+        { type: 'ID', regex: /\b(?:TikTok\s+Pixel(?:\s+ID)?|TT\s+Pixel)[^\S\r\n]*[:=#-][^\S\r\n]*([A-Za-z0-9]{16,24})\b/gi },
+        { type: 'ID', regex: /\b(?:Bing\s+Ads|Microsoft\s+Advertising)\s+(?:Account|ID)[^\S\r\n]*[:=#-][^\S\r\n]*([A-Z0-9]{6,12})\b/gi },
+        { type: 'ID', regex: /\b(?:UET\s+Tag(?:\s+ID)?|UET\s+ID)[^\S\r\n]*[:=#-][^\S\r\n]*(\d{6,12})\b/gi },
+        { type: 'ID', regex: /\b(?:Pinterest\s+Tag|Twitter\s+Pixel|X\s+Pixel)[^\S\r\n]*[:=#-][^\S\r\n]*([a-zA-Z0-9_-]{6,25})\b/gi },
+
+        // 3. Tracking Pixels, Tags & Conversion Action Identifiers
+        { type: 'ID', regex: /\b(?:Meta\s+Pixel|Facebook\s+Pixel|Pixel\s+ID|FB\s+Pixel)[^\S\r\n]*[:=#-][^\S\r\n]*(\d{10,20})\b/gi },
+        { type: 'ID', regex: /\bFB[-_]PIXEL[-_:= ]*(\d{10,20})\b/gi },
+        { type: 'ID', regex: /\bAW-\d{9,12}\b/g },
+        { type: 'ID', regex: /\b(?:Conversion\s+Action(?:\s+ID)?|Google\s+Conversion\s+ID)[^\S\r\n]*[:=#-][^\S\r\n]*([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
         { type: 'ID', regex: /\b(?:G-[A-Z0-9]{8,12}|UA-\d{4,10}-\d{1,4})\b/g },
-        { type: 'ID', regex: /\b(?:MARKETO|PARDOT|KLAVIYO|HUBSPOT_CONTACT)[-_ ]*(?:LEAD|ID)?[:\s#-]*[A-Za-z0-9_-]{6,25}\b/gi },
-        { type: 'ID', regex: /(?:\?|&)(?:utm_source|utm_medium|utm_campaign|utm_term|utm_content)=([^&\s#"']+)/gi },
-        { type: 'ID', regex: /\b(?:_?ga=)?(?:GA\d\.\d\.)?(\d{9,10}\.\d{9,10})\b/g }
+        { type: 'ID', regex: /\b(?:_?ga=)?(?:GA\d\.\d\.)?(\d{9,10}\.\d{9,10})\b/g },
+        { type: 'ID', regex: /\b(?:Insight\s+Tag\s+Partner\s+ID|LI\s+Partner\s+ID|Partner\s+ID)[^\S\r\n]*[:=#-][^\S\r\n]*(\d{6,10})\b/gi },
+
+        // 4. Customer Data Platforms (CDP) & Marketing Automation
+        { type: 'ID', regex: /\b(?:Segment\s+(?:Anonymous\s+ID|User\s+ID)|anon_id|anonymous_id|segment_uid)[^\S\r\n]*[:=#-][^\S\r\n]*([a-zA-Z0-9_-]{8,40})\b/gi },
+        { type: 'ID', regex: /\banon[-_][a-zA-Z0-9_-]{8,36}\b/gi },
+        { type: 'SECRET', regex: /\b(?:Segment\s+Write\s+Key|Write\s+Key)[^\S\r\n]*[:=#-][^\S\r\n]*([a-zA-Z0-9]{24,40})\b/gi },
+        { type: 'ID', regex: /\b(?:MARKETO|PARDOT|KLAVIYO|HUBSPOT_CONTACT)[-_ ]*(?:LEAD|ID|PROSPECT|PROFILE)?[-_ ]+[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:Marketo|HubSpot|Klaviyo|Pardot)\s+(?:Lead|Contact|Profile|Prospect|List|Segment|Form)(?:\s+ID)?[^\S\r\n]*[:=#][^\S\r\n]*([A-Za-z0-9_-]{5,32})\b/gi },
+        { type: 'ID', regex: /\b(?:Munchkin\s+ID|Munchkin\s+Account)[^\S\r\n]*[:=#-][^\S\r\n]*(\d{3}-[A-Z0-9]{3}-\d{3})\b/gi },
+        { type: 'ID', regex: /\b(?:Subscriber\s+Key|Contact\s+Key)[^\S\r\n]*[:=#-][^\S\r\n]*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|[a-zA-Z0-9_-]{6,36})\b/gi },
+        { type: 'ID', regex: /\b(?:Braze\s+(?:External\s+)?(?:ID|User(?:\s+ID)?)|Iterable\s+User\s+ID|Customer\.io\s+ID)[^\S\r\n]*[:=#-][^\S\r\n]*([a-zA-Z0-9_-]{6,36})\b/gi },
+
+        // 5. Audience Cohorts, Lookalike Audiences & Lead Captures
+        { type: 'ID', regex: /\b(?:SEGMENT|COHORT)[-_: ]*[0-9]{4,8}\b/gi },
+        { type: 'ID', regex: /\b(?:Audience\s+Segment(?:\s+Ref)?|(?:Custom\s+)?Audience(?:\s+ID)?|Target\s+Audience)[^\S\r\n]*[:=#-][^\S\r\n]*([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        { type: 'ID', regex: /\b(?:Lookalike\s+(?:Audience|Segment)(?:\s+ID)?|LAL)[-_: ]*([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        { type: 'ID', regex: /\b(?:LEAD|PROSPECT)(?:[-_][A-Z0-9_-]*[0-9][A-Z0-9_-]*|[^\S\r\n]*[:=#][^\S\r\n]*([A-Z0-9_-]*[0-9][A-Z0-9_-]*))\b/gi },
+        { type: 'ID', regex: /\b(?:CAMPAIGN|CLID|GCLID|FBCLID)[-_:=]*[A-Za-z0-9_-]{10,}\b/gi },
+        { type: 'ID', regex: /(?:[?&])(?:utm_source|utm_medium|utm_campaign|utm_term|utm_content)=([^&\s#"']+)/gi },
+        { type: 'ID', regex: /(?:[?&])(?:gclid|fbclid|msclkid|ttclid|li_fat_id|dclid|srsltid|wbraid|gbraid)=([^&\s#"']+)/gi },
+        { type: 'ID', regex: /\b(?:msclkid|ttclid|li_fat_id|dclid|srsltid|wbraid|gbraid)[^\S\r\n]*[:=#-][^\S\r\n]*([A-Za-z0-9_-]{10,})\b/gi },
+
+        // 6. Ad Spend Budgets, Influencer Sponsorship Deals & Rate Cards
+        { type: 'FINANCIAL', regex: /(?<=\b(?:LTV|CAC)[\s:]*)(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[0-9,.'’]+\b/gi },
+        {
+            type: 'FINANCIAL',
+            regex: /(?<=\b(?:Campaign\s+Budget|Ad\s+Spend|Monthly\s+Ad\s+Spend|Media\s+Budget|Marketing\s+Budget|Daily\s+Budget|Lifetime\s+Budget|Influencer\s+Sponsorship\s+Fee|Influencer\s+Fee|Creator\s+Retainer|Sponsorship\s+Rate|Sponsored\s+Post\s+Fee|Affiliate\s+Commission|Affiliate\s+Payout|Target\s+CPA\s+Cap|Max\s+CPC\s+Bid|Minimum\s+Spend\s+Commitment|Spend\s+Cap)[^\S\r\n]*[:=][^\S\r\n]*)(?:(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)?[0-9,.'’]*\d(?:\.\d{2})?(?:[^\S\r\n]*(?:USD|EUR|GBP|CHF|ILS|RUB|[$€£¥₪₽₹]|\/mo\b|\/month\b|\/post\b|\/video\b))?/gi
+        }
     ],
     bizops: [
+        // 1. Contextual Supply Chain & Logistics Parties (Shipper, Consignee, Notify Party, Customs Broker, Vessel Master, Port Agent)
+        {
+            type: 'NAME',
+            isContextName: true,
+            regex: /(?:^|[^\p{L}\p{N}_])(?:Shipper|Consignee|Notify\s+Party|Freight\s+Forwarder|Customs\s+Broker|Customs\s+Agent|Vessel\s+Master|Master\s+(?:of\s+Vessel|Mariner)|Port\s+Agent|Cargo\s+Surveyor|Stevedore|Dispatcher|Warehouse\s+Manager|Logistics\s+Coordinator|Supply\s+Chain\s+Director|Carrier\s+Representative|Declarant|Importer\s+of\s+Record|Exporter\s+of\s+Record)[^\S\r\n]*[:=#][^\S\r\n]*(?:(?:Mr|Mrs|Ms|Capt|Captain)\.?\s+)?([A-Z\p{Lu}][A-Za-z'’.-]*(?:[ \t\xA0]+[A-Z\p{Lu}][A-Za-z'’.-]*){0,3})/giu
+        },
+        // 2. Ocean Bills of Lading (B/L, BOL) & Sea Waybills
+        { type: 'ID', regex: /\b(?:B\/L|BOL|BILL[- ]OF[- ]LADING|SEA[- ]WAYBILL|OCEAN[- ]B\/L)[-_][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Bill\s+of\s+Lading|Ocean\s+Bill\s+of\s+Lading|Sea\s+Waybill|Ocean\s+B\/L|B\/L|BOL)\s*(?:#|ID|No\.?|Number|Ref)?[^\S\r\n]*[:\s#-]+)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        // 3. Air Waybills (MAWB, HAWB, AWB) & Airline IATA Standard Formats
+        { type: 'ID', regex: /\b(?:MAWB|HAWB|AWB|AIR[- ]WAYBILL)[-_][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Master\s+Air\s+Waybill|House\s+Air\s+Waybill|Air\s+Waybill|MAWB|HAWB|AWB)\s*(?:#|ID|No\.?|Number|Ref)?[^\S\r\n]*[:\s#-]+)\b\d{3}[- ]?\d{8}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Master\s+Air\s+Waybill|House\s+Air\s+Waybill|Air\s+Waybill|MAWB|HAWB|AWB)\s*(?:#|ID|No\.?|Number|Ref)?[^\S\r\n]*[:\s#-]+)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        // 4. ISO 6346 Intermodal Shipping Container Numbers & High-Security Seals
+        { type: 'ID', regex: /\b[A-Z]{3}[UJZ]\d{7}\b/g },
+        { type: 'ID', regex: /\b(?:CONTAINER|EQUIPMENT|CHASSIS)[-_][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Container|Chassis|Intermodal\s+Unit)\s*(?:#|ID|No\.?|Number)?[^\S\r\n]*[:\s#-]+)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        { type: 'SECRET', regex: /\b(?:SEAL|CONTAINER[- ]SEAL|BOLT[- ]SEAL|CABLE[- ]SEAL)[-_][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'SECRET', regex: /(?<=\b(?:Container\s+Seal|Bolt\s+Seal|Cable\s+Seal|High[- ]Security\s+Seal|Customs\s+Seal|Seal)\s*(?:#|ID|No\.?|Number)?[^\S\r\n]*[:\s#-]+)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        // 5. Maritime Ship IMO Numbers, MMSI & Vessel Identifiers
+        { type: 'ID', regex: /\bIMO[- ]?\d{7}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:IMO(?:\s+(?:Number|Num|No\.?|#))?|Ship\s+Identification)\s*[:\s#-]+)\d{7}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:MMSI|Maritime\s+Mobile\s+Service\s+Identity)\s*(?:#|ID|No\.?|Number)?[:\s#-]+)\d{9}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Vessel(?:\s+Name)?|M\/V|MV|S\/S|SS|Container\s+Vessel)\s*[:=][^\S\r\n]*)(?:M\/V\s+|MV\s+)?[A-Z][A-Za-z0-9\s'’.-]{2,35}(?=\s*(?:Voyage|IMO|MMSI|Flag|\r?\n|$|\s{3,}|\t))/gi },
+        // 6. Customs Entry Declarations (CBP 7501, SAD MRN, AES ITN, Carnet, ISF)
+        { type: 'ID', regex: /(?<=\b(?:CBP(?:\s+Entry)?|Entry\s+Summary|Form\s+7501|Customs\s+Entry|Entry)\s*(?:#|ID|No\.?|Number)?[^\S\r\n]*[:\s#-]+)\b\d{3}[- ]?\d{7}[- ]?\d\b/gi },
+        { type: 'ID', regex: /\b(?:ENTRY|CUSTOMS[- ]ENTRY|CBP[- ]7501)[-_][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:MRN|Movement\s+Reference(?:\s+Number)?|Customs\s+Declaration|SAD(?:\s+Ref)?)\s*(?:#|ID|No\.?|Number)?[^\S\r\n]*[:\s#-]+)\b[0-9]{2}[A-Z]{2}[A-Z0-9]{12}[A-Z0-9]\d\b/gi },
+        { type: 'ID', regex: /\bMRN[-_][A-Za-z0-9]{14,20}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:ITN|AES\s+ITN|Internal\s+Transaction\s+Number|AES\s+Proof\s+of\s+Filing)\s*[:\s#-]+)\bX\d{14}\b/gi },
+        { type: 'ID', regex: /\bX\d{14}\b/g },
+        { type: 'ID', regex: /\b(?:ATA[- ]CARNET|CARNET)[-_][A-Z]{2}[-_ ]?[A-Z0-9]{4,15}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:ATA\s+Carnet|Carnet)\s*(?:#|ID|No\.?|Number)?[:\s#-]+)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        { type: 'ID', regex: /\b(?:ISF|10\+2|IMPORTER[- ]SECURITY[- ]FILING)[-_][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:ISF(?:\s+Transaction)?|10\+2(?:\s+Filing)?)\s*(?:#|ID|No\.?|Number)?[^\S\r\n]*[:\s#-]+)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        // 7. Carrier SCAC Codes, Bookings & Voyage Numbers
+        { type: 'ID', regex: /(?<=\b(?:SCAC(?:\s+Code)?|Carrier\s+SCAC|Carrier\s+Code)\s*[:\s#-]+)[A-Z]{2,4}\b/g },
+        { type: 'ID', regex: /\b(?:BOOKING|BKG|SHIPPING[- ]INSTRUCTION)[-_][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Booking(?:\s+Reference|\s+Ref|\s+#|\s+Number)?|BKG\s+Ref|Shipping\s+Instruction)\s*[:\s#-]+)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Voyage(?:\s+Number|\s+No\.?|\s+#)?|Voy\.?)\s*[:\s#-]+)([0-9]{1,5}[A-Z]{1,3}\b|[A-Za-z0-9_-]{3,12}\b)/gi },
+        // 8. Warehousing, Distribution Facilities & FTZ Sites
+        { type: 'ID', regex: /\b(?:FTZ|BONDED[- ]WAREHOUSE|DISTRIBUTION[- ]CENTER|DC|FULFILLMENT[- ]CENTER)[-_][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:FTZ\s+Site|Bonded\s+Warehouse|Facility|Warehouse|Distribution\s+Center|Fulfillment\s+Center)\s*(?:#|ID|No\.?|Number|Code)?[^\S\r\n]*[:\s#-]+)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        // 9. Logistics Financials, Demurrage, Detention & Freight Charges
+        {
+            type: 'FINANCIAL',
+            regex: /(?<=\b(?:Ocean\s+Freight|Air\s+Freight|Drayage(?:\s+Fee)?|Demurrage|Detention|BAF|CAF|THC|Terminal\s+Handling\s+Charge|Customs\s+Duty|Tariff\s+Amount|Duty\s+Paid|HMF|Harbor\s+Maintenance\s+Fee|MPF|Merchandise\s+Processing\s+Fee|Chassis\s+Fee|Storage\s+Fee|Lumper\s+Fee|Accessorial\s+Charges?|Declared\s+Customs\s+Value|Commercial\s+Invoice\s+Total)(?:\s*\([^)]*\))?\s*[:=-]\s*)(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’]+(?:\s+(?:[kKmMbB]|million|thousand)\b)?/gi
+        },
+        {
+            type: 'FINANCIAL',
+            regex: /(?<=\b(?:Per[- ]Diem(?:\s+Rate)?|Demurrage\s+Rate|Detention\s+Rate|Storage\s+Rate)(?:\s*\([^)]*\))?\s*[:=-]\s*)(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’]+(?:\s*\/(?:day|container|teu|feu|unit))?/gi
+        },
+        // 10. Corporate M&A, Deal Intelligence & Business Operations Records
         { type: 'ID', regex: /\b(?:DEAL|KPI|METRIC)[-_: ]+[A-Z0-9_-]{4,}\b/gi },
         { type: 'ID', regex: /\b(?:ENTITY|VENDOR|PARTNER)[-_: ]+[A-Z0-9_-]{4,15}\b/gi },
         { type: 'FINANCIAL', regex: /\b(?:REVENUE|EBITDA|PROFIT|MARGIN)[\s:_-]+(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)?[0-9,.'’]+[KM]?\b/gi },
@@ -289,18 +491,61 @@ let PROFILE_RULES = {
         { type: 'ID', regex: /\b(?:ES|ISO|NSO|OPT|RSU|CS|PS|SAFE|CN)[-_]\d{1,6}\b/g }
     ],
     sales: [
+        // 1. Contextual B2B Sales & Procurement Roles
+        {
+            type: 'NAME',
+            isContextName: true,
+            regex: /(?:^|[^\p{L}\p{N}_])(?:Lead|Prospect|Account\s+Executive|Enterprise\s+AE|Strategic\s+AE|AE|SDR|BDR|Sales\s+Rep|Sales\s+Director|VP\s+(?:of\s+)?Sales|CRO|Chief\s+Revenue\s+Officer|Decision\s+Maker|Champion|Economic\s+Buyer|Procurement\s+(?:Lead|Officer|Director|Specialist)|Sourcing\s+Manager|Global\s+Sourcing|Category\s+Manager|Deal\s+Desk(?:\s+Analyst)?|Commercial\s+Counsel|General\s+Counsel|Legal\s+Counsel|Contract\s+Specialist|Authorized\s+Signatory|Client\s+Signatory|Customer\s+Signatory|Vendor\s+Signatory|Contact\s+Name|Client\s+Name|Customer\s+Name|Reported\s+[Bb]y)[^\S\r\n]*[:=#][^\S\r\n]*(?:(?:Mr|Mrs|Ms|Dr)\.?\s+)?([A-Z\p{Lu}][A-Za-z'’.-]*(?:[ \t\xA0]+[A-Z\p{Lu}][A-Za-z'’.-]*){0,3})/giu
+        },
+        // 2. Salesforce 15/18 char record IDs
+        { type: 'ID', regex: /\b(?:001|003|005|006|00Q|00T|500|701)[0-9a-zA-Z]{12}(?:[0-9a-zA-Z]{3})?\b/g },
+        // 3. Customer / Tenant / Account / Opportunity IDs with prefix
+        { type: 'ID', regex: /(?<=\b(?:Customer|Tenant|Merchant|Subscriber|Organization|Org|Account|Opportunity|Lead|Prospect)\s*(?:ID|#|No\.?|Number|Key|Code)[:\s#=-]+)\b[A-Za-z0-9_-]{4,32}\b/gi },
+        { type: 'ID', regex: /\b(?:cus|sub|acct|org|tenant|mid|merch)_[0-9a-zA-Z]{6,32}\b/gi },
+        { type: 'ID', regex: /\b(?:CUST|CID|OPP|LEAD|ACCT)-[0-9A-Za-z]{4,16}\b/g },
         { type: 'ID', regex: /\bOPPORTUNITY[-_: ]*[A-Z0-9_-]{4,}\b/gi },
-        { type: 'ID', regex: /\b(?:DOCUSIGN|CONTRACT)[-_: ]?[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\b/gi },
-        { type: 'ID', regex: /\b(?:DOCUSIGN|CONTRACT)[-_: ]?[0-9A-F]{8,32}\b/gi },
-        { type: 'FINANCIAL', regex: /\b(?:ARR|MRR|QUOTA)[\s:]+(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)?[0-9,.'’]+[KM]?\b/gi },
+        // 4. DocuSign Envelope & Contract UUIDs / hex IDs
+        { type: 'ID', regex: /(?<=\b(?:DOCUSIGN|ENVELOPE|CONTRACT|AGREEMENT)(?:\s+(?:CONTRACT|ENVELOPE|AGREEMENT|FORM))?[^\S\r\n]*(?:ID|REF|#|CODE|NO\.?|NUMBER)?[^\S\r\n]*[:\s#-]+)[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:DOCUSIGN|ENVELOPE|CONTRACT|AGREEMENT)(?:\s+(?:CONTRACT|ENVELOPE|AGREEMENT|FORM))?[^\S\r\n]*(?:ID|REF|#|CODE|NO\.?|NUMBER)?[^\S\r\n]*[:\s#-]+)[0-9A-F]{8,32}\b/gi },
+        // 5. CLM Agreements, Order Forms & Quotes
+        { type: 'ID', regex: /\b(?:MSA|SOW|SLA|DPA|BAA|EULA|NDA)[-_][A-Za-z0-9]{2,15}(?:[-_][A-Za-z0-9]{1,8})*\b/gi },
+        { type: 'ID', regex: /\b(?:OF|CPQ|QUOTE|ORDER|ESTIMATE)[-_][A-Z0-9]{3,15}(?:[-_][A-Z0-9]{1,6})*\b/gi },
+        { type: 'ID', regex: /\bQ-\d{4,8}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Master\s+Services\s+Agreement|Statement\s+of\s+Work|Service\s+Level\s+Agreement|Data\s+Processing\s+Agreement|Business\s+Associate\s+Agreement|Non[- ]Disclosure\s+Agreement|Order\s+Form|Quote)\s*(?:(?:ID|Ref|No\.?|Number|#)[^\S\r\n]*[:\s#-]*|[:#=][^\S\r\n]*))([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        // 6. Procurement, Purchase Orders & Requisitions
+        { type: 'ID', regex: /\b(?:PO(?![\s.]*Box\b)|PURCHASE[- ]ORDER|REQUISITION|REQ)[-_][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Purchase\s+Order|PO(?![\s.]*Box\b)|Requisition|Req)\s*(?:#|NO\.?|ID|NUM|NUMBER)?[^\S\r\n]*[:\s#-]+)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        { type: 'ID', regex: /\b(?:RFP|RFQ|RFI|SOLICITATION|TENDER)[-_][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:RFP|RFQ|RFI|Solicitation|Tender)\s*(?:#|NO\.?|ID|REF|NUMBER)?[^\S\r\n]*[:\s#-]+)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        { type: 'ID', regex: /\b(?:VENDOR|SUPPLIER|CONTRACTOR)[-_][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Vendor|Supplier|Contractor)\s*(?:ID|#|NO\.?|CODE|NUM|NUMBER)?[^\S\r\n]*[:\s#-]+)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        { type: 'ID', regex: /\b(?:ANID|ARIBA[- ]NETWORK[- ]ID|ARIBA\s+ID)[^\S\r\n]*[:\s#-]+([A-Za-z0-9_-]{8,25})\b/gi },
+        { type: 'ID', regex: /\b(?:REMITTANCE|REMIT)[-_][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        // 7. Deal Financials, Contract Value Caps & Per-Seat Rates
+        { type: 'FINANCIAL', regex: /(?<=\b(?:ARR|MRR|ACV|TCV|ASP|QUOTA|Quota|Sales\s+Quota|Average\s+Selling\s+Price|CARR|Contracted\s+ARR|Contract\s+Value|Annual\s+Value|Total\s+Contract\s+Value|Annual\s+Contract\s+Value|Platform\s+Fee|Subscription\s+Fee|License\s+Fee|Implementation\s+Fee|Professional\s+Services(?: Fee)?|Discount(?:ed\s+Amount)?|Limitation\s+of\s+Liability|Liability\s+Cap|LoL\s+Cap|Super[- ]?[Cc]ap|Aggregate\s+Liability|Indemnity\s+Cap|Indemnification\s+Cap)(?:\s*\([^)]*\))?\s*[:=-]\s*)(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’]+(?:\s+(?:[kKmMbB]|million|thousand|billion)\b)?/gi },
+        { type: 'FINANCIAL', regex: /(?<=\b(?:Per[- ](?:Seat|User|License|Unit)(?:\s+(?:Rate|Price|Fee|Cost))?|Seat\s+Price|License\s+Price|Unit\s+Price)(?:\s*\([^)]*\))?\s*[:=-]\s*)(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’]+(?:\s*\/(?:month|year|seat|user|mo|yr)(?:\/(?:month|year|mo|yr))?)?/gi },
+        // 8. Contract Exhibits, Risk Assessments & SOC 2 Bridge Letters
+        { type: 'ID', regex: /\b(?:EXHIBIT|SCHEDULE|ANNEX)[-_ ]+[A-Z0-9_-]{1,8}[-_ ]*(?:SECURITY|DPA|PRIVACY|PRICING|COMPLIANCE)?[-_ ]*(?:ID|REF)?[^\S\r\n]*[:\s#-]+([A-Z0-9_-]*\d[A-Z0-9_-]*)\b/gi },
+        { type: 'ID', regex: /\b(?:SIG[- ]LITE|SIG[- ]CORE|CAIQ|VSAQ|SOC[- ]2[- ]BRIDGE)[-_][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        // 9. CRM & Sales Engagement Systems
         { type: 'ID', regex: /\b(?:SFDC|HUBSPOT)[-_: ]?[0-9A-Z]{15,18}\b/gi },
-        { type: 'ID', regex: /\b(?:GONG|CHORUS|SALESLOFT|CALL|RECORDING)[-_ ]*(?:CALL|ID|SESSION)?[:\s#-]*[A-Za-z0-9_-]{8,25}\b/gi },
-        { type: 'ID', regex: /\b(?:CADENCE|SEQUENCE|CAMPAIGN)[-_ ]*(?:ID|STEP)?[:\s#-]*[A-Za-z0-9_-]{5,20}\b/gi },
-        { type: 'ID', regex: /\b(?:ORDER[- ]FORM|MSA|SOW|QUOTE)[-_: ]*(?:REF|ID|#)?[:\s#-]*[A-Z0-9_-]{4,20}\b/gi }
+        { type: 'ID', regex: /(?<=\b(?:GONG|CHORUS|SALESLOFT|OUTREACH|APOLLO|ZOOMINFO)\s*(?:CALL|REC|RECORDING|MEETING|SESSION)?\s*(?:ID|#|No\.?|Number)?[:\s#-]+)[A-Za-z0-9_-]{8,32}\b/gi },
+        { type: 'ID', regex: /\b(?:GONG|CHORUS|SALESLOFT)[-_][A-Za-z0-9_-]{6,25}\b/gi },
+        { type: 'ID', regex: /\b(?:CADENCE|SEQUENCE|CAMPAIGN)[-_ ]*(?:ID|STEP)?[:\s#-]*[A-Za-z0-9_-]{5,20}\b/gi }
     ],
     support: [
-        { type: 'ID', regex: /\bTICKET[-_:# ]*[-A-Z0-9_]*\d[-A-Z0-9_]*\b/gi },
-        { type: 'ID', regex: /\b(?:ZENDESK|INTERCOM|JIRA)[-_:# ]?[0-9]{4,10}\b/gi },
+        { type: 'NAME', isContextName: true, regex: /(?:^|[^\p{L}\p{N}_])(?:Requester|Caller|Reported\s+[Bb]y|Assignee|Submitter|End\s+User|Customer\s+Name|Contact\s+Name|Client\s+Name|Agent)\s*[:=#]\s*([A-Z\p{Lu}][A-Za-z'’.-]*(?:[ \t\xA0]+[A-Z\p{Lu}][A-Za-z'’.-]*){0,3})/giu },
+        { type: 'SECRET', regex: /(?<=\b(?:(?:temporary|temp|security|portal|access)\s+pin|(?:verification|verify|security|auth|confirmation|access)\s+code|one-time\s+(?:passcode|code|pin)|otp|passcode)(?:\s+is|\s+was)?[\s:=-]+)\b[0-9A-Za-z]{4,8}\b/gi },
+        { type: 'ID', regex: /\b(?!(?:RFC|ISO|UTF|IEEE|ANSI|CVE|CWE|HTTP|HTML|JSON|XML|SQL|PCI|GDPR|HIPAA|SOC|FIPS|NIST|SHA|MD5|AES|RSA|EC|TLS|SSL|DNS|TCP|UDP|IP|BGP|OSPF|VPC|CIDR|VPN|NAT|LAN|WAN|WLAN|SSID|MAC|UUID|GUID)[-_])[A-Z][A-Z0-9]{1,9}-\d{1,6}\b/g },
+        { type: 'ID', regex: /\b(?:001|003|005|006|00Q|00T|500|701)[0-9a-zA-Z]{12}(?:[0-9a-zA-Z]{3})?\b/g },
+        { type: 'ID', regex: /(?<=\b(?:Customer|Tenant|Merchant|Subscriber|Organization|Org|Account)\s*(?:ID|#|No\.?|Number|Key|Code)[:\s#=-]+)\b[A-Za-z0-9_-]{4,32}\b/gi },
+        { type: 'ID', regex: /\b(?:cus|sub|acct|org|tenant|mid|merch)_[0-9a-zA-Z]{6,32}\b/gi },
+        { type: 'ID', regex: /\b(?:CUST|CID|TENANT|SUB|ACCT|MERCH)-[0-9A-Za-z]{4,16}\b/g },
+        { type: 'ID', regex: /\b\d{3}-\d{7}-\d{7}\b/g },
+        { type: 'ID', regex: /\b1Z[0-9A-Z]{16}\b/gi },
+        { type: 'ID', regex: /\b(?:9400\d{18}|9205\d{18}|9300\d{18}|9405\d{18})\b/g },
+        { type: 'ID', regex: /(?<=\b(?:Tracking|Track|Waybill|AWB|Tracking\s+Number|Tracking\s+#|Track\s+#|FedEx|USPS|DHL|UPS|Courier)\s*(?:Number|No\.?|#)?[:\s#-]+)[0-9A-Za-z]{10,34}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Ticket|Tkt|Case|Incident|Issue|Zendesk|Intercom|Freshdesk|Helpscout|ServiceNow|Jira)\s*(?:ID|#|No\.?|Number|Key)?[:\s#-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
         { type: 'ID', regex: /\b(?:REFUND|RETURN|RMA)[-_:# ]*(?:ID|REF|#|NO)?[:\s#-]*[A-Z0-9_-]*\d[A-Z0-9_-]*\b/gi },
         { type: 'ID', regex: /\b(?:LOYALTY|REWARDS)[-_:# ]?\d{8,12}\b/gi },
         { type: 'ID', regex: /\b(?:INC|CHG|RITM|PRB|REQ|SCTASK|CS|TASK)\d{7,10}\b/gi },
@@ -308,17 +553,89 @@ let PROFILE_RULES = {
         { type: 'ID', regex: /\b(?:CSAT|NPS|SURVEY)[-_ ]*(?:TOKEN|SESSION|ID)?[:\s#-]*[A-Za-z0-9_-]{8,32}\b/gi }
     ],
     realestate: [
-        { type: 'ID', regex: /\b(?:MLS|LIS)[- ]?\d{6,10}\b/gi },
+        // 1. Transaction Parties & Real Estate Professionals (Contextual Names)
+        {
+            type: 'NAME',
+            isContextName: true,
+            regex: /(?:^|[^\p{L}\p{N}_])(?:Buyer|Purchaser|Seller|Vendor|Grantor|Grantee|Tenant|Landlord|Lessor|Lessee|Anchor\s+Tenant|Subtenant|Commercial\s+Landlord|Leasing\s+Broker|Escrow\s+Officer|Title\s+Officer|Closing\s+Agent|Settlement\s+Agent|Listing\s+Agent|Selling\s+Agent|Real\s+Estate\s+Agent|Realtor|Property\s+Manager|Appraiser|Notary\s+Public|Qualified\s+Intermediary|QI\s+Officer|Special\s+Servicer|Master\s+Servicer|CMBS\s+Trustee|Environmental\s+Consultant|Title\s+Underwriter)(?:\s*\([A-Za-z0-9_-]+\))?\s*[:=#]\s*(?:(?:Mr|Mrs|Ms|Dr)\.?\s+)?([A-Z\p{Lu}][A-Za-z'’.-]*(?:[ \t\xA0]+[A-Z\p{Lu}][A-Za-z'’.-]*){1,3})/giu
+        },
+
+        // 2. Cadastral, Parcel & MLS Identifiers
+        { type: 'ID', regex: /\b(?:MLS|LIS)[- ]?\d{6,12}\b/gi },
         { type: 'ID', regex: /\bPARCEL[- ]?\d{5,15}\b/gi },
-        { type: 'ID', regex: /\b(?:APN|Assessor(?:'s)?\s*Parcel(?:\s*Number)?|Parcel\s*(?:ID|Number|No\.?|#))[:\s#-]*(\d{2,5}[-\s]\d{2,5}[-\s]\d{2,5}(?:[-\s]\d{1,4})?|\d{6,15})\b/gi },
+        { type: 'ID', regex: /\b(?:APN|Assessor(?:'s)?\s*Parcel(?:\s*Number)?|Parcel\s*(?:ID|Number|No\.?|#)|Property\s*Index\s*Number|PIN)[:\s#-]*(\d{2,5}[-\s]\d{2,5}[-\s]\d{2,5}(?:[-\s]\d{1,5})?|\d{2}-\d{2}-\d{3}-\d{3}(?:-\d{4})?|\d{6,15})\b/gi },
+        { type: 'ID', regex: /\b(?:Lot\s+\d{1,4},\s*Block\s+\d{1,4}(?:,\s*(?:Subdivision|Tract|Phase|Addition)\s+[A-Za-z0-9\s'’-]{2,40})?)\b/gi },
+
+        // 3. County Recorder Official Land Records (Deed Book & Page, Liber, Instrument No)
+        { type: 'ID', regex: /\b(?:(?:Deed|Official\s+Records?|OR)\s+Book\s+\d{1,6},\s*(?:Page|Pg\.?)\s+\d{1,6}|Liber\s+\d{1,6},\s*(?:Page|Folio)\s+\d{1,6})\b/gi },
+        { type: 'ID', regex: /\b(?:Instrument(?:\s+(?:Number|Num|No\.?|#))?|Recording\s*(?:Number|Num|No\.?|#)|Doc(?:ument)?\s*(?:Number|Num|No\.?|#))[:\s#]+([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+
+        // 4. Escrow, Title Insurance, Commitments & Settlement Statements (ALTA / HUD-1)
+        { type: 'ID', regex: /\b(?:Escrow\s*(?:Account|File|Order)?\s*(?:Number|Num|No\.?|#)?|Escrow)[:\s#]+([A-Za-z0-9-]*\d[A-Za-z0-9-]*)\b/gi },
+        { type: 'ID', regex: /\b(?:Title\s*Policy|Title\s*Order|Title\s*Commitment|Title\s*Guarantee)\s*(?:#|ID|No\.?|Number|Num)?[:\s#]*([A-Z0-9-]{5,24})\b/gi },
+        { type: 'ID', regex: /\b(?:ALTA|HUD-?1)\s*(?:Settlement\s*Statement|Statement|Closing\s*Statement)?\s*(?:#|ID|No\.?|File|Number|Num)?[:\s#]*([A-Z0-9-]{4,20})\b/gi },
+        { type: 'ID', regex: /\b(?:Schedule\s+B(?:\s+Part\s+[I|II|1|2])?\s+Exception(?:\s+(?:Number|Num|No\.?|#))?|Title\s+Exception\s*(?:Number|Num|No\.?|#))[:\s#-]+([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+
+        // 5. Commercial Multi-Tenant Schedules, Suites & Leases
         { type: 'ID', regex: /\bTENANT[-_]ID[-_][0-9]{4,}\b/gi },
-        { type: 'FINANCIAL', regex: /(?<=\b(?:RENT|LEASE|ESCROW|Purchase\s+Price|Listing\s+Price|Asking\s+Price|Down\s+Payment|Mortgage(?:\s+Balance)?|Closing\s+Costs?|Appraisal(?:\s+Value)?)[\s:]+)(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’]*\d[KMB]?\b|\b\d[0-9,.'’]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹])|[0-9,.'’]{3,}\b)/gi },
-        { type: 'SECRET', regex: /\b(?:GATE|DOOR|LOBBY)[-_ ](?:CODE|PIN)[\s:]*\d{4,6}\b/gi },
-        { type: 'ID', regex: /\b(?:Escrow\s*(?:Number|No\.?|#|Account|File|Order)|Escrow)[:\s#]*([A-Za-z0-9-]{5,18})\b/gi },
-        { type: 'ID', regex: /\b(?:Title\s*Policy|Title\s*Order|Title\s*Commitment)\s*(?:#|ID|No\.?)?[:\s#]*([A-Z0-9-]{6,20})\b/gi },
-        { type: 'ID', regex: /\b(?:FHA\s*(?:Case\s*(?:No\.?|Number|#)?)?)[:\s#]*(\d{3}-\d{7})\b/gi }
+        { type: 'ID', regex: /\bTENANT[-_ ]?(?:ID|#|NO\.?)?[-_:# ]*\d{4,12}\b/gi },
+        { type: 'ID', regex: /\b(?:Master\s+)?(?:Lease\s*(?:Agreement|Contract)?)\s*(?:#|ID|No\.?|Number|Num)?[:\s#]+(?:Lease[:\s#]*)?([A-Za-z0-9-]*\d[A-Za-z0-9-]*)\b/gi },
+        { type: 'ID', regex: /\b(?:Rent\s*Roll|Tenant\s*Schedule|Lease\s*Schedule|Lease\s*Abstract|Space\s*Inventory)[^\S\r\n]*(?:(?:ID|Ref|No\.?|Number|#)[:\s#-]*|[:#=][^\S\r\n]*)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        { type: 'ID', regex: /\b(?:Suite|Ste|Space|Unit)\s*(?:No\.?|Number|#)?[:\s#-]+([A-Za-z0-9-]*\d[A-Za-z0-9-]*|[A-Z])\b/gi },
+        { type: 'SECRET', regex: /\b(?:GATE|DOOR|LOBBY|LOCKBOX|BUILDING|ALARM|KEYPAD|ENTRY)[-_ ](?:CODE|PIN|KEY|PASSWORD)[\s:-]*([#*]?(?=[A-Za-z0-9#*]*\d)[A-Za-z0-9#*]{3,10})(?!\w)/gi },
+
+        // 6. Commercial Lease Covenants, Estoppels & SNDAs
+        { type: 'ID', regex: /\b(?:Estoppel(?:\s+Cert(?:ificate)?)?|Tenant\s+Estoppel)[^\S\r\n]*(?:(?:ID|Ref|No\.?|Number|#)[:\s#-]*|[:#=][^\S\r\n]*)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        { type: 'ID', regex: /\b(?:SNDA(?:\s+Agreement)?|Subordination(?:\s+Agreement)?|Attornment(?:\s+Agreement)?)[^\S\r\n]*(?:(?:ID|Ref|No\.?|Number|#)[:\s#-]*|[:#=][^\S\r\n]*)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        { type: 'ID', regex: /\b(?:Exclusive\s+Use(?:\s+Covenant)?|Restrictive\s+Covenant|Radius\s+Restriction)[^\S\r\n]*(?:(?:ID|Ref|No\.?|Number|#|Code)[:\s#-]*|[:#=][^\S\r\n]*)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+
+        // 7. Environmental Site Assessments (Phase I / Phase II ESA & REC)
+        { type: 'ID', regex: /\b(?:ASTM\s+E1527(?:-\d{2})?(?:\s+ESA)?)\s*(?:Report|File|Dossier|ID|Ref|No\.?|Number|#)[:\s#-]+([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        { type: 'ID', regex: /\b(?:(?:Phase\s+(?:II|I|2|1)\s+)?(?:ESA|Environmental\s+Site\s+Assessment))\s*(?:(?:Report|File|Dossier|ID|Ref|No\.?|Number|#)[:\s#-]*|[:#]\s*)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        { type: 'ID', regex: /\b(?:REC|HREC|CREC|Recognized\s+Environmental\s+Condition)\s*(?:(?:ID|Ref|No\.?|Number|#|Code)[:\s#-]*|[:#=]\s*)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+
+        // 8. 1031 Like-Kind Exchanges & Qualified Intermediaries
+        { type: 'ID', regex: /\b(?:1031\s+Exchange|Like-Kind\s+Exchange|Section\s+1031(?:\s+Exchange)?)[^\S\r\n]*(?:(?:ID|Ref|No\.?|Number|#|File)[:\s#-]*|[:#=][^\S\r\n]*)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        { type: 'ID', regex: /\b(?:Qualified\s+Intermediary|QI(?:\s+(?:Escrow|Account|Trust))?)[^\S\r\n]*(?:(?:Escrow|Account|Trust|ID|Ref|No\.?|Number|#|Acct)[:\s#-]*|[:#=][^\S\r\n]*)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        { type: 'ID', regex: /\b(?:Relinquished\s+Property|Replacement\s+Property)[^\S\r\n]*(?:(?:ID|Ref|No\.?|Number|#)[:\s#-]*|[:#=][^\S\r\n]*)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+
+        // 9. Commercial Mortgage Banking, CMBS, Mezzanine & Defeasance
+        { type: 'ID', regex: /\b(?:CMBS\s+(?:Loan|Deal|Trust)|Securitized\s+Loan|Commercial\s+Mortgage)[^\S\r\n]*(?:(?:ID|Ref|No\.?|Number|#)[:\s#-]*|[:#=][^\S\r\n]*)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        { type: 'ID', regex: /\b(?:Mezzanine\s+Loan|Mezz\s+Debt|Preferred\s+Equity)[^\S\r\n]*(?:(?:ID|Ref|No\.?|Number|#|Facility)[:\s#-]*|[:#=][^\S\r\n]*)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        { type: 'ID', regex: /\b(?:Defeasance(?:\s+(?:Account|Collateral|Ref))?|Yield\s+Maintenance)[^\S\r\n]*(?:(?:ID|Ref|No\.?|Number|#|Acct)[:\s#-]*|[:#=][^\S\r\n]*)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+
+        // 10. Housing Programs & GSE / Federal Loan Identifiers
+        { type: 'ID', regex: /\b(?:FHA\s*(?:Case\s*(?:No\.?|Number|#)?)?)[:\s#]*(\d{3}-\d{7,8})\b/gi },
+        { type: 'ID', regex: /\b(?:VA\s*(?:Loan(?:\s+Guaranty)?|Guaranty|Case)?\s*(?:No\.?|Number|#)?)[:\s#]*(\d{2}-\d{2}-\d{1,2}-\d{6,8}|\d{10,14})\b/gi },
+        { type: 'ID', regex: /\b(?:Fannie\s*Mae|Freddie\s*Mac)\s*(?:Loan\s*(?:#|ID|No\.?|Number)?|Commitment\s*#)?[:\s#]*(\d{8,14})\b/gi },
+
+        // 11. Transaction Financial Amounts, CRE Budgets & Allowances
+        {
+            type: 'FINANCIAL',
+            regex: /(?<=\b(?:RENT|LEASE|ESCROW|Escrow(?:\s+(?:Balance|Amount|Funds?|Deposit))?|Purchase\s+Price|Listing\s+Price|Asking\s+Price|Down\s+Payment|Earnest\s+Money(?:\s+Deposit)?|EMD|Security\s+Deposit|Mortgage(?:\s+Balance)?|Closing\s+Costs?|Appraisal(?:\s+Value)?|Monthly\s+Rent|Base\s+Rent|Annual\s+Rent|CAM(?:\s+(?:Reconciliation|Expenses?|Charges?|Dues?))?|Common\s+Area\s+Maintenance|Tenant\s+Improvements?(?:\s+Allowance)?|TI\s+Allowance|Leasing\s+Commissions?|LC\s+Amount|Rent\s+Concessions?|Free\s+Rent\s+Value|Gross\s+Revenue|Effective\s+Gross\s+Income|EGI|Mezzanine\s+(?:Loan\s+Amount|Debt)|Preferred\s+Equity\s+Amount|Defeasance\s+Collateral|Holdback\s+Amount|Reserve\s+Escrow|HOA\s+Dues?|HOA\s+Fees?|Property\s+Taxes?|Title\s+Premium|Transfer\s+Tax)[\s:#]+)(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’]*\d[KMB]?\b|\b\d[0-9,.'’]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹])|[0-9,.'’]{3,}\b)/gi
+        },
+        {
+            type: 'FINANCIAL',
+            regex: /(?<=\b(?:Base\s+Rent|CAM(?:\s+Expenses?)?|TI\s+Allowance|Operating\s+Expenses?|Lease\s+Rate)[\s:#]+)(?:[$€£¥₪₽₹]\s*)?\d+(?:\.\d{2})?\s*(?:\/\s*(?:SF|sq\.?\s*ft\.?|RSF|USF)|PSF)\b/gi
+        }
     ],
     compliance: [
+        // 1. Government Officers, Defense Personnel & Security Roles
+        {
+            type: 'NAME',
+            isContextName: true,
+            regex: /(?:^|[^\p{L}\p{N}_])(?:Contracting\s+Officer|Procurement\s+Officer|Facility\s+Security\s+Officer|FSO|ISSO|ISSM|Security\s+Officer|Contractor\s+Representative|Special\s+Agent|Investigator|Attesting\s+Official)(?:\s*\([A-Za-z0-9_-]+\))?\s*[:=#]\s*(?:(?:Col|Colonel|Maj|Major|Capt|Captain|Lt|Lieutenant|Dr|Doctor|Mr|Mrs|Ms)\.?\s+)?([A-Z\p{Lu}][A-Za-z'’.-]*(?:[ \t\xA0]+[A-Z\p{Lu}][A-Za-z'’.-]*){1,3})/giu
+        },
+        // 2. DoD & Federal Procurement Contracts (DFARS / FAR)
+        { type: 'ID', regex: /(?<=\b(?:Contract|Subcontract|Task\s+Order|Delivery\s+Order|Award|Solicitation|RFP|GSA\s+Schedule|GSA\s+Contract|BPA|IDIQ)\s*(?:Number|Num|No\.?|#|Award|ID)?[:\s#=-]+)\b([A-Z0-9]{2,10}-[A-Z0-9-]{4,20})\b/gi },
+        { type: 'ID', regex: /\b[A-Z0-9]{6}-\d{2}-[A-Z0-9]-[A-Z0-9]{4,8}\b/gi },
+        { type: 'ID', regex: /\bGS-\d{2}[A-Z]-[0-9A-Z]{4,7}\b/gi },
+        // 3. Personnel Security Clearance Levels & Investigation Records
+        { type: 'SECRET', regex: /\b(?:Security\s+Clearance(?:\s+Level)?|Clearance\s+Level|Clearance\s+Status|Access\s+Level)\s*[:=]\s*(?:Top\s+Secret(?:\s*\/\s*SCI)?|TS\s*\/\s*SCI|Secret|Confidential|Public\s+Trust(?:\s+Tier\s*\d+)?|Q|L)(?:\s+(?:with\s+)?(?:CI|Full\s+Scope|Counterintelligence|Lifestyle)\s+Polygraph)?\b/gi },
+        { type: 'SECRET', regex: /\b(?:Top\s+Secret(?:\s*\/\s*SCI)?|TS\s*\/\s*SCI|Active\s+Secret|Secret\s+Clearance|Public\s+Trust(?:\s+Tier\s*\d+)?|Q\s+Clearance|L\s+Clearance)(?:\s+(?:with\s+)?(?:CI|Full\s+Scope|Counterintelligence|Lifestyle)\s+Polygraph)?\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Clearance\s+Case|e-?QIP|SF-?86|Investigation\s+Case|DCSA\s+Case|Security\s+File)\s*(?:ID|#|No\.?|Number|Ref)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:DCSA|EQIP|SF86|NBIB)[-_:# ]*[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        // 4. Compliance Audits, DPAs & Subject Rights
         { type: 'SECRET', regex: /\b(?:GDPR|HIPAA|CCPA|SOC2|ISO27001|NIST|SOX)[-_: ]?(?:AUDIT|COMPLIANCE)[-_: ]?(?:Q[1-4][-_ ]?)?\d{4}\b/gi },
         { type: 'SECRET', regex: /\b(?:DPA|POLICY)[-_ ]*(?:ID|NO|#|CODE|REF)?[:\s_-]*[A-Z0-9_-]*\d[A-Z0-9_-]*\b/gi },
         { type: 'ID', regex: /\b(?:SAR|DSAR)(?:[-_\/: ]+[A-Z0-9/_-]+|[0-9][A-Z0-9/_-]*)\b/gi },
@@ -329,7 +646,18 @@ let PROFILE_RULES = {
         { type: 'ID', regex: /\b(?:ICO\s+(?:Reg(?:istration)?|Ref|No\.?|#)?)[:\s#-]*([Zz][A-Za-z0-9]?\d{6,7})\b/gi },
         { type: 'ID', regex: /\bFR\d{8,10}\b/g },
         { type: 'ID', regex: /\bEDPBI:[A-Z]{2}:OSS:[A-Z]:\d{4}:\d{3,6}\b/g },
-        { type: 'ID', regex: /\b(?:AC|AT|AU|CA|CM|CP|IA|IR|MA|MP|PE|PL|PS|RA|SA|SC|SI|SR)-\d{1,2}(?:\(\d{1,2}\))?\b/g }
+        { type: 'ID', regex: /\b(?:AC|AT|AU|CA|CM|CP|IA|IR|MA|MP|PE|PL|PS|RA|SA|SC|SI|SR)-\d{1,2}(?:\(\d{1,2}\))?\b/g },
+        { type: 'ID', regex: /\b(?:CE[-_ ]AI|AI[-_ ]SYS|AIA)[-_ ]*(?:REG|DECLARATION|CONFORMITY)?[:\s#-]*[A-Z0-9_-]{5,25}\b/gi },
+        { type: 'ID', regex: /\b(?:FRIA|DPIA[-_ ]AI)[-_ ]*(?:ID|REF|CASE|FILING)?[:\s#-]*[A-Z0-9_-]{4,25}\b/gi },
+        { type: 'SECRET', regex: /\b(?:PROMPT[-_ ](?:HASH|FINGERPRINT)|WATERMARK[-_ ]SEED)[:\s#=]+[a-fA-F0-9]{16,64}\b/gi },
+        // 5. CMMC 2.0 / Defense CUI, CAGE, DoDAAC & Export Controls (ITAR / EAR)
+        { type: 'ID', regex: /\b(?:CAGE\s*(?:Code|#|ID|No\.?)[:\s#-]*|CAGE[:#\s-]+)([0-9A-Z]{5})\b/gi },
+        { type: 'ID', regex: /\b(?:DODAAC|DoDAAC)\s*(?:#|ID|No\.?)?[:\s#-]*([A-Z0-9]{6})\b/gi },
+        { type: 'SECRET', regex: /\bCUI\/\/(?:SP-[A-Za-z0-9_-]+|BASIC|PRIV|LEI|OPSEC|PROPIN|FEDCON|CTI|DEF|EXPT|NOFORN|RELTO|REL\s+TO)(?:\/\/[A-Za-z0-9_\/-]+)*\b/gi },
+        { type: 'ID', regex: /\b(?:ITAR|EAR)\s*(?:License|Exemption|Reg(?:istration)?|Notice)?[:\s#-]*([A-Z0-9-]{6,18})\b/gi },
+        { type: 'ID', regex: /\b(?:ITAR|EAR)[-_ ](?:EX|LIC|AGR)[-_ ]\d{4}[-_ ]\d{4,8}\b/gi },
+        { type: 'ID', regex: /\b(?:MHMDA|CHID|CONSUMER[- ]HEALTH)[-_ ]*(?:RECORD|ID|REF)?[:\s#-]*[A-Z0-9_-]{6,25}\b/gi },
+        { type: 'ID', regex: /\b(?:ADMT|UOOM)[-_ ]*(?:REQ|OPT[- ]OUT|ID|TOKEN)?[:\s#-]*[A-Za-z0-9_-]{6,32}\b/gi }
     ],
     ccpa: [
         { type: 'ID', regex: /\b(?:DL|DRIVER['’]?S?\s+LICENSE(?:\s+DL)?)[:\s#-]*[-A-Z0-9]{6,15}\b/gi },
@@ -349,31 +677,267 @@ let PROFILE_RULES = {
         { type: 'ID', regex: /\b(?:[a-z0-9]+(?:[._-][a-z0-9]+)*\/)*[a-z0-9._-]+@sha256:[a-f0-9]{64}\b/g }
     ],
     agents: [
-        { type: 'ID', regex: /\b(?:AGENT|VECTOR|EMBEDDING)[-_: ]*(?:ID[-_: ]*)?[A-Z0-9_-]*\d[A-Z0-9_-]*\b/gi },
-        { type: 'ID', regex: /\bTASK[-_: ]?[A-Z0-9_-]{4,15}\b/gi },
-        { type: 'SECRET', regex: /\b(?:SYS[-_]PROMPT|SYSTEM[-_]PROMPT|OPENAI[-_]API[-_]KEY)[-_: ]?[A-Za-z0-9_-]{10,}\b/gi },
+        // 1. Contextual AI Engineering, ML Research & Prompt Architecture Personnel
+        {
+            type: 'NAME',
+            isContextName: true,
+            regex: /(?:^|[^\p{L}\p{N}_])(?:AI\s+Research\s+Scientist|Lead\s+ML\s+Engineer|Machine\s+Learning\s+Engineer|Prompt\s+Engineer|Agent\s+Architect|Agentic\s+Systems\s+Lead|AI\s+Safety\s+Researcher|AI\s+Red\s+Teamer|LLM\s+Security\s+Architect|Agent\s+Ops\s+Engineer|Cognitive\s+Systems\s+Lead|Principal\s+AI\s+Engineer)\s*[:=#]\s*(?:(?:Mr|Mrs|Ms|Dr|Prof)\.?\s+)?([A-Z\p{Lu}][A-Za-z'’.-]*(?:[ \t\xA0]+[A-Z\p{Lu}][A-Za-z'’.-]*){1,3})/giu
+        },
+
+        // 2. OpenAI / Anthropic / Gemini Agent, Assistant, Thread, Run, Msg & Step Identifiers
         { type: 'ID', regex: /\basst_[a-zA-Z0-9]{20,32}\b/g },
-        { type: 'ID', regex: /\b(?:thread|run)_[a-zA-Z0-9]{20,32}\b/g },
-        { type: 'ID', regex: /\b(?:PINECONE|WEAVIATE|QDRANT|MILVUS|CHROMA)[-_ ]*(?:INDEX|COLLECTION|NAMESPACE)?[:\s#-]*[a-zA-Z0-9_-]{4,30}\b/gi },
+        { type: 'ID', regex: /\b(?:thread|run|step)_[a-zA-Z0-9]{20,32}\b/g },
+        { type: 'ID', regex: /\bmsg_[a-zA-Z0-9]{20,32}\b/g },
+        { type: 'ID', regex: /\bcall_[a-zA-Z0-9]{20,32}\b/g },
         { type: 'ID', regex: /\b(?:vs|vsfb)_[a-zA-Z0-9]{24}\b/g },
         { type: 'ID', regex: /\bfile-[a-zA-Z0-9]{24}\b/g },
         { type: 'ID', regex: /\bftjob-[a-zA-Z0-9]{24}\b/g },
         { type: 'ID', regex: /\bmsgbatch_[a-zA-Z0-9]{24,32}\b/g },
-        { type: 'SECRET', regex: /\bhf_[a-zA-Z0-9]{34,40}\b/g }
+
+        // 3. LangChain, LangSmith, LangGraph & Multi-Agent Execution Traces
+        { type: 'ID', regex: /(?<=\b(?:langgraph_step|langgraph_run|trace_id|run_id|span_id|execution_id)[^\S\r\n]*[:=][^\S\r\n]*)[a-zA-Z0-9_-]{8,64}\b/gi },
+        { type: 'ID', regex: /\b(?:Trace\s+ID|Span\s+ID|Run\s+ID|Execution\s+ID)\s*[:#=-]\s*([a-f0-9-]{32,36})\b/gi },
+        { type: 'ID', regex: /\b(?:crew_run|crew_step|agent_task)[-_][a-zA-Z0-9_-]{6,32}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Crew\s+Execution|Agent\s+Task|CrewAI\s+Run|Agent\s+Workflow)\s*(?:ID|#|No\.?)?[^\S\r\n]*[:=#-][^\S\r\n]*)[a-zA-Z0-9_-]{6,32}\b/gi },
+        { type: 'ID', regex: /\bnode_[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\b/g },
+        { type: 'ID', regex: /\bchunk-[a-f0-9]{12,32}\b/g },
+        { type: 'ID', regex: /\bdoc_[a-zA-Z0-9]{10,36}\b/g },
+
+        // 4. Vector Database Namespaces, Collections & Index Credentials
+        { type: 'ID', regex: /(?<=\b(?:Pinecone\s+Namespace|Vector\s+Namespace|Index\s+Namespace|Namespace|Pinecone\s+Index|Vector\s+Index)\s*[:=]\s*["']?)[a-zA-Z0-9_-]{3,32}(?=["']?)/gi },
+        { type: 'URL', regex: /\bhttps:\/\/[a-zA-Z0-9_-]+\.svc\.[a-zA-Z0-9_-]+\.pinecone\.io\b/gi },
+        { type: 'ID', regex: /\b(?:PINECONE|WEAVIATE|QDRANT|MILVUS|CHROMA)[-_](?:INDEX|COLLECTION|NAMESPACE)[-_][a-zA-Z0-9_-]{3,30}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Collection\s+Name|Vector\s+Collection|Qdrant\s+Collection|Weaviate\s+Class|Chroma\s+Collection|Milvus\s+Partition)\s*[:=]\s*["']?)[a-zA-Z0-9_-]{3,32}(?=["']?)/gi },
+        { type: 'URL', regex: /\bhttps:\/\/[a-zA-Z0-9_-]+\.weaviate\.network\b/gi },
+        { type: 'URL', regex: /\bhttps:\/\/[a-zA-Z0-9_-]+\.qdrant\.tech(?::\d+)?\b/gi },
+
+        // 5. Model Context Protocol (MCP) & Agent Tool Calling
+        { type: 'SECRET', regex: /\bmcp[-_ ](?:session|token|auth|req)[-_:][a-zA-Z0-9_-]{16,64}\b/gi },
+        { type: 'SECRET', regex: /\bsse:\/\/[^\s"']+\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:MCP\s+Session\s+ID|Tool\s+Call\s+ID|tool_call_id)\s*[:=]\s*["']?)[a-zA-Z0-9_-]{8,64}(?=["']?)/gi },
+        { type: 'ID', regex: /(?<=\b(?:JSON-RPC\s+ID|rpc_id)\s*[:=]\s*["']?)[a-zA-Z0-9_-]{4,32}(?=["']?)/gi },
+
+        // 6. Agent Memory Stores, User Persona Injections & Long-Term Recall
+        { type: 'ID', regex: /\bmem_[a-zA-Z0-9]{16,32}\b/g },
+        { type: 'ID', regex: /\bzep_sess_[a-zA-Z0-9]{16,32}\b/g },
+        { type: 'ID', regex: /(?<=\b(?:Mem0\s+User\s+ID|Memory\s+Key|Persona\s+ID|Session\s+Memory)\s*[:=]\s*["']?)[a-zA-Z0-9_-]{4,32}(?=["']?)/gi },
+
+        // 7. AI Gateway Credentials, Model API Keys & System Prompt Secrets
+        { type: 'SECRET', regex: /\b(?:SYS[-_]PROMPT|SYSTEM[-_]PROMPT|OPENAI[-_]API[-_]KEY)[-_: ]?[A-Za-z0-9_-]{10,}\b/gi },
+        { type: 'SECRET', regex: /\bsk-or-v1-[a-zA-Z0-9]{64}\b/g },
+        { type: 'SECRET', regex: /\bsk-ant-api[a-zA-Z0-9_-]{30,}\b/g },
+        { type: 'SECRET', regex: /\bhf_[a-zA-Z0-9]{34,40}\b/g },
+        { type: 'SECRET', regex: /\b(?:voyage|cohere|together|gsk)_[a-zA-Z0-9_-]{24,64}\b/gi },
+        { type: 'SECRET', regex: /(?<=\b(?:SYSTEM_PROMPT|SYS_PROMPT|GUARDRAIL_SECRET|INJECTION_SEED|AGENT_SECRET)\s*[:=]\s*["']?)[A-Za-z0-9_-]{10,}(?=["']?)/gi },
+        { type: 'ID', regex: /\b(?:AGENT|VECTOR|EMBEDDING)[-_: ]*(?:ID[-_: ]*)?[A-Z0-9_-]*\d[A-Z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\bTASK[-_: ]?[A-Z0-9_-]{4,15}\b/gi }
     ],
     academic: [
-        { type: 'ID', regex: /\b(?:STUDENT|ALUMNI)[-_:# ]*[A-Z0-9_-]*\d[A-Z0-9_-]*\b/gi },
+        // 1. Researcher, Faculty, Student & Administrative Personnel Names (Contextual)
+        {
+            type: 'NAME',
+            isContextName: true,
+            regex: /(?:^|[^\p{L}\p{N}_])(?:Student(?:\s+Name)?|Learner|Scholar|Advisee|Principal\s+Investigator|Co-Principal\s+Investigator|Lead\s+Investigator|Investigator|PI|Co-PI|Research\s+Fellow|Postdoc(?:toral\s+Fellow)?|Faculty\s+Advisor|Advisor|Professor|Doctoral\s+Candidate|PhD\s+Candidate|Peer\s+Reviewer|Reviewer|Dean(?:\s+of\s+Students)?|Provost|Registrar|Title\s+IX\s+Coordinator|Academic\s+Advisor|Guidance\s+Counselor|IEP\s+Coordinator|Admissions\s+Director|Financial\s+Aid\s+Director|School\s+Psychologist|Special\s+Education\s+Director)\s*[:=#]\s*(?:(?:Dr|Doctor|Prof|Professor|Dean|Provost|Mr|Mrs|Ms)\.?\s+)?([A-Z\p{Lu}][A-Za-z'’.-]*(?:[ \t\xA0]+[A-Z\p{Lu}][A-Za-z'’.-]*){1,3})/giu
+        },
+
+        // 2. Learning Management Systems (LMS) & EdTech Identities
+        // Canvas user IDs & SIS user IDs
+        { type: 'ID', regex: /\buser_\d{5,12}\b/g },
+        { type: 'ID', regex: /(?<=\b(?:sis_user_id|sis_login_id|canvas_user_id|canvas_id|Canvas\s+(?:User|Student)(?:\s+ID)?)\s*[:=]\s*)[@A-Za-z0-9_-]*\d[A-Za-z0-9_-]*/gi },
+        // Blackboard IDs & Usernames
+        { type: 'ID', regex: /(?<=\b(?:bb_user_id|blackboard_user_id|Blackboard\s+(?:ID|Username|User|Student))\s*[:=]\s*)[@A-Za-z0-9_-]*\d[A-Za-z0-9_-]*/gi },
+        { type: 'ID', regex: /(?<=\bBlackboard\s+Username\s*[:=]\s*)[a-zA-Z0-9._-]+\b/gi },
+        // Moodle IDs & Participant IDs
+        { type: 'ID', regex: /(?<=\b(?:moodle_user_id|moodle_student_id|moodle_id|Moodle\s+(?:ID|User|Participant(?:\s+ID)?))\s*[:=]\s*)[@A-Za-z0-9_-]*\d[A-Za-z0-9_-]*/gi },
+        // Google Classroom Student & User IDs
+        { type: 'ID', regex: /(?<=\b(?:classroom_student_id|classroom_user_id|google_classroom_id|Classroom\s+(?:Student|User)(?:\s+ID)?)\s*[:=]\s*)\d{8,24}\b/gi },
+        // Schoology & D2L Brightspace
+        { type: 'ID', regex: /(?<=\b(?:schoology_user_id|schoology_id|Schoology\s+ID|d2l_user_id|d2l_id|Brightspace\s+ID|brightspace_user_id)\s*[:=]\s*)[@A-Za-z0-9_-]*\d[A-Za-z0-9_-]*/gi },
+
+        // 3. K-12 & Higher Ed Special Accommodations (IEP, 504, ELL/ESL, BIP)
+        { type: 'ID', regex: /(?<=\b(?:IEP|Individualized\s+Education\s+Program)\s*(?:Case|Plan(?:\s+ID)?|ID|#|No\.?|Number|Student(?:\s+ID)?)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\bIEP[-_:# ]+[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Section\s+504|Plan\s+504|504\s+Plan|504\s+Accommodation(?:\s+Plan)?)\s*(?:ID|#|No\.?|Number|Case)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b504[-_ ](?:Plan|ID|Case)[-_:# ]*[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:ELL|ESL|LEP|English\s+Learner)\s*(?:Student(?:\s+ID)?|ID|#|No\.?|Number|Case)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:ELL|ESL|LEP)[-_:# ]+[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:BIP|Behavioral\s+Intervention\s+Plan)\s*(?:Case|ID|#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\bBIP[-_:# ]+[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+
+        // 4. Student Privacy & Statutory FERPA Records (FERPA, Title IX, Student Conduct)
+        { type: 'SECRET', regex: /(?<=\bFERPA\s+(?:Directory\s+Flag|Privacy\s+Hold|Block|Restrict\s+Flag|Non-Directory\s+Flag)\s*[:=]\s*)(?:Suppressed|Active|Restricted|Blocked|Yes|True|Y)\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Disciplinary\s+Case|Conduct\s+Case|Student\s+Conduct(?:\s+Docket)?|Honor\s+Code(?:\s+Case)?|Academic\s+Integrity(?:\s+Case)?|FERPA\s+(?:Complaint|Violation|Appeal|Case|Record)|Title\s+IX\s+(?:Complaint|Case(?:\s+No\.?)?|Investigation|Docket)|Clery\s+(?:Incident|Report|Case))\s*(?:ID|#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:TIX|SCD|DSC|HCC|AIC|FC)[-_:# ]*\d{4}[-_:# ][A-Za-z0-9_-]*\d\b/gi },
+        { type: 'ID', regex: /\b(?:Title\s+IX|TIX)[-_:# ]*[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:FERPA|IRB)[-_:# ]*[A-Z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+
+        // 5. Title IV Financial Aid, FAFSA, EFC, SAI & Pell Grants
+        { type: 'ID', regex: /(?<=\b(?:FAFSA|Title\s+IV|Pell\s+Grant|Student\s+Aid(?:\s+Report)?|SAR)\s*(?:ID|#|No\.?|Number|App(?:lication)?)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:FAFSA|PELL|SAR)[-_:# ]*[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'FINANCIAL', regex: /(?<=\b(?:EFC|Expected\s+Family\s+Contribution|SAI|Student\s+Aid\s+Index)(?:\s*\([A-Z]+\))?[:\s]+)(?:-?\s*(?:[$€£¥₪₽₹]|USD)\s*)?-?[0-9,.'’]+\b/gi },
+
+        // 6. International Students & Exchange (SEVIS, Form I-20, DS-2019, OPT/CPT)
+        { type: 'ID', regex: /(?<=\b(?:SEVIS(?:\s+(?:ID|Number|#))?|Student\s+and\s+Exchange\s+Visitor)\s*[:#=-]*\s*)N\d{10,11}\b/gi },
+        { type: 'ID', regex: /\bN\d{10,11}\b/g },
+        { type: 'ID', regex: /(?<=\b(?:Form\s+I-20|I-20|DS-2019|Form\s+DS-2019)\s*(?:ID|#|No\.?|Number|Certificate|Ref)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:I20|DS2019)[-_:# ]*[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:OPT|CPT|Optional\s+Practical\s+Training|Curricular\s+Practical\s+Training)\s*(?:Case|Authorization(?:\s+ID)?|ID|#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:OPT|CPT)[-_:# ]+[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+
+        // 7. Proctoring & Standardized Testing Identifiers
+        { type: 'ID', regex: /(?<=\b(?:proctorio_session|proctorio_id|Proctorio\s+(?:Session|ID)|honorlock_session|Honorlock\s+(?:Session(?:\s+ID)?|ID)|respondus_session|Respondus\s+(?:Session(?:\s+ID)?|ID)|ProctorU\s+(?:Session|ID))\s*[:=]\s*)[A-Za-z0-9_-]{6,64}\b/gi },
+        { type: 'ID', regex: /\b(?:HL|RSP|PU)[-_:# ]*[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:SAT|ACT|GRE|GMAT|MCAT|LSAT|TOEFL|IELTS)\s*(?:Registration(?:\s+(?:ID|No\.?|Number|#))?|Candidate(?:\s+ID)?|Student\s+ID|Reg(?:\s+No\.?)?|ID|#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:SAT|ACT|GRE|GMAT|MCAT|LSAT)[-_:# ]+[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+
+        // 8. Student IDs, Campus IDs, Banner IDs, Matriculation Numbers
+        { type: 'ID', regex: /(?<=\b(?:Student(?:\s+Record)?|Campus|Banner|Matriculation|Enrolment|Enrollment|Registrar)\s*(?:ID|#|No\.?|Number)?[:\s#=-]+)[@A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:STUDENT|ALUMNI)[-_:# ]*[A-Z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        // 9. Official Course Codes with prefix (preserving standalone CS-101/MATH-204 in prose)
         { type: 'ID', regex: /\bCOURSE[-_:# ]?[A-Z]{2,4}[ ]?[0-9]{3,4}\b/gi },
-        { type: 'ID', regex: /\b(?:FERPA|IRB)[-_:# ]*[A-Z0-9_-]*\d[A-Z0-9_-]*\b/gi },
-        { type: 'ID', regex: /\bGRADE[S]?[:\s]+[A-DF][+-]?\b/gi },
+        // 10. Grades & GPA Performance Ratings
+        { type: 'ID', regex: /\bGRADE[S]?[:\s]+[A-DF][+-]?(?![A-Za-z0-9])/gi },
+        { type: 'ID', regex: /(?<=\b(?:Cumulative\s+GPA|Overall\s+GPA|Major\s+GPA|Term\s+GPA|Semester\s+GPA|GPA)[:\s]+)[0-4]\.\d{1,3}(?:\s*\/\s*4\.0)?\b/gi },
+        // 11. Human Subjects Research Protocols, IRB, IACUC & Participant Codes
+        { type: 'ID', regex: /(?<=\b(?:IRB\s+Protocol|IRB|Ethics\s+Approval|Ethics\s+Committee|Ethics|IACUC|Institutional\s+Review\s+Board)\s*(?:ID|#|No\.?|Number|Ref)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:IRB|IACUC|ETH)[-_:# ]*[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Participant|Subject|Human\s+Subject|Respondent|Volunteer)\s*(?:ID|#|No\.?|Number|Code)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:SUBJ|PART|RESP|HS)[-_:# ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Informed\s+Consent(?:\s+Form)?|Consent\s+Form|ICF)\s*(?:ID|#|No\.?|Number|Ref)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\bICF[-_:# ]*[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        // 12. Research Grant IDs & Academic Credentials
         { type: 'ID', regex: /\b(?:[1-9]\s?)?[A-Z][0-9]{2}[A-Z]{2}[0-9]{6}(?:-[0-9]{2})?\b/g },
-        { type: 'ID', regex: /\bN\d{10}\b/g },
         { type: 'ID', regex: /\b(?:TRANSCRIPT|REGISTRAR|DIPLOMA)[-_ ]*(?:ID|REF|NO)?[:\s#-]*[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
-        { type: 'ID', regex: /\b000[0-9]-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]\b/g },
-        { type: 'ID', regex: /\b10\.\d{4,9}\/[-._;()/:A-Za-z0-9]+\b/g },
-        { type: 'ID', regex: /\b(?:arXiv:)?(\d{4}\.\d{4,5}(?:v\d+)?)\b/g },
-        { type: 'ID', regex: /\bPMID[:\s#]*(\d{4,8})\b/gi },
-        { type: 'ID', regex: /\bPMC\d{7,8}\b/g }
+        { type: 'ID', regex: /\b000[0-9]-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]\b/g }
+    ],
+    automotive: [
+        // 1. Automotive, Fleet, Field Service & Engineering Personnel Names (Contextual)
+        {
+            type: 'NAME',
+            isContextName: true,
+            regex: /(?:^|[^\p{L}\p{N}_])(?:Fleet\s+Manager|Telematics\s+Engineer|Automotive\s+Diagnostics\s+Lead|Master\s+Technician|Service\s+Advisor|EV\s+(?:Charging\s+)?Infrastructure\s+Lead|Functional\s+Safety\s+Engineer|Autonomous\s+Safety\s+Driver|Safety\s+Driver|Shop\s+Foreman|Field\s+Service\s+Technician|Charging\s+Station\s+Operator)\s*[:=#]\s*(?:(?:Mr|Mrs|Ms|Dr|Eng)\.?\s+)?([A-Z\p{Lu}][A-Za-z'’.-]*(?:[ \t\xA0]+[A-Z\p{Lu}][A-Za-z'’.-]*){1,3})/giu
+        },
+
+        // 2. Vehicle Identification Numbers (VIN) — 17-char ISO 3779 / NHTSA
+        { type: 'ID', regex: /(?<=\b(?:VIN|Vehicle\s+(?:Identification\s+Number|ID)|Chassis(?:\s+Number|\s+No\.?)?|VIN\s*#|VIN\s*No\.?)[:\s#=-]+)[A-HJ-NPR-Z0-9]{17}\b/gi },
+        { type: 'ID', regex: /\bVIN[-_:#][A-HJ-NPR-Z0-9]{17}\b/gi },
+        { type: 'ID', regex: /\b(?=[A-HJ-NPR-Z0-9]{17}\b)(?=[A-HJ-NPR-Z0-9]*\d)(?=[A-HJ-NPR-Z0-9]*[A-HJ-NPR-Z])[A-HJ-NPR-Z0-9]{17}\b/gi },
+
+        // 3. Connected Vehicle & ECU / CAN Bus Identifiers
+        { type: 'ID', regex: /(?<=\b(?:CAN(?:\s+Bus)?(?:\s+Arbitration|\s+Frame)?\s+(?:ID|Identifier)|Arbitration\s+ID)\s*[:=]\s*)0x[0-9A-Fa-f]{3,8}\b/gi },
+        { type: 'ID', regex: /\bCAN[-_ ](?:ID|ARB)[-_:# ]*0x[0-9A-Fa-f]{3,8}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:ECU|BCM|TCU|PCM|BMS|VCU|TCM|ECM|DCU|ADAS|Gateway)\s*(?:Serial(?:\s+Number|\s+No\.?)?|Module(?:\s+Serial|\s+ID)?|Part\s+Number|ID|#|No\.?)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:ECU|BCM|TCU|PCM|BMS|VCU|TCM|ECM|DCU)[-_:# ]+[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:OBD-?II(?:\s+Diagnostic|\s+Scan)?\s+Session|Diagnostic\s+Session|Freeze\s+Frame(?:\s+ID|\s+Data)?|Repair\s+Order|Work\s+Order|Service\s+RO)\s*(?:ID|#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:DIAG|FREEZE|RO|WO)[-_:# ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\bOBD[-_ ]?(?:II[-_ ]?)?(?:SESSION|SCAN)[-_:# ]*[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+
+        // 4. Telematics & Connected Fleet Telemetry
+        { type: 'ID', regex: /(?<=\b(?:Telematics(?:\s+Device|\s+Gateway|\s+Unit|\s+Serial)?|Fleet\s+Tracker|Geotab|Samsara|CalAmp|Asset\s+Tracker|Blackbox)\s*(?:Serial(?:\s+No\.?)?|IMEI|ID|#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:TEL|FLT|GEOTAB|SAMSARA|CALAMP|GO9|VG54)[-_:# ]+[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'LOCATION', regex: /(?<=\b(?:(?:GPS|Telemetry|Breadcrumb|Vehicle|Fleet|Tracker|Asset|Sensor|Waypoint|Geofence)\s*(?:Coordinates?|Location|Position|Lat\/?Long|Latitude\s*\/\s*Longitude)?|Lat\/?Long|Latitude\s*\/\s*Longitude)\s*[:=]\s*)-?\d{1,3}\.\d{4,8}\s*,\s*-?\d{1,3}\.\d{4,8}\b/gi },
+        { type: 'LOCATION', regex: /\b(?:Lat(?:itude)?[:\s]+-?\d{1,3}\.\d{4,8}[,\s]+Long(?:itude)?[:\s]+-?\d{1,3}\.\d{4,8})\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Fleet\s+Unit|Vehicle\s+Unit|Asset\s+Tag|Truck\s+ID|Cab\s+ID|Trailer\s+ID|Tractor\s+ID|Unit\s+Number|Fleet\s+ID)\s*(?:#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:ASSET-VEH|TRK|CAB|TRL|FLEET)[-_:# ]+[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\bUNIT[-_#][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\bUNIT\s+#?\d{3,8}\b/gi },
+
+        // 5. EV Infrastructure & Charging (OCPP / EVSE / EMAID / RFID)
+        { type: 'ID', regex: /(?<=(?<!\bState\s+of\s+)\b(?:OCPP(?:\s+Transaction|\s+Session)?|Charge(?:\s+Session|\s+Transaction)?|Charging\s+Session)\s*(?:ID|#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*(?![ \t]*%)\b/gi },
+        { type: 'ID', regex: /\b(?:CHG|CS|EV-CHG)[-_:# ]+[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\bOCPP(?!\s+\d+\.\d+)[-_:# ]+[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:EVSE(?:\s+ID)?|Charging\s+Point|Charge\s+Point|EV\s+Charger)\s*(?:ID|#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9*_-]*\d[A-Za-z0-9*_-]*\b/gi },
+        { type: 'ID', regex: /\b[A-Z]{2}\*[A-Za-z0-9]{3}\*[A-Za-z0-9*_-]{4,25}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:EMAID|e-?Mobility\s+Account(?:\s+ID)?|RFID(?:\s+Badge)?|Charging\s+Card|PCID)\s*(?:ID|#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:EMAID|RFID|PCID)[-_:# ]+[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b[A-Z]{2}-[A-Za-z0-9]{3}-C[A-Za-z0-9]{8,12}(?:-[0-9A-Za-z])?\b/gi },
+
+        // 6. Electronic Toll Transponders & Commercial Carrier Numbers
+        { type: 'ID', regex: /(?<=\b(?:E-?ZPass|FasTrak|SunPass|TxTag|I-?Pass|Peach\s+Pass|ExpressToll|Quick\s+Pass|Toll\s+Transponder|Transponder)\s*(?:ID|#|No\.?|Number)?[:\s#=-]+)\d{8,14}\b/gi },
+        { type: 'ID', regex: /\b(?:EZPASS|FASTRAK|SUNPASS|TXTAG|IPASS)[-_:# ]*\d{8,14}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:USDOT|DOT)\s*(?:#|No\.?|Number)?[:\s#=-]+)\d{6,9}\b/gi },
+        { type: 'ID', regex: /\bUSDOT[-_:#\s]*\d{6,9}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:MC|MX|FF)\s*(?:#|No\.?|Number)?[:\s#=-]+)(?:MC-?|MX-?|FF-?)?\d{6,8}\b/gi },
+        { type: 'ID', regex: /\b(?:MC|MX|FF)[-_ ]\d{6,8}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:IFTA(?:\s+License|\s+Decal)?)\s*(?:#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\bIFTA[-_ ](?:[A-Z]{2}[-_ ])?[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi }
+    ],
+    energy: [
+        // 1. Contextual Energy, SCADA & Utilities Personnel Names
+        {
+            type: 'NAME',
+            isContextName: true,
+            regex: /(?:^|[^\p{L}\p{N}_])(?:Substation\s+Engineer|SCADA\s+Operator|Chief\s+System\s+Operator|Grid\s+Dispatcher|Power\s+System\s+Engineer|NERC\s+CIP\s+Compliance\s+Officer|Transmission\s+Planner|Distribution\s+Operator|Relay\s+Protection\s+Engineer|Control\s+Room\s+Supervisor|Field\s+Relay\s+Technician|Metering\s+Operations\s+Lead|Plant\s+Manager|Power\s+Plant\s+Operator)\s*[:=#]\s*(?:(?:Mr|Mrs|Ms|Dr|Eng)\.?\s+)?([A-Z\p{Lu}][A-Za-z'’.-]*(?:[ \t\xA0]+[A-Z\p{Lu}][A-Za-z'’.-]*){1,3})/giu
+        },
+
+        // 2. Smart Metering, AMI & Service Point Identifiers (ERCOT 17-digit ESI ID, SPID, Meter Serials)
+        { type: 'ID', regex: /(?<=\b(?:ESI\s*ID|ESIID|Electric\s+Service\s+Identifier)\s*[:=]\s*)\d{17}\b/gi },
+        { type: 'ID', regex: /\b10\d{15}\b/g },
+        { type: 'ID', regex: /(?<=\b(?:Smart\s+Meter|Electric\s+Meter|Water\s+Meter|Gas\s+Meter|Utility\s+Meter|AMI\s+Meter|Meter)\s*(?:Serial(?:\s+Number|\s+No\.?)?|ID|#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:MTR|SMTR|AMI)[-_:# ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b[EWG]-MTR[-_:# ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Service\s+Point(?:\s+ID)?|Premise(?:\s+ID)?|Delivery\s+Point(?:\s+ID)?|SPID|DPID)\s*(?:#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:SPID|DPID|PRM)[-_:# ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+
+        // 3. Smart Grid, Substations, Feeders & Transmission Hardware
+        { type: 'ID', regex: /(?<=\b(?:Substation|Feeder(?:\s+Line)?|Circuit|Transmission\s+Line)\s*(?:ID|#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:SUB|FDR|CKT)[-_:# ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:PMU|RTU|IED|Transformer|Capacitor\s+Bank|Recloser|Synchrophasor)\s*(?:Serial(?:\s+Number|\s+No\.?)?|ID|#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:PMU|RTU|IED|XFMR|RECL)[-_:# ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+
+        // 4. Industrial Control Systems (ICS), SCADA & OT Assets
+        { type: 'ID', regex: /(?<=\b(?:SCADA\s+(?:Tag|Point|Register|Address)|Telemetry\s+(?:Point|Tag)|Modbus\s+Register)\s*(?:ID|#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:PLC|DCS|OPC)[-_:# ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\bns=\d+;[isb]=[A-Za-z0-9_.-]+\b/gi },
+
+        // 5. NERC CIP & Critical Infrastructure Protection Assets
+        { type: 'ID', regex: /(?<=\b(?:BES\s+Cyber\s+Asset|Protected\s+Cyber\s+Asset|BCA|PCA|Electronic\s+Security\s+Perimeter|ESP)\s*(?:ID|#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:BCA|PCA)[-_:# ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:CIP\s+Badge|CIP\s+Access\s+Card)\s*(?:ID|#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\bCIP[-_ ](?:BADGE|CARD)[-_ ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+
+        // 6. Renewable Energy, BESS & Interconnection Agreements (Queue / IA)
+        { type: 'ID', regex: /(?<=\b(?:Solar\s+Inverter|Wind\s+Turbine|BESS(?:\s+Rack|\s+Module|\s+Unit)?|Inverter)\s*(?:Serial(?:\s+Number|\s+No\.?)?|ID|#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:INV|WTG|BESS)[-_:# ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Interconnection\s+(?:Queue|Agreement)|Queue(?:\s+Position)?|IA)\s*(?:ID|#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:PJM-QUEUE|MISO-Q|CAISO-Q|NYISO-Q|SPP-Q|ERCOT-Q)[-_:# ]*[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\bIA[-_ ](?:19|20)\d{2}[-_ ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi }
+    ],
+    hospitality: [
+        // 1. Contextual Hospitality, Passenger & Airline Personnel
+        {
+            type: 'NAME',
+            isContextName: true,
+            regex: /(?:^|[^\p{L}\p{N}_])(?:Front\s+Desk\s+Manager|Night\s+Auditor|General\s+Manager|Guest\s+Services\s+Lead|Concierge|Chief\s+Purser|Purser|Lead\s+Flight\s+Attendant|Flight\s+Attendant\s+Lead|Gate\s+Agent|Revenue\s+Manager|Reservation\s+Specialist|Travel\s+Counselor|Chief\s+Pilot|First\s+Officer|Captain)\s*[:=#]\s*(?:(?:Mr|Mrs|Ms|Dr|Capt)\.?\s+)?([A-Z\p{Lu}][A-Za-z'’.-]*(?:[ \t\xA0]+[A-Z\p{Lu}][A-Za-z'’.-]*){1,3})/giu
+        },
+
+        // 2. Airline Reservations, PNR & Electronic Ticketing
+        { type: 'ID', regex: /(?<=\b(?:PNR|Record\s+Locator|Booking\s+(?:Ref(?:erence)?|Code|Number|No\.?)|Reservation\s+Code)\s*(?:#|No\.?|Number)?[:\s#=-]+)[A-HJ-NP-Z0-9]{6}\b/gi },
+        { type: 'ID', regex: /\bPNR[-_# ][A-HJ-NP-Z0-9]{6}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:e-?Ticket|Electronic\s+Ticket|Ticket\s+Number|Ticket\s+No\.?|TKT)\s*(?:#|No\.?|Number)?[:\s#=-]+)\d{3}[-\s]?\d{10}\b/gi },
+        { type: 'ID', regex: /\b\d{3}-\d{10}\b/g },
+        { type: 'ID', regex: /(?<=\b(?:Boarding\s+Pass|Barcode\s+Data|BCBP)\s*(?:#|No\.?|ID)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\bBP[-_# ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+
+        // 3. Frequent Flyer, Hotel Loyalty & Membership Numbers
+        { type: 'ID', regex: /(?<=\b(?:Frequent\s+Flyer|Loyalty(?:\s+Program)?|SkyMiles|MileagePlus|AAdvantage|Executive\s+Club|Flying\s+Blue|Miles\s*&\s*More|Marriott\s+Bonvoy|Hilton\s+Honors|World\s+of\s+Hyatt|IHG(?:\s+One)?\s+Rewards)\s*(?:#|No\.?|Number|ID|Account)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:LOYAL|MEM|FF)[-_:# ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+
+        // 4. Government Travel Security, Passenger Screening & Border Clearance
+        { type: 'ID', regex: /(?<=\b(?:Known\s+Traveler\s+Number|KTN|TSA\s+Pre(?:Check)?|Redress\s+Number|Redress\s+No\.?)\s*(?:#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:KTN|PASSID)[-_:# ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:PASSID|Global\s+Entry(?:\s+ID)?)\s*(?:#|No\.?|Number)?[:\s#=-]+)\d{9}\b/gi },
+        { type: 'ID', regex: /\bSFPD[-_# ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+
+        // 5. Hotel Reservations, Room Folios & CRS/PMS Data
+        { type: 'ID', regex: /(?<=\b(?:Hotel\s+Confirmation|Confirmation\s+(?:Number|No\.?|#)|Hotel\s+Reservation|CRS\s+Booking|PMS\s+Reservation)\s*(?:#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:HTL|RES|CRS|PMS)[-_:# ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Guest\s+Folio|Room\s+Folio|Folio)\s*(?:#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:FOLIO|RF)[-_:# ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+
+        // 6. Cruise Lines & Tour Operator Packages
+        { type: 'ID', regex: /(?<=\b(?:Cruise\s+Booking|Stateroom\s+Folio|Tour\s+Booking|Itinerary\s+Ref(?:erence)?)\s*(?:#|No\.?|Number)?[:\s#=-]+)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:CRUISE|STATE|TOUR|ITIN)[-_:# ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi }
     ],
     creative: [
         { type: 'SECRET', regex: /\b(?:PROJECT|DRAFT|ASSET|SCRIPT|IP)[-_: ]+[A-Z0-9_-]*\d[A-Z0-9_-]*\b/gi },
@@ -397,11 +961,107 @@ let PROFILE_RULES = {
         { type: 'ID', regex: /\b(?:GCP[- ]PROJECT|PROJECT[- ]ID)[:\s#-]*[a-z][a-z0-9-]{4,28}[a-z0-9]\b/gi },
         { type: 'ID', regex: /\b(?:AZURE[- ](?:SUBSCRIPTION|TENANT)|AZ[- ]SUB)[:\s#-]*[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b/gi },
         { type: 'ID', regex: /\b(?:i|sg|vpc|subnet|ami|snap|vol|eni|rtb|nat|igw|vgw|tgw|pcx|eipalloc|acl)-[a-f0-9]{8,17}\b/g },
-        { type: 'ID', regex: /\b\/subscriptions\/[0-9a-fA-F-]{36}\/resourceGroups\/[a-zA-Z0-9._-]+\/providers\/[a-zA-Z0-9._-]+\/[a-zA-Z0-9._\/-]+\b/gi }
+        { type: 'ID', regex: /\b\/subscriptions\/[0-9a-fA-F-]{36}\/resourceGroups\/[a-zA-Z0-9._-]+\/providers\/[a-zA-Z0-9._-]+\/[a-zA-Z0-9._\/-]+\b/gi },
+
+        // --- Package 18: Telecom, VoIP, CDR & Network Infrastructure ---
+        // 1. Mobile Subscriber & Device Identifiers (IMSI, IMEI, ICCID, MSISDN)
+        { type: 'ID', regex: /\b(?:IMSI|Subscriber\s+ID|IMSI\s+(?:Number|No\.?|#))\s*[:#=-]\s*([0-9]{14,15})\b/gi },
+        { type: 'ID', regex: /\bIMSI[-_][0-9]{14,15}\b/gi },
+        { type: 'ID', regex: /\b(?:IMEI(?:SV)?|Device\s+IMEI|Equipment\s+ID|Phone\s+IMEI)\s*[:#=-]\s*([0-9]{15,16})\b/gi },
+        { type: 'ID', regex: /\b\d{2}-\d{6}-\d{6}-\d(?:\d)?\b/g },
+        { type: 'ID', regex: /\b(?:ICCID|SIM(?:\s+Card)?(?:\s+(?:Number|ID|#))?|eSIM\s+EID)\s*[:#=-]\s*(\b89[0-9]{16,18}\b|[0-9]{18,32})\b/gi },
+        { type: 'ID', regex: /\b89\d{16,18}\b/g },
+        { type: 'PHONE', regex: /\b(?:MSISDN|Subscriber\s+Number)\s*[:#=-]\s*(\+?[0-9]{10,15})\b/gi },
+
+        // 2. VoIP Signaling & SIP Headers (RFC 3261 / RFC 3550)
+        { type: 'USER', regex: /\bsips?:(?:\+?[a-zA-Z0-9_.!~*'()&=+$,;?/-]+@)[a-zA-Z0-9.-]+(?::\d{1,5})?(?:;[a-zA-Z0-9_.!~*'()&=+$,;?/-]+)*\b/gi },
+        { type: 'ID', regex: /\b(?:Call-ID|Call-Id|call-id)\s*[:#=-]\s*([A-Za-z0-9_.!~*'()&=+$,;?/-]+@[A-Za-z0-9.-]+|[A-Za-z0-9_-]{16,64})\b/gi },
+        { type: 'ID', regex: /(?<=[;,\s])(?:from-tag|to-tag|sip-tag|tag)\s*=\s*([a-zA-Z0-9_-]{6,32})\b/gi },
+        { type: 'ID', regex: /\b(?:SIP\s+Tag|Contact\s+Tag)\s*[:=]\s*([a-zA-Z0-9_-]{6,32})\b/gi },
+        { type: 'ID', regex: /\b(?:SSRC|Synchronization\s+Source)\s*[:=]\s*(0x[0-9a-fA-F]{8}|\d{8,10})\b/gi },
+        { type: 'ID', regex: /\b(?:CNAME|Canonical\s+Name)\s*[:=]\s*([A-Za-z0-9_.@-]+)\b/gi },
+
+        // 3. Call Detail Records (CDR) & Telephony Routing Logs
+        { type: 'ID', regex: /\bCDR[-_][A-Za-z0-9_-]{6,24}\b/gi },
+        { type: 'ID', regex: /\b(?:CDR\s+(?:ID|Record|Number|Seq)|Call\s+Record\s+(?:ID|#))\s*[:#=-]\s*([A-Za-z0-9_-]{6,24})\b/gi },
+        { type: 'ID', regex: /\b(?:Trunk\s+Group|TGID|Route\s+Group|SIP\s+Trunk)(?:\s*(?:ID|#|Name))?\s*[:#=-]\s*([A-Za-z0-9_-]{4,20})\b/gi },
+        { type: 'ID', regex: /\b(?:POI|Point\s+of\s+Interconnect)(?:\s*(?:ID|#|Code))?\s*[:#=-]\s*([A-Za-z0-9_-]{4,20})\b/gi },
+
+        // 4. Cellular Base Stations, Cell Global Identity (CGI) & Geolocation
+        { type: 'ID', regex: /\b(?:CGI|ECGI|Cell\s+Global\s+Identity)\s*[:#=-]\s*(\d{3}[-_ ]\d{2,3}[-_ ]\d{1,5}[-_ ]\d{1,8})\b/gi },
+        { type: 'ID', regex: /\b(?:eNB|gNB|eNodeB|gNodeB|NodeB)(?:[-_ ]?ID)?\s*[:#=-]\s*(\d{5,10})\b/gi },
+        { type: 'ID', regex: /\b(?:PCI|Physical\s+Cell\s+ID)\s*[:#=-]\s*(\d{1,4})\b/gi },
+        { type: 'ID', regex: /\bCell\s+ID\s*[:#=-]\s*(\d{5,10})\b/gi },
+        { type: 'ID', regex: /\b(?:Tracking\s+Area\s+Code|Location\s+Area\s+Code|TAC|LAC)\s*[:#=-]\s*(\d{4,6}|0x[0-9a-fA-F]{4})\b/gi },
+        { type: 'LOCATION', regex: /\b(?:Tower|Site|Antenna|Cell)\s+(?:Coords?|Coordinates|Location|Lat\/Long)\s*[:#=-]\s*([-+]?\d{1,3}\.\d{4,8}\s*,\s*[-+]?\d{1,3}\.\d{4,8})\b/gi },
+
+        // 5. Telecom Provisioning, TR-069 CWMP ACS & RADIUS/Diameter AAA
+        { type: 'URL', regex: /\b(?:ACS\s+URL|CWMP\s+URL|ConnectionRequestURL)\s*[:=]\s*(https?:\/\/[^\s]+)\b/gi },
+        { type: 'USER', regex: /\b(?:ACS\s+(?:Username|User)|ConnectionRequestUsername)\s*[:=]\s*(\S+)\b/gi },
+        { type: 'SECRET', regex: /\b(?:ACS\s+Password|ConnectionRequestPassword)\s*[:=]\s*(\S+)\b/gi },
+        { type: 'IP', regex: /\b(?:Framed-IP-Address|NAS-IP-Address)\s*[:=]\s*(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b/gi },
+        { type: 'ID', regex: /\b(?:Calling-Station-Id|Called-Station-Id)\s*[:=]\s*([A-Za-z0-9.:-]{10,24})\b/gi },
+        { type: 'SECRET', regex: /\b(?:RADIUS|Diameter)\s+Shared\s+Secret\s*[:=]\s*(\S+)\b/gi },
+        { type: 'ID', regex: /\b(?:Diameter-Session-Id|Diameter\s+Session)\s*[:=]\s*([A-Za-z0-9_.:;-]{10,64})\b/gi },
+        { type: 'ID', regex: /\b(?:Circuit\s+ID|CKT|Facility\s+ID|LEC\s+Circuit|Bearer\s+Channel)\s*[:#=-]\s*([0-9]{2}\.[A-Za-z0-9]{4}\.[0-9]{6}\.\.[A-Za-z0-9]{2,4}|[A-Za-z0-9.\/-]{8,30})\b/gi },
+        { type: 'ID', regex: /\bCKT[-_][A-Za-z0-9_-]{6,20}\b/gi },
+
+        // 6. Contextual Telecom, NOC & Voice Engineering Personnel
+        { type: 'NAME', isContextName: true, regex: /(?<=^|[^\p{L}\p{N}_])(?:NOC\s+Engineer|Network\s+Architect|Telecom\s+Engineer|VoIP\s+Administrator|RF\s+Optimization\s+Engineer|RF\s+Engineer|Voice\s+Engineer|Core\s+Network\s+Specialist|Provisioning\s+Specialist|Field\s+Technician|PBX\s+Specialist|Transmission\s+Engineer|Dispatch\s+Technician)[\s:]+((?:(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]*(?:-[\p{Lu}\p{Ll}'’–-]+)*)(?:\s+(?:(?:van|von|de|di|da|do|dos|das|la|le|del|du|der|d['’]|l['’]|de\s+la|de\s+los|von\s+der)\s+)?(?:(?:\p{Lu}\.?\s+)?(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]*(?:-[\p{Lu}\p{Ll}'’–-]+)*))(?:\s+(?:y|i)\s+(?:(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]+))?)/giu }
     ],
     personal: [
+        // 1. Contextual Executive Protection, Security Detail & Private Household Personnel
+        {
+            type: 'NAME',
+            isContextName: true,
+            regex: /(?:^|[^\p{L}\p{N}_])(?:Close\s+Protection\s+Officer|CPO|Bodyguard|Detail\s+Leader|Shift\s+Leader|Protection\s+Agent|Security\s+Escort|Armed\s+Chaperone|Estate\s+Manager|Private\s+Butler|Butler|Private\s+Chauffeur|Personal\s+Driver|Superyacht\s+Captain|Yacht\s+Captain|Chief\s+Stewardess|Lead\s+Housekeeper|Private\s+Chef|Executive\s+Nanny|Personal\s+Assistant|Executive\s+Protection\s+Lead)\s*[:=#]\s*(?:(?:Mr|Mrs|Ms|Dr|Capt)\.?\s+)?([A-Z\p{Lu}][A-Za-z'’.-]*(?:[ \t\xA0]+[A-Z\p{Lu}][A-Za-z'’.-]*){1,3})/giu
+        },
+
+        // 2. Tactical Callsigns, Radio Handles & Guard Tour Checkpoints
+        { type: 'ID', regex: /(?<=\b(?:Callsign|Call\s+Sign|Radio\s+(?:Handle|Callsign|Name)|Protective\s+Detail|Detail\s+Code)[^\S\r\n]*[:=][^\S\r\n]*)[A-Za-z0-9_-]{3,20}\b/gi },
+        { type: 'ID', regex: /\b(?:DETAIL|CALLSIGN|RADIO)[-_#][A-Za-z0-9_-]{3,15}\b/gi },
+        { type: 'ID', regex: /\b(?:DETAIL|CALLSIGN|RADIO)\s+[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Guard\s+Tour|Checkpoint|Guard\s+Post|Security\s+Post|Roving\s+Patrol)\s*(?:ID|#|No\.?|Number)?[^\S\r\n]*[:#=-]+[^\S\r\n]*)[A-Za-z0-9_-]{3,30}\b/gi },
+        { type: 'ID', regex: /\b(?:POST|CHKPT|CHECKPOINT|TOUR|PATROL)[-_#][A-Za-z0-9_-]{3,24}\b/gi },
+
+        // 3. Physical Access, Alarm Panels, Safe Combinations, Keypads & Fobs
+        { type: 'SECRET', regex: /(?<=\b(?:Alarm\s+Code|Alarm\s+PIN|Security\s+Alarm\s+Code|Disarm\s+(?:PIN|Code)|Duress\s+Code|Master\s+(?:PIN|Code)|Keypad\s+(?:Code|PIN))[^\S\r\n]*[:=][^\S\r\n]*)\d{4,8}\b/gi },
+        { type: 'SECRET', regex: /(?<=\b(?:Safe\s+Combination|Vault\s+Combination|Gun\s+Safe\s+Code|Safe\s+Code)[^\S\r\n]*[:=][^\S\r\n]*)(?:\d{2}[-\s]\d{2}[-\s]\d{2}(?:[-\s]\d{2})?|\d{4,8})\b/gi },
+        { type: 'SECRET', regex: /(?<=\b(?:Gate\s+Code|Gate\s+PIN|Intercom\s+Code|Driveway\s+Gate\s+Code)[^\S\r\n]*[:=][^\S\r\n]*)[#*]?\d{4,8}[#*]?\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:RFID\s+Fob|Key\s*Fob|Access\s+Fob|Keycard|Access\s+Card|HID\s+Card|Badge\s+Number|Facility\s+Code)\s*(?:ID|#|No\.?|Number)?[^\S\r\n]*[:#=-]+[^\S\r\n]*)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:FOB|KEYCARD|HID|ACCESS)[-_:# ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+
+        // 4. Smart Home IoT, Surveillance & Automation Access
+        { type: 'SECRET', regex: /(?<=\b(?:Smart\s+Lock|Digital\s+Lock|August\s+Lock|Schlage\s+Lock|Yale\s+Lock)\s*(?:PIN|Passcode|Code|Key)?[^\S\r\n]*[:#=-]+[^\S\r\n]*)\d{4,8}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Smart\s+Lock|Digital\s+Lock|August\s+Lock|Schlage\s+Lock|Yale\s+Lock)\s*(?:ID|#|No\.?|Serial|Device(?:\s+ID)?)?[^\S\r\n]*[:#=-]+[^\S\r\n]*)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'URL', regex: /\brtsps?:\/\/(?:[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.-]+@)?[a-zA-Z0-9_.-]+(?::\d{1,5})?(?:\/[^\s"']*)?\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:NVR|DVR|CCTV(?:\s+Camera)?|IP\s+Camera|Security\s+Camera)\s*(?:ID|#|No\.?|Serial(?:\s+Number|\s+No\.?)?)?[^\S\r\n]*[:#=-]+[^\S\r\n]*)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:NVR|CCTV|CAM)[-_:# ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'SECRET', regex: /(?<=\b(?:Home\s+Assistant|HomeAssistant|HA\s+Token|Lutron|Crestron|Control4)\s*(?:Token|Key|Secret|Auth)[^\S\r\n]*[:#=-]+[^\S\r\n]*)[A-Za-z0-9_.-]{16,64}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Lutron\s+Processor|Crestron\s+Processor|Control4\s+Controller)\s*(?:ID|#|Serial)?[^\S\r\n]*[:#=-]+[^\S\r\n]*)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+
+        // 5. Private Transport, Aviation, Superyacht Maritime & Fleet Security
+        { type: 'ID', regex: /(?<=\b(?:Tail\s+Number|Aircraft\s+Reg(?:istration)?|Tail\s+#|Plane\s+Reg)[^\S\r\n]*[:=][^\S\r\n]*)(?:N[0-9]{1,5}[A-Z]{0,2}|[A-Z]{1,2}-[A-Z0-9]{3,5}|9H-[A-Z]{3}|VP-[A-Z]{3}|VQ-[A-Z]{3}|M-[A-Z]{4}|OE-[A-Z]{3}|HB-[A-Z]{3}|G-[A-Z]{4}|2-[A-Z]{4})\b/gi },
+        { type: 'ID', regex: /\b(?:Tail\s+#|Aircraft\s+Reg[:\s#]*)(?:N[1-9][0-9]{2,4}[A-Z]{0,2}|[A-Z]-[A-Z]{4}|VP-[B-C][A-Z]{2}|9H-[A-Z]{3}|OE-[A-Z]{3}|HB-[A-Z]{3})\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Yacht\s+MMSI|MMSI|Vessel\s+MMSI)[^\S\r\n]*[:=][^\S\r\n]*)\d{9}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Yacht\s+IMO|IMO(?:\s+Number)?|Vessel\s+IMO)[^\S\r\n]*[:=][^\S\r\n]*)(?:IMO\s*)?\d{7}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Hull\s+ID|HIN|Hull\s+Identification\s+Number)[^\S\r\n]*[:=][^\S\r\n]*)(?:[A-Z]{2}-)?[A-Z]{3}[A-Za-z0-9]{9}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Armored\s+Vehicle|Convoy\s+Vehicle|Escort\s+Vehicle|Security\s+Vehicle|Convoy\s+Tag)\s*(?:ID|#|Tag|VIN)?[^\S\r\n]*[:#=-]+[^\S\r\n]*)[A-Za-z0-9_-]{3,30}\b/gi },
+        { type: 'ID', regex: /\b(?:CONVOY|ESCORT|ARMOR)[-_#][A-Za-z0-9_-]{3,20}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:InReach\s+IMEI|Garmin\s+InReach|SPOT\s+(?:Device|ID)|Satellite\s+Tracker|GPS\s+Tracker|Personal\s+Beacon|PLB|EPIRB)\s*(?:ID|#|No\.?|Serial)?[^\S\r\n]*[:#=-]+[^\S\r\n]*)[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:INREACH|SPOT|PLB)[-_:# ][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+
+        // 6. Private Concierge, Family Office & Lifestyle Concierge
+        { type: 'ID', regex: /(?<=\b(?:FBO\s+(?:Handling|Ref|Confirmation)|Charter\s+(?:Booking|Confirmation|Ref)|Flight\s+Plan\s+(?:ID|Ref|#))[^\S\r\n]*[:=][^\S\r\n]*)[A-Za-z0-9_-]{4,24}\b/gi },
+        { type: 'ID', regex: /\b(?:FBO|CHARTER|FLTPLAN)[-_#][A-Za-z0-9_-]{4,20}\b/gi },
+        { type: 'ID', regex: /\b(?:FBO|CHARTER|FLTPLAN)\s+[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*\b/gi },
+        { type: 'ID', regex: /\b(?:FBO|CHARTER|FLTPLAN)\s*[:#=-]\s*[A-Za-z0-9_-]{4,20}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Villa\s+Booking|Private\s+Residence\s+Booking|Chateau\s+Booking|Penthouse\s+Reservation|Private\s+Island\s+Ref)\s*(?:#|No\.?|ID)?[^\S\r\n]*[:#=-]+[^\S\r\n]*)[A-Za-z0-9_-]{4,24}\b/gi },
+        { type: 'ID', regex: /(?<=\b(?:Quintessentially|Centurion\s+Concierge|Concierge\s+Member(?:ship)?|Lifestyle\s+Concierge)\s*(?:ID|#|No\.?|Ref)?[^\S\r\n]*[:#=-]+[^\S\r\n]*)[A-Za-z0-9_-]{4,20}\b/gi },
+
+        // 7. Core Personal Baseline (Passport, Family, PII, Dates)
         { type: 'DATE', regex: /\b(?:DOB|BIRTHDAY|Date of Birth)[\s:]+([0-9./-]{6,10})\b/gi },
-        { type: 'SECRET', regex: /\b(?:PASSWORD|PWD|SECRET|PIN)[\s:]*[\S]{4,20}\b/gi },
+        { type: 'SECRET', regex: /\b(?<!\b(?:Gate|Keypad|Alarm|Master|Disarm|Duress|Device|Backup|Safe|Smart\s+Lock|Digital\s+Lock|Lock)\s+)(?:PASSWORD|PWD|SECRET|PIN)[\s:]*[\S]{4,20}\b/gi },
         { type: 'PHONE', regex: /\b(?:WIFE|HUSBAND|PARTNER|MOM|DAD)[\s:]+(?:\+?\d{1,3}[\s.-]*)?(?:\(?\d{2,4}\)?[\s.-]*)?[\d\s.-]{7,15}\b/gi },
         { type: 'FINANCIAL', regex: /\b(?:CHECKING|SAVINGS|DEPOSIT)\s*(?:ACCOUNT|ACCT)?[:\s#-]*\d{6,17}\b/gi },
         { type: 'PHONE', regex: /\b(?:SON|DAUGHTER|BROTHER|SISTER|MOTHER|FATHER|CHILD|PARENT)[\s:]+(?:\+?\d{1,3}[\s.-]*)?(?:\(?\d{2,4}\)?[\s.-]*)?[\d\s.-]{7,15}\b/gi },
@@ -418,29 +1078,78 @@ let PROFILE_RULES = {
         { type: 'ID', regex: /\b(?:LEI|LEGAL[- ]ENTITY[- ]IDENTIFIER)[:\s#-]*[0-9A-Z]{20}\b/gi },
         { type: 'FINANCIAL', regex: /\b(?:ABA|Routing(?:\s+No)?|RTN)[:\s#]*\d{9}\b/gi },
         { type: 'FINANCIAL', regex: /\bPORTFOLIO[-_][A-Z0-9_-]{5,}\b/gi },
-        { type: 'FINANCIAL', regex: /\b(?:Account|Acct\.?|Brokerage|Custodial)\s*(?:Account|Acct)?\s*(?:Number|Num|No\.?|#)?[:\s#]*\d{6,16}\b/gi },
+        { type: 'FINANCIAL', regex: /\b(?:Account|Acct\.?|Brokerage|Custodial)\s*(?:Account|Acct)?\s*(?:Number|Num|No\.?|#)?[:\s#]+(\d{4}[-\s]?\d{4}[-\s]?\d{1,8}|\d{6,16})\b/gi },
         { type: 'FINANCIAL', regex: /\b(?:Account|Acct\.?)[:\s#]*\d{4}[-\s]?\d{4}[-\s]?\d{2,6}\b/gi },
         { type: 'FINANCIAL', regex: /\b(?:Policy|Contract)\s*(?:No\.?|Number|#)[:\s]+[A-Z0-9][A-Z0-9\-]{3,14}\b/gi },
         { type: 'ID', regex: /\bCRD\s*#?\s*\d{4,8}\b/gi },
         { type: 'FINANCIAL', regex: /\b(?:Annual\s+(?:Distribution|Withdrawal)|RMD|Required\s+Minimum\s+Distribution)[:\s]+(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’]+\b/gi },
-        { type: 'FINANCIAL', regex: /(?<=\b(?:Portfolio(?:\s+Value)?|Market\s+Value|Net\s+Worth|AUM|Total\s+Assets)[:\s]+)(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’]*\d[KMB]?\b|\b\d[0-9,.'’]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹])|[0-9,.'’]{3,}\b)/gi },
-        { type: 'FINANCIAL', regex: /\b(?:Roth\s+)?(?:IRA|401k|401\(k\)|403b|403\(b\)|SEP|SIMPLE)\s*(?:Account|Acct|Plan)?\s*(?:No|Number|#)?[:\s#]*[A-Z0-9]{4,15}\b/gi },
+        { type: 'FINANCIAL', regex: /(?<=\b(?:Portfolio(?!\s+[Vv]alue)|Market\s+Value|Net\s+Worth|AUM|Total\s+Assets)[:\s]+)(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’]*\d[KMB]?\b|\b\d[0-9,.'’]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹])|[0-9,.'’]{3,}\b)/gi },
+        { type: 'FINANCIAL', regex: /\b(?:Roth\s+)?(?:IRA|401k|401\(k\)|403b|403\(b\)|SEP|SIMPLE)\s*(?:Account|Acct|Plan)?\s*(?:(?:No\.?|Number|#)[:\s#]*|[:#]\s*)([A-Z0-9-]{4,20})\b/gi },
         { type: 'ID', regex: /\bCUSIP[:\s#]*([0-9A-Z]{9})\b/gi },
         { type: 'ID', regex: /\bISIN[:\s#]*([A-Z]{2}[0-9A-Z]{9}[0-9])\b/gi },
         { type: 'ID', regex: /\b(?:Form\s+ADV|SEC)\s*(?:File|No\.?|Number|#)?[:\s#]*(?:801|802)-\d{5,8}\b/gi },
-        { type: 'ID', regex: /\bSeries\s+(?:7|63|65|66)\s*(?:License|#|No\.?|Number)?[:\s#]*\d{4,8}\b/gi }
+        { type: 'ID', regex: /\bSeries\s+(?:7|63|65|66)\s*(?:License|#|No\.?|Number)?[:\s#]*\d{4,8}\b/gi },
+        // Custodial Brokerage Accounts & Clearing Participants
+        { type: 'FINANCIAL', regex: /\b(?:Charles\s+Schwab|Schwab|CS)(?:\s+(?:Brokerage|Custodial|IRA|Account|Acct|Checking))*\s*(?:Number|Num|No\.?|#)?[:\s#]+(\d{4}[-\s]?\d{4}|\d{8})\b/gi },
+        { type: 'FINANCIAL', regex: /\b(?:Fidelity|FMR)(?:\s+(?:Brokerage|Custodial|IRA|Account|Acct))*\s*(?:Number|Num|No\.?|#)?[:\s#]+([A-Z]\d{2}[-\s]?\d{6}|[A-Z0-9]{8,10})\b/gi },
+        { type: 'FINANCIAL', regex: /\b(?:Pershing|BNY\s+Mellon)(?:\s+(?:Account|Acct|Custodial))*\s*(?:Number|Num|No\.?|#)?[:\s#]+([A-Z0-9]{3}[-\s]?\d{6})\b/gi },
+        { type: 'FINANCIAL', regex: /\b(?:Vanguard)(?:\s+(?:Account|Acct|Brokerage))*\s*(?:Number|Num|No\.?|#)?[:\s#]+(\d{8}[-\s]?\d|\d{8,9})\b/gi },
+        { type: 'ID', regex: /\b(?:DTC|DTC\s+Participant|Clearing\s+Participant)\s*(?:Number|Num|No\.?|#|Code)?[:\s#]+(\d{4})\b/gi },
+        // Family Office & Trust Governance
+        { type: 'ID', regex: /\b(?:Grantor|Trustor|Trustee|Beneficiary|Primary\s+Beneficiary|Contingent\s+Beneficiary)\s*(?:ID|Code|No\.?|Number|#)[:\s#-]+([A-Za-z0-9-]{3,20})\b/gi },
+        { type: 'ID', regex: /\b(?:Trust\s+(?:EIN|TIN|Tax\s+ID)|Estate\s+EIN)[:\s#]*(\d{2}-\d{7})\b/gi }
     ],
     insurance: [
-        { type: 'ID', regex: /\b(?:Claim|CLM)[-_: #]*(?:ID|NO|#|NUM|NUMBER|REF)?[:\s#-]*[-A-Z0-9]*\d[-A-Z0-9]*\b/gi },
-        { type: 'ID', regex: /\b(?:Policy|POL)[-_: #]*(?:ID|NO|#|NUM|NUMBER)?[:\s#-]*[-A-Z0-9]*\d[-A-Z0-9]*\b/gi },
-        { type: 'FINANCIAL', regex: /\b(?:Loss|Claim\s+Amount|Claim\s+Settlement|Settlement|Reserve|Indemnity)[:\s]+(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’]+\b/gi },
+        // Role-Prefixed Names (Claimant, Injured Worker, Policyholder, Additional Insured, Underwriter, Adjuster, Broker, TPA)
+        {
+            type: 'NAME',
+            isContextName: true,
+            regex: /(?:^|[^\p{L}\p{N}_])(?:Claimant|Injured\s+Party|Injured\s+Worker|Policyholder|Additional\s+Insured|Primary\s+Insured|Public\s+Adjuster|Independent\s+Adjuster|Lead\s+Underwriter|Producing\s+Agent|Insurance\s+Broker|TPA\s+Examiner)\s*[:=#]\s*(?:(?:Dr|Mr|Mrs|Ms|Prof)\.?\s+)?([A-Z\p{Lu}][A-Za-z'’.-]*(?:[ \t\xA0]+[A-Z\p{Lu}][A-Za-z'’.-]*){1,3})/giu
+        },
+        { type: 'ID', regex: /\b(?:Claim|CLM)[-_: #]*(?:ID|NO|#|NUM|NUMBER|REF)?[:\s#-]+([-A-Z0-9]*\d[-A-Z0-9]*)\b/gi },
+        { type: 'ID', regex: /\b(?:Policy|POL)[-_: #]*(?:ID|NO|#|NUM|NUMBER)?[:\s#-]+([-A-Z0-9]*\d[-A-Z0-9]*)\b/gi },
+        // Line-of-Business Policy Numbers (GL, WC, AUTO, XS, UMB, EPLI, CYBER, PROP, CGL, COMM, DNO, CRIME)
+        { type: 'ID', regex: /\b(?<!\b(?:RFC|ISO|IEEE|ANSI|CVE)[-_])(?:GL|WC|AUTO|XS|UMB|EPLI|CYBER|PROP|CGL|COMM|DNO|CRIME)[-_][A-Za-z0-9]{4,15}(?:[-_][A-Za-z0-9]{1,4})?\b/gi },
+        // FNOL (First Notice of Loss) & Incident Reports
+        { type: 'ID', regex: /\b(?:FNOL|First\s+Notice\s+of\s+Loss|Incident\s*(?:Report|Dossier|File|Case)?)\s*(?:(?:ID|Ref|No\.?|Number|#|Code)[:\s#-]*|[:#=-]\s*)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        // Subrogation & Salvage File Identifiers
+        { type: 'ID', regex: /\b(?:Subrogation(?:\s+(?:File|Case|Claim|Ref))?|Salvage(?:\s+(?:Ref|Case|File|Dossier))?)\s*(?:(?:ID|Ref|No\.?|Number|#)[:\s#-]*|[:#=-]\s*)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        // Loss Run & Claim History Reports
+        { type: 'ID', regex: /\b(?:Loss\s*Run|Loss\s*History)\s*(?:(?:ID|Ref|Report|No\.?|Number|#)[:\s#-]*|[:#=-]\s*)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        // Medicare Secondary Payer (MSP Section 111) Beneficiary Identifier (MBI) & HICN
+        { type: 'ID', regex: /\b(?:MBI|Medicare\s*(?:Beneficiary\s*ID|ID|No\.?|Number|#))[:\s#-]+([1-9][AC-HJ-NP-RT-Z][AC-HJ-NP-RT-Z0-9][0-9][- ]?[AC-HJ-NP-RT-Z][AC-HJ-NP-RT-Z0-9][0-9][- ]?[AC-HJ-NP-RT-Z]{2}[0-9]{2})\b/gi },
+        { type: 'ID', regex: /\b(?:HICN|Medicare\s*HICN)[:\s#-]+(\d{9}[A-Z]{1,2}|\d{3}-\d{2}-\d{4}[A-Z]{1,2}|[A-Z]{1,3}\d{6,9})\b/gi },
+        // ACORD Forms (ACORD 25 Certificate of Insurance, ACORD 28, 125, 126, 130, 140)
+        { type: 'ID', regex: /\b(?:ACORD(?:\s+(?:Form|Certificate|Cert))?\s*(?:25|28|125|126|130|140|80))(?:\s+(?:ID|No\.?|Number|#|Ref))?[:\s#-]+([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        // Policy Endorsements & Riders
+        { type: 'ID', regex: /\b(?:Endorsement|Policy\s+Rider|Rider)\s*(?:(?:ID|No\.?|Number|#|Ref)[:\s#-]*|[:#=-]\s*)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        // Catastrophe (CAT) Event Codes & PCS Serial Numbers
+        { type: 'ID', regex: /\b(?:(?:Catastrophe|CAT|PCS\s+CAT)\s*(?:Serial|Code|Event|Ref|No\.?|Number|#)*(?:\s*Code)?[:\s#-]+|(?:Catastrophe|CAT)\s*[:\s#-]+)?((?:PCS\s+)?CAT[- ]*\d[A-Za-z0-9_-]*)\b/gi },
+        // Actuarial Experience Modification Factor (Ex-Mod / E-Mod / Loss Cost Multiplier)
+        { type: 'FINANCIAL', regex: /\b(?:Experience\s+Mod(?:ification)?(?:\s+Factor)?|Ex-Mod|E-Mod|Loss\s+Cost\s+Multiplier)\s*(?:[:=]|is)?\s*(\d+\.\d{2,4})\b/gi },
+        // Reinsurance Treaties, Facultative Certificates, Cessions, Bordereau & Slips
+        { type: 'ID', regex: /\b(?:Reinsurance\s+Treaty|Treaty\s+Cession|Facultative\s+Cert(?:ificate)?|Treaty\s+Slip|Bordereau(?:\s+Reference)?)\s*(?:(?:ID|Ref|No\.?|Number|#|Code)[:\s#-]*|[:#=-]\s*)([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        // Lloyd's Unique Market Reference (UMR)
+        { type: 'ID', regex: /\b(?:UMR|Unique\s+Market\s+Ref(?:erence)?)\s*[:\s#-]+(B[0-9A-Z]{11,15})\b/gi },
+        // Surplus Lines Broker License
+        { type: 'ID', regex: /\b(?:Surplus\s+Lines\s+Broker|Surplus\s+Lines)\s*(?:(?:License|No\.?|Number|#)[:\s#-]*|[:#=-]\s*)([A-Za-z0-9-]*\d[A-Za-z0-9-]*)\b/gi },
+        // Insurance Loss Reserves & Policy Limits (labels preserved in cleartext via capturing group)
+        {
+            type: 'FINANCIAL',
+            regex: /\b(?:Incurred\s+Loss(?:es)?|Paid\s+Loss(?:es)?|Case\s+Reserve|Outstanding\s+Reserve|IBNR(?:\s+Reserve)?|Loss\s+Reserve|Self-Insured\s+Retention|SIR\s+(?:Amount|Limit)|Policy\s+Limit|Per\s+Occurrence\s+Limit|Aggregate\s+Limit|Excess\s+Limit|Underlying\s+Limit|Attachment\s+Point|Treaty\s+Limit|Cession\s+Amount)\s*[:=]\s*((?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’]*\d[KMB]?\b|\b\d[0-9,.'’]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹])))/gi
+        },
+        // Existing core insurance patterns
+        { type: 'FINANCIAL', regex: /\b(?:Loss|Claim\s+Amount|Claim\s+Settlement|Settlement|(?<!\b(?:Case|Outstanding|IBNR|Loss)\s+)Reserve|Indemnity)[:\s]+(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’]+\b/gi },
         { type: 'ID', regex: /\b(?:(?:Assigned\s+)?Adjuster\s+(?:ID|No)|Claim\s+Rep(?:\.|resentative)?)[:\s#]*[-A-Z0-9]{4,15}\b/gi },
         { type: 'ID', regex: /\bNAIC(?:\s+(?:Company\s+)?(?:Code|CoCode|No\.?|Number|#))?[:\s#]*(\d{5})\b/gi },
         { type: 'FINANCIAL', regex: /\b(?:Deductible|Premium|Coverage\s+Amount)[:\s]+(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’\u2018\u2019]+\b/gi },
         { type: 'ID', regex: /\b[A-HJ-NPR-Z0-9]{17}\b/g },
-        { type: 'ID', regex: /\b(?:Insured|Named\s+Insured)[:\s]+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+/g },
+        { type: 'ID', regex: /\b(?<!\bAdditional\s+)(?:Insured|Named\s+Insured)[:\s]+[A-Z][a-z]+(?:[ \t\xA0]+[A-Z][a-z]+)+/g },
         { type: 'ID', regex: /\b(?:Agent|Producer)\s*(?:Code|No|ID)[:\s#]*[-A-Z0-9]{4,15}\b/gi },
-        { type: 'ID', regex: /\b(?:Binder|Certificate(?:\s+of\s+Insurance)?|COI)\s*(?:ID|No\.?|Number|#)?[:\s#-]*([A-Za-z0-9\/-]{4,30})\b/gi },
+        { type: 'ID', regex: /\b(?:Binder|Certificate(?:\s+of\s+Insurance)?|COI)\s*(?:(?:ID|No\.?|Number|#)[:\s#-]*|[:#=-]\s*)([A-Za-z0-9\/-]{4,30})\b/gi },
+        { type: 'ID', regex: /\b(?:Title\s*Policy|Title\s*Order|Title\s*Commitment|Title\s*Guarantee)\s*(?:#|ID|No\.?|Number|Num)?[:\s#]*([A-Z0-9-]{5,24})\b/gi },
+        { type: 'ID', regex: /\b(?:ALTA|HUD-?1)\s*(?:Settlement\s*Statement|Statement|Closing\s*Statement)?\s*(?:#|ID|No\.?|File|Number|Num)?[:\s#]*([A-Z0-9-]{4,20})\b/gi },
+        { type: 'ID', regex: /\b(?:Escrow\s*(?:Account|File|Order)?\s*(?:Number|Num|No\.?|#)?|Escrow)[:\s#]+([A-Za-z0-9-]*\d[A-Za-z0-9-]*)\b/gi },
         { type: 'ID', regex: /\b(?:FCA|FRN|Firm\s*Reference\s*(?:Number|No\.?|#))[:\s#]*(\d{6,7})\b/gi },
         { type: 'ID', regex: /\b(?:Lloyd'?s\s+)?Syndicate\s*(?:No\.?|Number|#)?[:\s#]*(\d{1,4})\b/gi },
         { type: 'ID', regex: /\b(?:AM\s*Best|AMB)\s*(?:#|No\.?|Number|ID)?[:\s#]*(\d{6})\b/gi }
@@ -448,44 +1157,248 @@ let PROFILE_RULES = {
     accounting: [
         { type: 'ID', regex: /\b(?:EIN|FEIN|Tax\s+ID)[:\s#]*\d{2}-\d{7}\b/gi },
         { type: 'FINANCIAL', regex: /\b(?:AGI|Adjusted\s+Gross\s+Income|Taxable\s+Income|Total\s+Income)[:\s]+(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’]+\b/gi },
-        { type: 'FINANCIAL', regex: /\b(?:Form\s+|Withheld\s+)?Box\s+\d{1,2}[a-z]?(?:\s*:\s*[A-Z])?\s*[:\s]+(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’\u2018\u2019]+\b/gi },
+        { type: 'FINANCIAL', regex: /\b(?:Form\s+|Withheld\s+)?Box\s+\d{1,2}[a-z]?(?:\s*(?:Code\s+[A-Z]{1,2}(?:\s*\([^)]*\))?|Wages[^\n\r:]{0,35}|Federal[^\n\r:]{0,35}|Medicare[^\n\r:]{0,35}|Social\s+Security[^\n\r:]{0,35}|Nonemployee[^\n\r:]{0,35}|Rents|Royalties|[A-Za-z0-9,/\s'’–-]{0,25})?(?:\s*:\s*[A-Z])?)?\s*[:\s]+(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’\u2018\u2019]+\b/gi },
         { type: 'ID', regex: /\b(?:Form|Schedule)\s+(?:1040|1040-SR|W-2|W-4|1099-[A-Z]{1,4}|K-1|941|990|4562)\b/gi },
         { type: 'FINANCIAL', regex: /\b(?:Federal|State|Assessed)?\s*(?:Tax\s+Due|Balance\s+Due|Overpayment|Refund)[:\s]+(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’\u2018\u2019]+\b/gi },
         { type: 'ID', regex: /\b(?:State\s+Tax\s+ID|SUI|UI\s+Account\s+No)[:\s#]*[A-Z]{0,3}[-]?\d{4,15}\b/gi },
         { type: 'FINANCIAL', regex: /\b(?:Gross|Net|Medicare|Social\s+Security)\s+(?:Pay|Wages|Tips|Withholding)[:\s]+(?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’\u2018\u2019]+\b/gi },
         { type: 'ID', regex: /\b(?:CAF(?:\s+ID)?|(?:Practitioner|Tax\s+Preparer)\s+(?:PIN|ID)|PTIN)[:\s#]*[A-Z0-9-]{6,12}\b/gi },
         { type: 'ID', regex: /\bEFIN[:\s#]*\d{6}\b/gi },
-        { type: 'ID', regex: /\bGL[-_\s]*(?:Account|Acct|Code)?[:\s#]*\d{4,10}\b/gi },
+        { type: 'ID', regex: /\bGL[-_\s]*(?:Account|Acct|Code)?[:\s#]*\d{3,10}(?:[-_]\d{2,6})+\b|\bGL[-_\s]*(?:Account|Acct|Code)?[:\s#]*\d{4,10}\b/gi },
         { type: 'ID', regex: /\b(?:Cost\s+Center|CC)[-_\s]*(?:ID|Code|#)?[:\s#]*[A-Z0-9_-]*\d[A-Z0-9_-]*\b/gi },
         { type: 'ID', regex: /\b(?:Invoice|Inv|Purchase\s+Order|PO|Bill|Check|Voucher|Remittance)\s*(?:Number|Num|No\.?|#)?[:\s#]+([A-Za-z0-9_-]{4,25})\b/gi },
-        { type: 'FINANCIAL', regex: /(?<=\b(?:Invoice(?:\s+Total)?|Amount\s+Due|Subtotal|Total\s+Due|Payment(?:\s+Amount)?|Ledger\s+Balance|Credit|Debit|Net\s+Amount|Total\s+Paid|Billed|Remittance)[:\s]+)(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’]*\d[KMB]?\b|\b\d[0-9,.'’]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹])|[0-9,.'’]{3,}\b)/gi }
+        { type: 'FINANCIAL', regex: /(?<=\b(?<!\b(?:EV|Debt|Net\s+Debt)\/)(?:Invoice(?:\s+Total)?|Amount\s+Due|Subtotal|Total\s+Due|Payment(?:\s+Amount)?|Ledger\s+Balance|Credit|Debit|Net\s+Amount|Total\s+Paid|Billed|Remittance|Total\s+Revenue|Revenue|Cost\s+of\s+Goods(?:\s+Sold)?|COGS|Gross\s+Profit|Operating\s+Expenses?|Operating\s+Income(?:\s*\([^)]*\))?|Operating\s+Loss|Net\s+Income(?:\s*[/()]*\s*Loss)?|Net\s+Loss|Foreign\s+Exchange(?:\s+Loss)?|FX\s+Loss|Retained\s+Earnings|Total\s+Equity|Shareholders?'?\s+Equity|Total\s+Assets|Total\s+Liabilities|Accounts\s+Payable|Accounts\s+Receivable|Cash|Sales\s+Revenue|EBITDA|EBIT|Balance|Loss|Profit)[:|\s]+)(?:(?:\((?:[$€£¥₪₽₹]\s*)?[0-9,.'’\u2018\u2019]+[KMB]?\)|(?:[$€£¥₪₽₹]\s*)\([0-9,.'’\u2018\u2019]+[KMB]?\))|(?:[-−](?:[$€£¥₪₽₹]\s*)?[0-9,.'’\u2018\u2019]+[KMB]?|(?:[$€£¥₪₽₹]\s*)[-−][0-9,.'’\u2018\u2019]+[KMB]?)|(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’\u2018\u2019]*\d[KMB]?\b|\b\d[0-9,.'’\u2018\u2019]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹]))|[0-9,.'’]*\d\b)(?![ \t\xA0]*(?:%|[xX]\b|times\b|bps\b))/gi },
+        { type: 'FINANCIAL', regex: /(?<=\|\s*)(?:(?:\((?:[$€£¥₪₽₹]\s*)?[0-9,.'’\u2018\u2019]+[KMB]?\)|(?:[$€£¥₪₽₹]\s*)\([0-9,.'’\u2018\u2019]+[KMB]?\))|(?:[-−](?:[$€£¥₪₽₹]\s*)?[0-9,.'’\u2018\u2019]+[KMB]?|(?:[$€£¥₪₽₹]\s*)[-−][0-9,.'’\u2018\u2019]+[KMB]?)|(?:(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\s*|[$€£¥₪₽₹]\s*)[0-9,.'’\u2018\u2019]*\d[KMB]?\b|\b\d[0-9,.'’\u2018\u2019]*\d?[KMB]?\s*(?:\b(?:USD|EUR|GBP|CHF|ILS|RUB)\b|[$€£¥₪₽₹])))(?=\s*\|)/gi }
     ],
     pharma: [
-        { type: 'ID', regex: /\b(?:Subject|Patient|Participant)\s+(?:ID|No)[:\s#]*[-A-Z0-9]{3,15}\b/gi },
-        { type: 'ID', regex: /\b(?:Protocol|Study)\s*(?:No|Number|ID)[:\s#]*[A-Z0-9][-A-Z0-9]{3,15}\b/gi },
-        { type: 'ID', regex: /\b(?:IND|NDA|BLA|ANDA)\s*(?:No|Number|#)?[:\s]*\d{3,6}\b/gi },
-        { type: 'ID', regex: /\bIRB[:\s#]*[-A-Z0-9]{4,15}\b/gi },
-        { type: 'ID', regex: /\b(?:(?:Clinical\s+)?Site\s+(?:No|ID)|Investigator\s+Site)[:\s#]*[-A-Z0-9]{3,10}\b/gi },
-        { type: 'ID', regex: /\b(?:(?:Manufacturing\s+)?(?:Batch|Lot)|Serial)\s*(?:No[.]?|Number|#)?[:\s#]*[A-Z0-9][A-Z0-9\-]{3,14}\b/gi },
-        { type: 'PHI', regex: /\b(?:Dose|Dosage)[:\s]+\d+(?:\.\d+)?\s*(?:mg|mcg|mL|IU|units?)\b/gi },
-        { type: 'ID', regex: /\b(?:eCRF|CRF|(?:Electronic\s+)?Case\s+Report\s+Form)\s*(?:No|Page|ID)?[:\s#]*[A-Z0-9-]{2,15}\b/gi },
+        // Contextual Clinical, Regulatory & Pharmacovigilance Personnel
+        { type: 'NAME', isContextName: true, regex: /(?<=^|[^\p{L}\p{N}_])(?:Principal\s+Investigator(?:\s*\(PI\))?|Sub-Investigator|Co-Investigator|Clinical\s+Research\s+Coordinator|CRC|Clinical\s+Research\s+Associate|CRA|Medical\s+Monitor|Study\s+Director|Lead\s+Biostatistician|Biostatistician|Qualified\s+Person\s+for\s+Pharmacovigilance|QPPV|Pharmacovigilance\s+Officer|Safety\s+Officer|Regulatory\s+Affairs\s+Director|Clinical\s+Data\s+Manager|GMP\s+Auditor|Lead\s+Investigator)\s*[:#,]?\s*(?:(?:Dr|Prof|Mr|Mrs|Ms)\.?\s+)?((?:(?:d['’]|l['’]|(?:(?:van|von|de|di|da|do|dos|das|la|le|del|dels|du|der|den|ten|ter|af|av)\s+)+)\s*)?\p{Lu}[\p{L}'’–-]*(?:-[\p{Lu}\p{Ll}'’–-]+)*(?:,\s+(?:(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]+)(?:\s+\p{Lu}\.?)?(?:,\s*(?:Jr\.?|Sr\.?|III|IV|II|MD|PhD|DO|MBBS))?|\s+(?:(?:van|von|de|di|da|do|dos|das|la|le|del|du|der|d['’]|l['’]|de\s+la|de\s+los|von\s+der)\s+)?(?:(?:\p{Lu}\.?\s+)?(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]*(?:-[\p{Lu}\p{Ll}'’–-]+)*))(?:\s+(?:y|i)\s+(?:(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]+))?)/giu },
+
+        // Double-Blind Clinical Trial Subjects, Cohorts & Screening IDs
+        { type: 'ID', regex: /\b(?:(?:Study\s+)?Subject|Patient(?:\s+Alternate)?|Participant|Screening|Cohort)\s*(?:(?:ID\b|No\.?|Number|Identifier|Code|#)[\s:#=-]*|[:#=-]+)\s*(?!(?:Subject|Patient|Participant|Screening|Cohort|USUBJID|SUBJID|STUDYID|SITEID)\b)([A-Za-z0-9-]{3,20})\b/gi },
+        { type: 'ID', regex: /\b(?:SUBJ|PT|SCR|COHORT|SITE|PROTOCOL|CLN)[-_][A-Za-z0-9-]{3,20}\b/gi },
+        { type: 'ID', regex: /\b(?:USUBJID|SUBJID|STUDYID|SITEID|INVID)[:\s=]+["']?([A-Za-z0-9_-]{3,35})["']?\b/gi },
+
+        // Study Protocols, Investigational Plans & Registries
+        { type: 'ID', regex: /\b(?:(?:Clinical\s+)?Study\s+(?:Number|No\.?|ID\b|Code|#)|Protocol\s*(?:No\.?|Number|ID\b|Identifier|Code|#)[\s:#=-]*|Protocol\s*[:#=-]+)[:\s#-]*([A-Z0-9][-A-Z0-9]{3,25})\b/gi },
         { type: 'ID', regex: /\bNCT\d{8}\b/gi },
         { type: 'ID', regex: /\b(?:EudraCT|EU\s*CT)?[:\s#]*(20\d{2}-\d{6}-\d{2})\b/gi },
+        { type: 'ID', regex: /\b(?:EU\s*CT|CTIS)[:\s#]*(20\d{2}-\d{6}-\d{2}(?:-\d{2})?)\b/gi },
+        { type: 'ID', regex: /\bISRCTN\s*(?:#|No\.?|Number)?[:\s#]*\d{8}\b/gi },
+        { type: 'ID', regex: /\b(?:IRB|IEC)[:\s#]*([-A-Z0-9]{4,15})\b/gi },
+        { type: 'ID', regex: /\b(?:(?:Clinical\s+)?Site\s*(?:No\.?|ID\b|Identifier|Code|#)?|Investigator\s+Site|SITEID)[:\s#-]+([-A-Z0-9]{3,12})\b/gi },
+
+        // FDA & Global Drug/Device Applications
+        { type: 'ID', regex: /\b(?:IND|NDA|BLA|ANDA|DMF)\s*(?:No|Number|#)?[:\s#-]*\d{4,7}\b/gi },
         { type: 'ID', regex: /\b[Kk]\d{6}\b/g },
         { type: 'ID', regex: /\b[Pp]\d{6}(?:\/S\d{3})?\b/g },
-        { type: 'ID', regex: /\b(?:USUBJID|SUBJID|STUDYID|SITEID|INVID)[:\s=]+["']?([A-Za-z0-9_-]{3,35})["']?\b/gi },
-        { type: 'ID', regex: /\b(?:Randomization|Rand|RND)\s*(?:ID|Code|No\.?|Number|#)?[:\s#-]*([A-Za-z0-9-]{3,15})\b/gi },
-        { type: 'ID', regex: /\b(?:Kit|Medication\s*Kit|Bottle|Dispensing)\s*(?:ID|No\.?|Number|#)?[:\s#-]*([A-Za-z0-9-]{3,15})\b/gi },
-        { type: 'ID', regex: /\b(?:SAE|AER|ICSR|CIOMS|Safety\s*Report)\s*(?:ID|No\.?|Number|#|Ref)?[:\s#-]*([A-Za-z0-9-]{4,25})\b/gi }
+
+        // Drug Manufacturing Batch Traceability & Quality Release
+        { type: 'ID', regex: /\b(?:(?:(?:Manufacturing|Production|API)\s+)?(?:Batch|Lot)|Serial)\s*(?:(?:No[.]?|Number|#)[\s:#=-]*|[:#=-]+)\s*(?!(?:Batch|Lot|Serial)\b)([A-Z0-9][A-Z0-9\-]{3,18})\b/gi },
+        { type: 'ID', regex: /\b(?:LOT|BATCH|SERIAL)[-_][A-Z0-9-]{3,16}\b/gi },
+
+        // Individual Administered/Prescribed Patient Dosage (PHI)
+        { type: 'PHI', regex: /\b(?:Dose|Dosage|Medication\s+Dosage)[:\s]+\d+(?:\.\d+)?\s*(?:mg|mcg|mL|IU|units?)\b/gi },
+
+        // Electronic Data Capture & Case Report Forms
+        { type: 'ID', regex: /\b(?:eCRF|CRF|(?:Electronic\s+)?Case\s+Report\s+Form|EDC)\s*(?:No|Page|ID|Record)?[:\s#]*[A-Z0-9-]{2,15}\b/gi },
+
+        // Randomization, IWRS & Blinded Medication Kits
+        { type: 'ID', regex: /\b(?:Randomization|Rand|RND|IWRS|RTSM|IRT)\s*(?:(?:ID\b|Code|No\.?|Number|#)[\s:#=-]*|[:#=-]+)\s*(?!(?:Randomization|Rand|RND|IWRS|RTSM|IRT|Code)\b)([A-Za-z0-9-]{3,15})\b/gi },
+        { type: 'ID', regex: /\b(?:RAND|RND|IWRS|RTSM)[-_][A-Za-z0-9-]{3,15}\b/gi },
+        { type: 'ID', regex: /\b(?:Kit|Medication\s*Kit|Bottle|Dispensing(?:\s*Unit)?)\s*(?:(?:ID\b|No\.?|Number|Identifier|Code|#)[\s:#=-]*|[:#=-]+)\s*(?!(?:Kit|Bottle|Dispensing|No|Number|Code)\b)([A-Za-z0-9-]{3,15})\b/gi },
+        { type: 'ID', regex: /\b(?:KIT|BTL|DISP)[-_][A-Za-z0-9-]{3,15}\b/gi },
+
+        // Pharmacovigilance, Adverse Events & Safety Reports
+        { type: 'ID', regex: /\b(?:SAE|AER|ICSR|CIOMS|EUDRA|EV|Safety\s*Report|MedWatch|EudraVigilance)\b\s*(?:(?:ID|No\.?|Number|#|Ref|Case|Tracking(?:\s+ID)?|Report)[\s:#=-]*|[:#=-]+)\s*([A-Za-z0-9-]{4,25})\b/gi },
+        { type: 'ID', regex: /\b(?:SAE|AER|ICSR|CIOMS|EUDRA|EV|MW)[-_][A-Za-z0-9-]{3,20}\b/gi },
+
+        // 21 CFR Part 11 Electronic Signatures & Audit Trails
+        { type: 'SECRET', regex: /\b(?:E[-_ ]?SIG|ESIGNATURE|DIGITAL[-_ ]SIG|AUDIT[-_ ]TRAIL|AUDIT)[-_ ]*(?:ID|HASH|TOKEN)?[:\s#-]*[A-Za-z0-9+/=_-]{8,64}\b/gi }
+    ],
+    biotech: [
+        // 1. Contextual Clinical Genetics, Biobanking & Bioinformatics Personnel
+        {
+            type: 'NAME',
+            isContextName: true,
+            regex: /(?<=^|[^\p{L}\p{N}_])(?:Genetic\s+Counselor|Principal\s+Geneticist|Medical\s+Geneticist|Clinical\s+Geneticist|Lead\s+Bioinformatician|Bioinformatician|Computational\s+Biologist|Lab(?:oratory)?\s+Director|CLIA(?:\/CAP)?\s+(?:Medical\s+)?Director|CAP\s+Director|Sequencing\s+Technician|Genomics\s+Specialist|Clinical\s+Cytogeneticist|Cytogeneticist|Biobank\s+Curator|Biorepository\s+Manager)\s*[:#,]?\s*(?:(?:Dr|Prof|Mr|Mrs|Ms)\.?\s+)?((?:(?:d['’]|l['’]|(?:(?:van|von|de|di|da|do|dos|das|la|le|del|dels|du|der|den|ten|ter|af|av)\s+)+)\s*)?\p{Lu}[\p{L}'’–-]*(?:-[\p{Lu}\p{Ll}'’–-]+)*(?:,\s+(?:(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]+)(?:\s+\p{Lu}\.?)?(?:,\s*(?:Jr\.?|Sr\.?|III|IV|II|MD|PhD|DO|MBBS|CGC|FACMG))?|\s+(?:(?:van|von|de|di|da|do|dos|das|la|le|del|du|der|d['’]|l['’]|de\s+la|de\s+los|von\s+der)\s+)?(?:(?:\p{Lu}\.?\s+)?(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]*(?:-[\p{Lu}\p{Ll}'’–-]+)*))(?:\s+(?:y|i)\s+(?:(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]+))?)/giu
+        },
+
+        // 2. Genomic Accession Numbers (GenBank, RefSeq, Ensembl, UniProt, SRA, GEO, EGA, BioSample)
+        { type: 'ID', regex: /\b(?:NCBI\s+Accession|GenBank(?:\s+Accession)?|RefSeq(?:\s+ID\b)?|Ensembl\s+(?:Gene|Transcript|Protein)?(?:\s+ID\b)?|UniProt(?:\s+ID\b)?|Accession\s*(?:No\.?|Number|#)?)[^\S\r\n]*[:#=-]+[^\S\r\n]*([A-Za-z0-9_.-]+)\b/gi },
+        { type: 'ID', regex: /\b(?:SRA\s+Run|SRA(?:\s+Accession)?|GEO\s+Sample|GEO\s+Accession|EGA(?:\s+Accession)?|BioSample)\s*(?:ID\b|No\.?|Number|#)?[^\S\r\n]*[:#=-]+[^\S\r\n]*([SEDR]RR\d{6,9}|GSM\d{6,9}|EGA[SNRD]\d{11}|SAM[NED][A-Z]?\d{6,10})\b/gi },
+        { type: 'ID', regex: /\b(?:NM|NR|NP|NC|NG)_\d{6,9}(?:\.\d+)?\b/gi },
+        { type: 'ID', regex: /\bENS[A-Z]*[GTPRE]\d{11}(?:\.\d+)?\b/gi },
+        { type: 'ID', regex: /\b(?:SRR|DRR)\d{6,9}\b/gi },
+        { type: 'ID', regex: /\bERR\d{6,9}\b/g },
+        { type: 'ID', regex: /\bGSM\d{6,9}\b/gi },
+        { type: 'ID', regex: /\bEGA[SNRD]\d{11}\b/gi },
+        { type: 'ID', regex: /\bSAM[NED][A-Z]?\d{6,10}\b/gi },
+
+        // 3. Variant Nomenclature (HGVS & dbSNP)
+        { type: 'ID', regex: /\b(?:dbSNP|SNP\s*ID|rsID)[^\S\r\n]*[:#=-]+[^\S\r\n]*(rs\d{1,12})\b/gi },
+        { type: 'ID', regex: /\brs\d{6,12}\b/gi },
+        { type: 'ID', regex: /\bchr(?:[1-9]|1\d|2[0-2]|X|Y|M|MT):\d{1,9}[A-Z]>[A-Z]\b/gi },
+        { type: 'ID', regex: /\bc\.\d+(?:[+-]\d+)?[A-Z]>[A-Z]\b/gi },
+        { type: 'ID', regex: /\bc\.\d+(?:_\d+)?(?:del|dup|ins|inv)[A-Za-z0-9]*\b/gi },
+        { type: 'ID', regex: /\bp\.[A-Z][a-z]{2}\d+[A-Z][a-z]{2}(?:\b|\*)/g },
+        { type: 'ID', regex: /\bp\.[A-Z]\d+[A-Z](?:\b|\*)/g },
+        { type: 'ID', regex: /\bp\.[A-Z][a-z]{2}\d+(?:fs|del|ins|dup|ext)[A-Za-z0-9*]*\b/gi },
+        { type: 'ID', regex: /\b(?:Variant|Mutation|HGVS|Allele|Genotype)\s*(?:ID\b|Code|#|Description|Variant)?[^\S\r\n]*[:#=-]+[^\S\r\n]*(?!(?:Variant|Mutation|HGVS|Allele|Genotype)\b)([A-Za-z0-9_.:>+\/-]+)\b/gi },
+
+        // 4. Patient DNA/RNA Sample, Barcode & Sequencing Identifiers
+        { type: 'ID', regex: /\b(?:(?:(?:DNA|RNA|cDNA|cfDNA|ctDNA|Genomic)\s+)?(?:Sample|Specimen|Extract|Aliquot))\s*(?:(?:ID\b|No\.?|Number|Code|Barcode|#)[^\S\r\n]*|[:#=-]+)[^\S\r\n]*(?!(?:Sample|Specimen|DNA|RNA|Extract|Aliquot)\b)([A-Za-z0-9-]{3,25})\b/gi },
+        { type: 'ID', regex: /\b(?:DNA|RNA|cDNA|cfDNA|ctDNA|SAMP|SPEC|GEN)[-_][A-Za-z0-9-]{3,20}\b/gi },
+        { type: 'ID', regex: /\b(?:FASTQ|Illumina|Index|Barcode|Multiplex)\s*(?:Barcode|Index|ID\b|#|Code)?[^\S\r\n]*[:#=-]+[^\S\r\n]*([A-Z0-9_-]{4,20})\b/gi },
+        { type: 'ID', regex: /\bBARCODE[-_][A-Za-z0-9-]{3,15}\b/gi },
+        { type: 'ID', regex: /\b(?:Flowcell|Flow\s+Cell)\s*(?:ID\b|Barcode|#|Serial)?[^\S\r\n]*[:#=-]+[^\S\r\n]*(?!(?:Flowcell|Flow|Barcode|Serial|Index)\b)([A-Za-z0-9]{5,15})\b/gi },
+        { type: 'ID', regex: /\b(?:FLOWCELL|FC)[-_][A-Za-z0-9-]{5,15}\b/gi },
+
+        // 5. Patient Phenotype, Pedigree Charts & Cytogenetic Karyotypes
+        { type: 'ID', regex: /\b(?:Pedigree|Family|FAM|PED|Kindred)\s*(?:(?:ID\b|No\.?|Number|Code|#)[^\S\r\n]*|[:#=-]+)[^\S\r\n]*(?!(?:Pedigree|Family|Kindred)\b)([A-Za-z0-9-]{3,20})\b/gi },
+        { type: 'ID', regex: /\b(?:FAM|PED|KINDRED)[-_][A-Za-z0-9-]{3,20}\b/gi },
+        { type: 'ID', regex: /\b(?:Proband|Index\s+Case|Consultand|Affected\s+Sibling|First-Degree\s+Relative)\s*(?:ID\b|Code|#)?[^\S\r\n]*[:#=-]+[^\S\r\n]*([A-Za-z0-9-]{3,20})\b/gi },
+        { type: 'ID', regex: /\bPED-[A-Za-z0-9-]+-[IVX]+-\d+\b/gi },
+        { type: 'ID', regex: /\bHP:\d{7}\b/gi },
+        { type: 'ID', regex: /\bOMIM\s*[:#=-]*\s*(?:#|%|\*|\+)?\d{6}\b/gi },
+        { type: 'ID', regex: /\b(?:ORPHA|Orphanet)(?:\s*(?:Code|ID|#|No\.?))?[^\S\r\n]*[:#=-]+[^\S\r\n]*\d{2,7}\b/gi },
+        { type: 'PHI', regex: /\b(?:4[5-9]|50),[XY]{1,4}(?:,[+A-Za-z0-9_().;\/-]+)*(?:\s*\[\d+\/\d+\])?\b/gi },
+
+        // 6. Cell Lines, Biospecimens & Biobanking
+        { type: 'ID', regex: /\b(?:Biobank|Biorepository|Tissue\s+Bank|Cryo(?:bank)?|Specimen\s+Bank)\s*(?:(?:ID\b|No\.?|Number|Code|Barcode|#)[^\S\r\n]*|[:#=-]+)[^\S\r\n]*(?!(?:Biobank|Biorepository|Tissue|Cryobank)\b)([A-Za-z0-9-]{3,25})\b/gi },
+        { type: 'ID', regex: /\b(?:BIOBANK|BIOREP|CRYO|TISSUE)[-_][A-Za-z0-9-]{3,20}\b/gi },
+        { type: 'ID', regex: /\b(?:Aliquot|Cryotube|Vial|Straw)\s*(?:(?:ID\b|No\.?|Number|Barcode|#)[^\S\r\n]*|[:#=-]+)[^\S\r\n]*([A-Za-z0-9-]{3,20})\b/gi },
+        { type: 'ID', regex: /\b(?:ALIQUOT|CRYO-TUBE|TUBE)[-_][A-Za-z0-9-]{3,15}\b/gi },
+        { type: 'ID', regex: /\b(?:FFPE|Formalin-Fixed|Tissue\s+Block|Cassette)\s*(?:(?:ID\b|No\.?|Number|#)[^\S\r\n]*|[:#=-]+)[^\S\r\n]*([A-Za-z0-9-]{3,20})\b/gi },
+        { type: 'ID', regex: /\b(?:FFPE|BLK|CASS)[-_][A-Za-z0-9-]{3,16}\b/gi },
+        { type: 'ID', regex: /\b(?:PDX|Xenograft|Patient-Derived)\s*(?:Model|Line|ID\b|#)?[^\S\r\n]*[:#=-]+[^\S\r\n]*([A-Za-z0-9-]{3,20})\b/gi },
+        { type: 'ID', regex: /\bPDX[-_][A-Za-z0-9-]{3,16}\b/gi },
+        { type: 'ID', regex: /\b(?:Primary\s+Cell\s+Line|Patient\s+Cell\s+Line|Cell\s+Model)[^\S\r\n]*[:#=-]+[^\S\r\n]*([A-Za-z0-9-]{3,20})\b/gi },
+        { type: 'ID', regex: /\bPATIENT-CELL-LINE[-_][A-Za-z0-9-]{3,16}\b/gi },
+
+        // 7. Sequencing Instruments, Runs & Flow Cytometry
+        { type: 'ID', regex: /\b(?:(?:NovaSeq|NextSeq|MiSeq|HiSeq|PacBio|Sequel|MinION|PromethION|GridION)\s*(?:Run|Instrument|Serial|ID\b|#)?|Sequencing\s+Run)[^\S\r\n]*[:#=-]+[^\S\r\n]*([A-Za-z0-9_-]{5,30})\b/gi },
+        { type: 'ID', regex: /\b(?:RUN|SEQ-RUN|NOVASEQ|NEXTSEQ|MINION)[-_][A-Za-z0-9_-]{4,25}\b/gi },
+        { type: 'ID', regex: /\b(?:FACS|Flow\s+Cytometry|Cytometer)\s*(?:Sorting|Run|Sample|Tube|File|ID\b|#)?[^\S\r\n]*[:#=-]+[^\S\r\n]*([A-Za-z0-9_-]{3,20})\b/gi },
+        { type: 'ID', regex: /\bFACS[-_][A-Za-z0-9-]{3,16}\b/gi },
+        { type: 'ID', regex: /\b(?:Microarray|BeadChip|GeneChip|Array\s+Scan)\s*(?:ID\b|Barcode|#|Serial)?[^\S\r\n]*[:=]+[^\S\r\n]*([A-Za-z0-9_-]{6,25})\b/gi },
+        { type: 'ID', regex: /\b(?:BEADCHIP|GENECHIP)[-_][A-Za-z0-9-]{4,20}\b/gi },
+
+        // 8. Shared Clinical Trial Identifiers (Subjects, Protocols, IRB/IEC, 21 CFR Part 11)
+        { type: 'ID', regex: /\b(?:(?:Study\s+)?Subject|Patient(?:\s+Alternate)?|Participant|Screening|Cohort)\s*(?:(?:ID\b|No\.?|Number|Identifier|Code|#)[^\S\r\n]*|[:#=-]+)[^\S\r\n]*(?!(?:Subject|Patient|Participant|Screening|Cohort|USUBJID|SUBJID|STUDYID|SITEID)\b)([A-Za-z0-9-]{3,20})\b/gi },
+        { type: 'ID', regex: /\b(?:SUBJ|PT|SCR|COHORT|SITE|PROTOCOL|CLN)[-_][A-Za-z0-9-]{3,20}\b/gi },
+        { type: 'ID', regex: /\b(?:USUBJID|SUBJID|STUDYID|SITEID|INVID)[^\S\r\n]*[:=\s]+["']?([A-Za-z0-9_-]{3,35})["']?\b/gi },
+        { type: 'ID', regex: /\b(?:(?:Clinical\s+)?Study\s+(?:Number|No\.?|ID\b|Code|#)|Protocol\s*(?:No\.?|Number|ID\b|Identifier|Code|#)[^\S\r\n]*|Protocol\s*[:#=-]+)[^\S\r\n]*[:#=-]*[^\S\r\n]*([A-Z0-9][-A-Z0-9]{3,25})\b/gi },
+        { type: 'ID', regex: /\bNCT\d{8}\b/gi },
+        { type: 'ID', regex: /\b(?:IRB|IEC)[^\S\r\n]*[:#\s]+([-A-Z0-9]{4,15})\b/gi },
+        { type: 'SECRET', regex: /\b(?:E[-_ ]?SIG|ESIGNATURE|DIGITAL[-_ ]SIG|AUDIT[-_ ]TRAIL)[-_ ]*(?:ID|HASH|TOKEN)?[^\S\r\n]*[:#-]*[^\S\r\n]*[A-Za-z0-9+/=_-]{8,64}\b/gi }
+    ],
+    telecom: [
+        // --- Package 25: Call Centers, Customer Service Telephony, VoIP & Audio Transcripts ---
+        // 1. Contextual Call Center, Telecom, QA & CX Personnel
+        {
+            type: 'NAME',
+            isContextName: true,
+            regex: /(?<=^|[^\p{L}\p{N}_])(?:Call\s+Center\s+Supervisor|Contact\s+Center\s+Supervisor|QA\s+Evaluator|Quality\s+Assurance\s+Analyst|Team\s+Lead|Customer\s+Experience\s+Director|CX\s+Director|Workforce\s+Manager|WFM\s+Analyst|Escalation\s+Specialist|Escalation\s+Manager|Customer\s+Service\s+Representative|CSR|Inbound\s+Agent|Outbound\s+Agent|Tier\s+[123]\s+Agent|Contact\s+Center\s+Manager|NOC\s+Engineer|Network\s+Architect|Telecom\s+Engineer|VoIP\s+Administrator|RF\s+Optimization\s+Engineer|RF\s+Engineer|Voice\s+Engineer|Core\s+Network\s+Specialist|Provisioning\s+Specialist|Field\s+Technician|PBX\s+Specialist|Transmission\s+Engineer|Dispatch\s+Technician)\s*[:#,]?\s*(?:(?:Dr|Mr|Mrs|Ms)\.?\s+)?((?:(?:d['’]|l['’]|(?:(?:van|von|de|di|da|do|dos|das|la|le|del|dels|du|der|den|ten|ter|af|av)\s+)+)\s*)?\p{Lu}[\p{L}'’–-]*(?:-[\p{Lu}\p{Ll}'’–-]+)*(?:,\s+(?:(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]+)(?:\s+\p{Lu}\.?)?(?:,\s*(?:Jr\.?|Sr\.?|III|IV|II))?|\s+(?:(?:van|von|de|di|da|do|dos|das|la|le|del|du|der|d['’]|l['’]|de\s+la|de\s+los|von\s+der)\s+)?(?:(?:\p{Lu}\.?\s+)?(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]*(?:-[\p{Lu}\p{Ll}'’–-]+)*))(?:\s+(?:y|i)\s+(?:(?:d['’]|l['’])?\p{Lu}[\p{L}'’–-]+))?)/giu
+        },
+
+        // 2. Audio Transcripts & Speech-to-Text Diarization Headers (e.g. "[Agent Marcus]: ...", "Customer Sarah: ...")
+        {
+            type: 'NAME',
+            isContextName: true,
+            regex: /(?<=^|\r?\n)[\[(](?:Agent|Customer|Caller|Representative|Rep|Speaker\s+[1-9]|Operator|Advisor)\s+([A-Z\p{Lu}][\p{L}'’.-]*(?:[ \t\xA0]+[A-Z\p{Lu}][\p{L}'’.-]*){0,2})[\])][ \t\xA0]*:/gu
+        },
+        {
+            type: 'NAME',
+            isContextName: true,
+            regex: /(?<=^|\r?\n)(?:Agent|Customer|Caller|Representative|Rep|Speaker\s+[1-9]|Operator|Advisor)\s+([A-Z\p{Lu}][\p{L}'’.-]*(?:[ \t\xA0]+[A-Z\p{Lu}][\p{L}'’.-]*){0,2})[ \t\xA0]*:/gu
+        },
+
+        // 3. Contact Center CTI, ACD & Interaction Identifiers (Genesys, Amazon Connect, Five9, NICE, Cisco, Avaya)
+        { type: 'ID', regex: /\b(?:Amazon\s+Connect\s+Contact|Connect\s+Contact|ContactId|Contact[- ]ID)\s*(?:ID\b|#|No\.?)?[^\S\r\n]*[:#=-]+[^\S\r\n]*([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\b/gi },
+        { type: 'ID', regex: /\b(?:Genesys(?:\s+Cloud)?\s+(?:Interaction|Conversation)|InteractionId|ConversationId)\s*(?:ID\b|#|No\.?)?[^\S\r\n]*[:#=-]+[^\S\r\n]*([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[A-Za-z0-9_-]{16,36})\b/gi },
+        { type: 'ID', regex: /\b(?:NICE(?:\s+inContact)?\s+Contact|inContact\s+Contact)\s*(?:ID\b|#|No\.?)?[^\S\r\n]*[:#=-]+[^\S\r\n]*(\d{9,12})\b/gi },
+        { type: 'ID', regex: /\b(?:Five9\s+(?:Session|Call)|Five9\s+Interaction)\s*(?:ID\b|#|No\.?)?[^\S\r\n]*[:#=-]+[^\S\r\n]*(\d{8,18})\b/gi },
+        { type: 'ID', regex: /\b(?:Cisco\s+(?:Dialog|Session|Call)|DialogId|CallSessionId)\s*(?:ID\b|#|No\.?)?[^\S\r\n]*[:#=-]+[^\S\r\n]*([A-Za-z0-9_-]{8,36})\b/gi },
+        { type: 'ID', regex: /\b(?:Avaya\s+(?:UCID|Call\s+ID)|Universal\s+Call\s+Identifier|UCID)\s*(?:ID\b|#|No\.?)?[^\S\r\n]*[:#=-]+[^\S\r\n]*(\d{20}|0000\d{16})\b/gi },
+        { type: 'ID', regex: /\b(?:CTI\s+Session|Interaction\s+Ref|ACD\s+Session|Contact\s+Center\s+Session)\s*(?:ID\b|#|No\.?)?[^\S\r\n]*[:#=-]+[^\S\r\n]*([A-Za-z0-9_-]{6,36})\b/gi },
+        { type: 'ID', regex: /\bCTI-[A-Za-z0-9_-]{6,24}\b/gi },
+
+        // 4. Call Center Agent, Station, Turret & Extension Identifiers
+        { type: 'ID', regex: /\b(?:Agent|Representative|Rep|Operator|Advisor)\s+(?:ID\b|Number|No\.?|#|Code)[^\S\r\n]*[:#=-]+[^\S\r\n]*([A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
+        { type: 'ID', regex: /\b(?:AGT|AGENT|OPR|CSR)[-_][A-Za-z0-9_-]{4,16}\b/gi },
+        { type: 'ID', regex: /\b(?:(?:Agent\s+)?Extension|Extn|Ext\.)[^\S\r\n]*(?:[:#=-]+|[^\S\r\n]+)[^\S\r\n]*(\d{3,6})\b/gi },
+        { type: 'ID', regex: /\b(?:Station|Turret|Desk\s+Phone|Softphone)\s*(?:ID\b|#|No\.?|Name)?[^\S\r\n]*[:#=-]+[^\S\r\n]*([A-Za-z0-9_-]{3,15})\b/gi },
+        { type: 'ID', regex: /\b(?:Skill\s+Group|Hunt\s+Group|ACD\s+Queue|Queue\s+ID|Routing\s+Queue)\s*(?:ID\b|#|No\.?|Code)?[^\S\r\n]*[:#=-]+[^\S\r\n]*([A-Za-z0-9_-]{3,25})\b/gi },
+
+        // 5. Inbound Caller ID, Telephony Signaling, ANI, CLI, DNIS & SIP URIs
+        { type: 'PHONE', regex: /\b(?:Inbound\s+CLI|Calling\s+Number|Caller\s+ID|Calling\s+Party|ANI|CLI)[^\S\r\n]*[:#=-]+[^\S\r\n]*(\+?[0-9]{10,15})\b/gi },
+        { type: 'PHONE', regex: /\b(?:DNIS|Dialed\s+Number|Called\s+Party)[^\S\r\n]*[:#=-]+[^\S\r\n]*(\+?[0-9]{4,15})\b/gi },
+        { type: 'USER', regex: /\bsips?:(?:\+?[a-zA-Z0-9_.!~*'()&=+$,;?/-]+@)[a-zA-Z0-9.-]+(?::\d{1,5})?(?:;[a-zA-Z0-9_.!~*'()&=+$,;?/-]+)*\b/gi },
+        { type: 'ID', regex: /\b(?:Call-ID|Call-Id|call-id)\s*[:#=-]\s*([A-Za-z0-9_.!~*'()&=+$,;?/-]+@[A-Za-z0-9.-]+|[A-Za-z0-9_-]{16,64})\b/gi },
+        { type: 'ID', regex: /(?<=[;,\s])(?:from-tag|to-tag|sip-tag|tag)\s*=\s*([a-zA-Z0-9_-]{6,32})\b/gi },
+        { type: 'ID', regex: /\b(?:SIP\s+Tag|Contact\s+Tag)\s*[:=]\s*([a-zA-Z0-9_-]{6,32})\b/gi },
+        { type: 'ID', regex: /\b(?:SSRC|Synchronization\s+Source)\s*[:=]\s*(0x[0-9a-fA-F]{8}|\d{8,10})\b/gi },
+        { type: 'ID', regex: /\b(?:CNAME|Canonical\s+Name)\s*[:=]\s*([A-Za-z0-9_.@-]+)\b/gi },
+
+        // 6. Audio Recording & Transcript Metadata
+        { type: 'ID', regex: /\b(?:Call\s+Recording|Recording\s+ID|Audio\s+File|Audio\s+Recording|Transcript\s+ID|Call\s+Audio)(?:\s*(?:#|No\.?|Ref|URL))?[^\S\r\n]*[:#=-]+[^\S\r\n]*((?:s3:\/\/|https?:\/\/)?[A-Za-z0-9_.\/-]{6,96})\b/gi },
+        { type: 'ID', regex: /\b(?:REC|CALL-REC|AUDIO-REC|TRANSCRIPT)[-_][A-Za-z0-9_-]{6,32}\b/gi },
+
+        // 7. IVR, DTMF Masking & PCI-DSS Pause-and-Resume Tokens
+        { type: 'SECRET', regex: /\b(?:IVR\s+(?:Payment|Pay|Session)|DTMF\s+(?:Token|Mask|Session)|Payment\s+Token|Card\s+Capture\s+Token)\s*(?:ID\b|#|Ref)?[^\S\r\n]*[:#=-]+[^\S\r\n]*([A-Za-z0-9_-]{6,36})\b/gi },
+        { type: 'SECRET', regex: /\b(?:IVR-PAY|DTMF-TOK|PAY-SESS)[-_][A-Za-z0-9_-]{6,32}\b/gi },
+        { type: 'SECRET', regex: /\b(?:PCI\s+Pause|Pause\s+Event|Recording\s+Pause|Mute\s+Event|Pause-and-Resume)\s*(?:ID\b|Ref|Token)?[^\S\r\n]*[:#=-]+[^\S\r\n]*([A-Za-z0-9_-]{4,24})\b/gi },
+        { type: 'SECRET', regex: /\b(?:Telephone\s+PIN|Phone\s+PIN|IVR\s+Auth\s+Code|Caller\s+PIN|Voice\s+PIN)\s*[:#=-]*\s*(\d{4,8})\b/gi },
+
+        // 8. Call Center QA Scorecards & CSAT/NPS Feedback Identifiers
+        { type: 'ID', regex: /\b(?:QA\s+(?:Evaluation|Scorecard|Audit|Review)|Quality\s+Scorecard|Agent\s+Evaluation)\s*(?:ID\b|#|Ref)?[^\S\r\n]*[:#=-]+[^\S\r\n]*([A-Za-z0-9_-]{4,25})\b/gi },
+        { type: 'ID', regex: /\bQA-EVAL[-_][A-Za-z0-9_-]{4,20}\b/gi },
+        { type: 'ID', regex: /\b(?:CSAT\s+Response|NPS\s+Response|Survey\s+Feedback|Post-Call\s+Survey|Customer\s+Feedback)\s*(?:ID\b|#|Ref)?[^\S\r\n]*[:#=-]+[^\S\r\n]*([A-Za-z0-9_-]{4,25})\b/gi },
+        { type: 'ID', regex: /\b(?:CSAT-RESP|NPS-RESP|SURVEY-RESP)[-_][A-Za-z0-9_-]{4,20}\b/gi },
+
+        // 9. Mobile Subscriber & Device Identifiers (IMSI, IMEI, ICCID, MSISDN)
+        { type: 'ID', regex: /\b(?:IMSI|Subscriber\s+ID|IMSI\s+(?:Number|No\.?|#))\s*[:#=-]\s*([0-9]{14,15})\b/gi },
+        { type: 'ID', regex: /\bIMSI[-_][0-9]{14,15}\b/gi },
+        { type: 'ID', regex: /\b(?:IMEI(?:SV)?|Device\s+IMEI|Equipment\s+ID|Phone\s+IMEI)\s*[:#=-]\s*([0-9]{15,16})\b/gi },
+        { type: 'ID', regex: /\b\d{2}-\d{6}-\d{6}-\d(?:\d)?\b/g },
+        { type: 'ID', regex: /\b(?:ICCID|SIM(?:\s+Card)?(?:\s+(?:Number|ID|#))?|eSIM\s+EID)\s*[:#=-]\s*(\b89[0-9]{16,18}\b|[0-9]{18,32})\b/gi },
+        { type: 'ID', regex: /\b89\d{16,18}\b/g },
+        { type: 'PHONE', regex: /\b(?:MSISDN|Subscriber\s+Number)\s*[:#=-]\s*(\+?[0-9]{10,15})\b/gi },
+
+        // 10. Call Detail Records (CDR) & Interconnect Points
+        { type: 'ID', regex: /\bCDR[-_][A-Za-z0-9_-]{6,24}\b/gi },
+        { type: 'ID', regex: /\b(?:CDR\s+(?:ID|Record|Number|Seq)|Call\s+Record\s+(?:ID|#))\s*[:#=-]\s*([A-Za-z0-9_-]{6,24})\b/gi },
+        { type: 'ID', regex: /\b(?:Trunk\s+Group|TGID|Route\s+Group|SIP\s+Trunk)(?:\s*(?:ID|#|Name))?\s*[:#=-]\s*([A-Za-z0-9_-]{4,20})\b/gi },
+        { type: 'ID', regex: /\b(?:POI|Point\s+of\s+Interconnect)(?:\s*(?:ID|#|Code))?\s*[:#=-]\s*([A-Za-z0-9_-]{4,20})\b/gi },
+
+        // 11. Cellular Base Stations & Geolocation
+        { type: 'ID', regex: /\b(?:CGI|ECGI|Cell\s+Global\s+Identity)\s*[:#=-]\s*(\d{3}[-_ ]\d{2,3}[-_ ]\d{1,5}[-_ ]\d{1,8})\b/gi },
+        { type: 'ID', regex: /\b(?:eNB|gNB|eNodeB|gNodeB|NodeB)(?:[-_ ]?ID)?\s*[:#=-]\s*(\d{5,10})\b/gi },
+        { type: 'ID', regex: /\b(?:PCI|Physical\s+Cell\s+ID)\s*[:#=-]\s*(\d{1,4})\b/gi },
+        { type: 'ID', regex: /\bCell\s+ID\s*[:#=-]\s*(\d{5,10})\b/gi },
+        { type: 'ID', regex: /\b(?:Tracking\s+Area\s+Code|Location\s+Area\s+Code|TAC|LAC)\s*[:#=-]\s*(\d{4,6}|0x[0-9a-fA-F]{4})\b/gi },
+        { type: 'LOCATION', regex: /\b(?:Tower|Site|Antenna|Cell)\s+(?:Coords?|Coordinates|Location|Lat\/Long)\s*[:#=-]\s*([-+]?\d{1,3}\.\d{4,8}\s*,\s*[-+]?\d{1,3}\.\d{4,8})\b/gi },
+
+        // 12. CWMP TR-069, RADIUS/Diameter & Circuit IDs
+        { type: 'URL', regex: /\b(?:ACS\s+URL|CWMP\s+URL|ConnectionRequestURL)\s*[:=]\s*(https?:\/\/[^\s]+)\b/gi },
+        { type: 'USER', regex: /\b(?:ACS\s+(?:Username|User)|ConnectionRequestUsername)\s*[:=]\s*(\S+)\b/gi },
+        { type: 'SECRET', regex: /\b(?:ACS\s+Password|ConnectionRequestPassword)\s*[:=]\s*(\S+)\b/gi },
+        { type: 'IP', regex: /\b(?:Framed-IP-Address|NAS-IP-Address)\s*[:=]\s*(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b/gi },
+        { type: 'ID', regex: /\b(?:Calling-Station-Id|Called-Station-Id)\s*[:=]\s*([A-Za-z0-9.:-]{10,24})\b/gi },
+        { type: 'SECRET', regex: /\b(?:RADIUS|Diameter)\s+Shared\s+Secret\s*[:=]\s*(\S+)\b/gi },
+        { type: 'ID', regex: /\b(?:Diameter-Session-Id|Diameter\s+Session)\s*[:=]\s*([A-Za-z0-9_.:;-]{10,64})\b/gi },
+        { type: 'ID', regex: /\b(?:Circuit\s+ID|CKT|Facility\s+ID|LEC\s+Circuit|Bearer\s+Channel)\s*[:#=-]\s*([0-9]{2}\.[A-Za-z0-9]{4}\.[0-9]{6}\.\.[A-Za-z0-9]{2,4}|[A-Za-z0-9.\/-]{8,30})\b/gi },
+        { type: 'ID', regex: /\bCKT[-_][A-Za-z0-9_-]{6,20}\b/gi }
     ],
     underwriting: [
         // Employer Corporate / Business Names
-        { type: 'NAME', isContextName: true, isCorporateName: true, regex: /\b(?:[A-Z][A-Za-z0-9&.,'-]*[ \t\xA0]+){1,5}(?:Inc\.?|LLC|Corp\.?|Corporation|Ltd\.?|Limited|Co\.?|Company|Group|Holdings|Solutions|Services|Technologies|Logistics|Industries|Capital|Bank|Partners|LLP|PLLC)(?:\s+(?:LLC|Inc\.?|Corp\.?|Ltd\.?|USA|Group))?\b/g },
+        { type: 'NAME', isContextName: true, isCorporateName: true, regex: /\b(?:[A-Z][A-Za-z0-9&.,'-]*[ \t\xA0]+){1,5}(?:Inc\.?|LLC|Corp\.?|Corporation|Ltd\.?|Limited|Co\.?|Company|Group|Holdings|Solutions|Services|Servicing|Technologies|Logistics|Industries|Capital|Bank|Partners|LLP|PLLC|Lending|Credit|Funding|Factoring)(?:\s+(?:LLC|Inc\.?|Corp\.?|Ltd\.?|USA|Group))?\b/g },
         { type: 'NAME', isContextName: true, regex: /(?:Employer|Company|Organization|Business)\s*(?:Name)?[\s:#]+([A-Za-z0-9&.,\s'-]{2,40}?)(?=\r?\n|$|\s{3,}|\t|Address|EIN|FEIN|Phone|W-2|Rate|Pay|Wage)/gi },
         
         // W-2 & Tax Identifiers
         { type: 'ID', regex: /(?:\b(?:Box\s+d\b|d\.\s*(?:Control|#)?|d\s+Control)\s*(?:Control\s+)?(?:number|no\.?|#|num)?[:\s#]+|\bControl\s*(?:number|no\.?|#|num)?[:\s#]+|\bControl[:#]\s*)([A-Za-z0-9-]{3,30})/gi },
-        { type: 'ID', regex: /\b(?:EIN|FEIN|Tax\s+ID)[:\s#]*\d{2}-\d{7}\b/gi },
+        { type: 'ID', regex: /\b(?:EIN|FEIN|Tax\s+ID)[:\s#]*(\d{2}-\d{7})\b/gi },
         { type: 'ID', regex: /\b\d{2}-\d{7}\b/g },
         { type: 'ID', regex: /\b\d{3}-\d{2}-\d{4}\b/g },
         { type: 'ID', regex: /\b(?:XXX|xxx|\*\*\*)[ -]?(?:XX|xx|\*\*)[ -]?\d{4}\b/g },
@@ -493,7 +1406,7 @@ let PROFILE_RULES = {
         // Employee, Loan & Payroll IDs
         { type: 'ID', regex: /\b(?:Employee|Emp|EE|Worker|Borrower|Badge|Advisor|Producer|Agent|Applicant|File)\s*(?:#|ID|No\.?|Number)[:\s#]*[A-Z0-9-]{3,20}\b/gi },
         { type: 'ID', regex: /\b(?:Pay\s+Group[:#\s]+[A-Za-z0-9_-]{2,30}|(?:Cost\s+Center|Dept|Department)[:#\s]+[A-Za-z0-9_-]*\d[A-Za-z0-9_-]*)\b/gi },
-        { type: 'ID', regex: /\b(?:Loan|Application|Deal|Borrower|File)\s*(?:#|ID|No\.?|Number)[:\s#]*[A-Za-z0-9-]{4,25}\b/gi },
+        { type: 'ID', regex: /(?<!\bSBA\s+)\b(?:Loan|Application|Deal|Borrower|File)\s*(?:#|ID|No\.?|Number)[:\s#]*[A-Za-z0-9-]{4,25}\b/gi },
         
         // Direct Deposit, Bank Accounts & Routing Numbers (Masked & Unmasked)
         { type: 'FINANCIAL', regex: /\b(?:Account|Acct|Checking|Savings|Direct\s+Deposit)\s*(?:#|ID|No\.?|Number)?[:\s#]*(?:[\*xX•.-]{3,}\d{2,6}|\d{4}[-\s]?\d{4}[-\s]?\d{2,6})\b/gi },
@@ -502,20 +1415,51 @@ let PROFILE_RULES = {
         // Borrower & Co-Borrower Names (ALL-CAPS, Payroll, Title Case)
         { type: 'NAME', regex: /\b[A-Z]{2,25},\s+[A-Z]{2,25}(?:\s+[A-Z]\.?|\s+[A-Z]{2,25})*\b/g },
         { type: 'NAME', isAggressiveName: true, regex: /(?<=^|[^\p{L}\p{N}_])\p{Lu}{2,}(?:[\p{Lu}'-]*\p{Lu})?(?:[ \t\xA0]+(?:\p{Lu}\.?|[A-Z][a-z]+))?[ \t\xA0]+\p{Lu}{2,}(?:[\p{Lu}'-]*\p{Lu})?(?:'s)?(?=[^\p{L}\p{N}_]|$)(?![ \t\xA0]*:)/gu },
-        { type: 'NAME', isContextName: true, regex: /(?:(?:Borrower|Co-Borrower|Applicant|Co-Applicant|Employee|Worker|Taxpayer|Candidate|Primary\s+Borrower|Joint\s+Borrower|Account\s+Holder|Insured|Client)\s*(?:Name)?|First\s+name|Given\s+name)[\s:#]+(?:\b|\b\s*)([A-Za-z0-9&.,\s'-]{2,35}?)(?=\r?\n|$|\s{3,}|\t|SSN|EIN|DOB|Address|Phone|Rate|Pay|Wage|Date|Box|Last|Surname)/gi },
-        { type: 'NAME', isContextName: true, regex: /(?:Last\s+name|Surname|Family\s+name)[\s:#]+(?:\b|\b\s*)([A-Za-z'-]{2,30})/gi },
+        { type: 'NAME', isContextName: true, regex: /(?:(?:Borrower|Co-Borrower|Applicant|Co-Applicant|Employee|Worker|Taxpayer|Candidate|Primary\s+Borrower|Joint\s+Borrower|Account\s+Holder|Insured|Client)\s*(?:Name)?|First\s+name|Given\s+name)[\s:#]+(?:\b|\b\s*)([A-Za-z0-9\p{L}&.,\s'-]{2,35}?)(?=\r?\n|$|\s{3,}|\t|SSN|EIN|DOB|Address|Phone|Rate|Pay|Wage|Date|Box|Last|Surname)/giu },
+        { type: 'NAME', isContextName: true, regex: /(?:Last\s+name|Surname|Family\s+name)[\s:#]+(?:\b|\b\s*)([A-Za-z\p{L}'-]{2,30})/giu },
         
         // Addresses & Locations
         { type: 'ADDRESS', isContextAddress: true, regex: /(?:(?:Borrower(?:'s)?|Co-Borrower(?:'s)?|Employee(?:'s)?|Employer(?:'s)?|Home|Mailing|Property|Physical)\s+address|(?:(?:\bBox\s+f\b|\bf\.\s*|\bf\s+(?=Employee))\s*(?:Employee(?:'s)?\s*)?address))[\s:#]+([A-Za-z0-9#.,\s-]{4,55}?)(?=\r?\n|$|\s{3,}|\t|City|State|ZIP|SSN|EIN|Phone|Box|\d+\b)/gi },
         { type: 'ADDRESS', regex: /\b\d{1,6}[ \t\xA0]+(?:[A-Za-z0-9.-]+[ \t\xA0]+){1,4}(?:St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Ln|Lane|Dr|Drive|Way|Ct|(?<!District |Supreme |Circuit |Appellate |Bankruptcy |High |Federal |Trial )Court|Pl|Place|Terrace|Pkwy|Parkway|Sq|Square|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Row|Pike|PO Box|P\.O\.[ \t\xA0]*Box)\b(?:[ \t\xA0]*,?[ \t\xA0]*(?:Apt|Apartment|Suite|Ste|Unit|#|Fl|Floor|Bldg|Building)\.?[ \t\xA0]*[A-Za-z0-9-]+)?/gi },
         { type: 'ADDRESS', regex: /\b[A-Za-z][a-zA-Z\s.-]{1,25},?\s+(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|PR)\s+\d{5}(?:-\d{4})?\b/g },
         { type: 'ADDRESS', regex: /\b\d{5}-\d{4}\b/g },
-        { type: 'LOCATION', regex: /\b[A-Za-z][a-zA-Z .'-]{1,25}(?:,\s*(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|PR)|\s+(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|PR))\b/g }
+        { type: 'LOCATION', regex: /\b[A-Za-z][a-zA-Z .'-]{1,25}(?:,\s*(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|PR)|\s+(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|PR))\b/g },
+        // Cap Tables & Startup M&A Due Diligence
+        { type: 'FINANCIAL', regex: /\b(?:SAFE(?:\s+Agreement|\s+Note)?|Convertible\s+Note|CN)\s*(?:ID|Ref|No\.?|Number|#)?[:\s#-]+(?!Agreement\b)([A-Za-z0-9-]{3,25})\b/gi },
+        { type: 'ID', regex: /\b(?:Share\s+Certificate|Stock\s+Certificate|Cert(?:ificate)?)\s*(?:No\.?|Number|#)?[:\s#-]+((?:CERT|CS|PS|PF|COM|PREF)[-_][A-Za-z0-9-]{2,15}|[A-Z]{1,4}-\d{3,8})\b/gi },
+        { type: 'ID', regex: /\b(?:Stock\s+Option|Option\s+Grant|ISO|NSO|RSU)\s*(?:Agreement|Grant)?\s*(?:(?:ID|No\.?|Number|#)[:\s#-]*|[:#-])\s*([A-Za-z0-9-]*\d[A-Za-z0-9-]*)\b/gi },
+        { type: 'FINANCIAL', regex: /\b(?:Strike|Exercise)\s+Price[:\s]+((?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’\u2018\u2019]+)\b/gi },
+        { type: 'FINANCIAL', regex: /\b(?:Valuation\s+Cap|Post-Money\s+Cap|Pre-Money\s+Valuation)[:\s]+((?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’\u2018\u2019]+[KMB]?)\b/gi },
+        { type: 'FINANCIAL', regex: /\b(?:Common\s+Shares|Preferred\s+Shares|Number\s+of\s+Shares|Share\s+Count|Shares)[:\s]+([0-9,.'’\u2018\u2019]{3,})\b/gi },
+        { type: 'FINANCIAL', regex: /\b(?:Fully\s+Diluted\s+)?Ownership(?:\s+Percentage)?[:\s]+(\d+(?:\.\d+)?\s*%)/gi },
+        
+        // Commercial Lending, SBA & Asset-Based Credit Pipeline
+        { type: 'ID', regex: /\b(?:SBA\s+(?:Loan|Application|App|File|Ref)|SBA[-_ ](?:7\s*\(a\)|504)|SBA\s+Form\s+(?:1919|1244))[ \t\xA0]*(?:#|ID|No\.?|Number|Ref)?[ \t\xA0]*[:#-][ \t\xA0]*(\d{10}|\d{4}[-_ ]?\d{6}|[A-Za-z0-9-]{8,20})\b/gi },
+        { type: 'ID', regex: /\b(?:Credit\s+Facility|Credit\s+Agreement|Revolving\s+(?:Credit\s+)?(?:Facility|Line)|Term\s+Loan(?:\s+Agreement)?|Line\s+of\s+Credit|ABL\s+Facility)[ \t\xA0]*(?:ID|Ref|No\.?|Number|#)?[ \t\xA0]*[:#-][ \t\xA0]*(?!Agreement\b)([A-Za-z0-9-]{4,25})\b/gi },
+        { type: 'ID', regex: /\b(?:Borrowing\s+Base(?:\s+Certificate)?|BBC)[ \t\xA0]*(?:ID|Ref|No\.?|Number|#)?[ \t\xA0]*[:#-][ \t\xA0]*(?!Certificate\b)([A-Za-z0-9-]{4,25})\b/gi },
+        { type: 'ID', regex: /\b(?:UCC[- ]?1(?:\s+Financing\s+Statement)?|UCC\s+Filing|UCC\s+Financing\s+Statement)[ \t\xA0]*(?:(?:File|Filing|Ref|No\.?|Number|#)[ \t\xA0]*)*[:#-][ \t\xA0]*(\d{4}[-_ ]?\d{6,8}[-_ ]?\d?|[A-Za-z0-9-]{8,25})\b/gi },
+        { type: 'NAME', isContextName: true, isCorporateName: true, regex: /(?:Secured\s+Party|Debtor|Collateral\s+Agent|Lender(?:\s+Name)?)[ \t\xA0]*[:#][ \t\xA0]*([A-Za-z0-9&.,\s'-]{2,45}?)(?=\r?\n|$|\s{3,}|\t|UCC|Filing|Collateral|Loan|Ref|Address|EIN)/gi },
+        { type: 'NAME', isContextName: true, regex: /(?:(?:Personal|Corporate|Unlimited|Continuing|Validity|Bad\s+Boy|Carveout)\s+Guarantor|Guarantor\s+Name|Guaranteed\s+By)[ \t\xA0]*[:#][ \t\xA0]*([A-Za-z0-9\p{L}&.,\s'-]{2,40}?)(?=\r?\n|$|\s{3,}|\t|SSN|EIN|Net\s+Worth|Liquid|Address|Phone)/giu },
+        { type: 'FINANCIAL', regex: /(?<=(?:^|[\r\n\t.;])[ \t\xA0]*(?:(?:Guarantor(?:'s)?\s+)?(?:Net\s+Worth|Liquid\s+Assets|Contingent\s+Liabilities|Annual\s+Personal\s+Income)|Personal\s+Liquidity)[ \t\xA0]*[:=][ \t\xA0]*)((?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’]+[KMB]?)/gi },
+        { type: 'ID', regex: /\b(?:Personal\s+Guarant(?:y|ee)|Continuing\s+Guarant(?:y|ee)|Validity\s+Guarant(?:y|ee)|Corporate\s+Guarant(?:y|ee))\s*(?:Agreement|ID|Ref|No\.?|#)?[ \t\xA0]*[:#-][ \t\xA0]*(?!Agreement\b)([A-Za-z0-9-]{4,25})\b/gi },
+        { type: 'ID', regex: /\b(?:Factoring\s+Agreement|Notice\s+of\s+Assignment|NOA)[ \t\xA0]*(?:ID|Ref|No\.?|Number|#)?[ \t\xA0]*[:#-][ \t\xA0]*(?!Agreement\b)([A-Za-z0-9-]{4,25})\b/gi },
+        { type: 'ID', regex: /\b(?:Lockbox|DACA|Deposit\s+Account\s+Control\s+Agreement|Blocked\s+Account(?:\s+Agreement)?)[ \t\xA0]*(?:Account|ID|Ref|No\.?|#)?[ \t\xA0]*[:#-][ \t\xA0]*([A-Za-z0-9-]{4,25})\b/gi },
+        { type: 'ID', regex: /\b(?:Ineligible\s+AR|Eligible\s+AR|Collateral\s+Account)(?:\s+(?:Account|Acct|ID|Ref|No\.?|Number|#))*\s*[:#-]\s*([A-Za-z0-9-]{4,20})\b/gi },
+        { type: 'ID', regex: /\b(?:Merchant\s+Cash\s+Advance|MCA)[ \t\xA0]*(?:Agreement|Contract)?[ \t\xA0]*(?:ID|Ref|No\.?|Number|#)?[ \t\xA0]*[:#-][ \t\xA0]*(?!Agreement\b)([A-Za-z0-9-]{4,25})\b/gi },
+        { type: 'FINANCIAL', regex: /(?<=(?:^|[\r\n\t.;])[ \t\xA0]*(?:Daily|Weekly)(?:[ \t\xA0]+(?:ACH|Remittance|Debit|Payment|Transfer|Split(?:[ \t\xA0]+Funding)?|Holdback))+[ \t\xA0]*[:=][ \t\xA0]*)((?:[$€£¥₪₽₹]|(?:USD|EUR|GBP|CHF|ILS|RUB)\s?)[\d,.'’]+)/gi },
+        { type: 'NAME', isContextName: true, isCorporateName: true, regex: /(?:MCA\s+Funder|Funder|ISO\s+Broker|Funding\s+Partner)[ \t\xA0]*[:#][ \t\xA0]*([A-Za-z0-9&.,\s'-]{2,40}?)(?=\r?\n|$|\s{3,}|\t|Rate|Factor|Advance|Amount|Terms)/gi }
     ]
 };
 
 let NAME_STOP_LIST = new Set([
     'clinical note', 'case note', 'prod log', 'siem alert', 'critical security incident', 'security incident', 'hr review', 'crm export', 'bank statement', 'file export', 'database row', 'lease application', 'strategy export', 'action log', 'glossary query', 'tool comparison', 'call transcript', 'zendesk ticket', 'board minutes', 'agent context', 'config dump', 'database dump', 'patient note', 'medical record', 'admission note', 'discharge summary', 'progress note', 'hiring review', 'security audit', 'incident response', 'server log', 'system log', 'api response', 'error log', 'audit log', 'debug log',
+    'due diligence', 'cap table', 'cap table ledger', 'series a', 'm&a', 'm&a due diligence',
+    'executive compensation', 'global mobility', 'equity grant', 'stock options', 'restricted stock units', 'vesting schedule', 'severance agreement', 'release of claims', 'retention bonus', 'sign-on bonus', 'labor condition application', 'permanent labor certification', 'alien registration number', 'certificate of sponsorship', 'whistleblower report', 'ethics hotline', 'change in control', 'golden parachute', 'deferred compensation', 'compa-ratio', 'turnover rate', 'attrition rate', 'time to hire', 'offer acceptance rate', 'human capital', 'people partner', 'compensation committee',
+    'bill of lading', 'sea waybill', 'air waybill', 'ocean bill of lading', 'ocean bill', 'shipping instruction', 'booking confirmation', 'booking reference', 'customs declaration', 'entry summary', 'single administrative document', 'cbp entry', 'cbp 7501', 'ata carnet', 'internal transaction', 'movement reference', 'vessel manifest', 'cargo manifest', 'verified gross', 'gross mass', 'container seal', 'bolt seal', 'bonded warehouse', 'free trade zone', 'per diem', 'lumper fee', 'chassis fee', 'terminal handling', 'bunker adjustment', 'freight forwarder', 'customs broker', 'customs agent', 'port agent', 'notify party', 'importer of record', 'exporter of record', 'incoterms 2020', 'hague-visby', 'hague visby', 'hamburg rules', 'rotterdam rules', 'montreal convention', 'warsaw convention', 'cmr convention', 'solas vgm', 'tariff schedule', 'duty rate', 'harbor maintenance fee', 'merchandise processing fee',
+    'funded debt', 'operating procedures', 'standard operating', 'equal credit', 'credit opportunity', 'statutory standards', 'financial covenant', 'covenant compliance',
+    'suspicious activity', 'suspicious activity report', 'bank secrecy act', 'politically exposed person', 'enhanced due diligence', 'currency transaction report', 'aml investigation',
+    'alternative liquid strategies', 'global equity etf', 'asset allocation', 'real-time gross settlement', 'settlement mechanism',
+    'federal reserve', 'federal reserve fedwire', 'reserve fedwire', 'corporation law', 'general corporation law', 'governing law',
     'tax statement', 'wage and tax statement', 'wage and tax', 'wage statement', 'earning statement', 'earnings statement', 'pay statement', 'pay stub', 'paystub', 'withholding statement',
     'case no', 'account no', 'client no', 'ref no', 'matter no',
     'affected user', 'incident date', 'incident type', 'incident report',
@@ -534,7 +1478,7 @@ let NAME_STOP_LIST = new Set([
     'first street', 'second street', 'third street',
     'north avenue', 'south avenue', 'east side', 'west side',
     'soc team', 'hr team', 'it team', 'qa team', 'ux team',
-    'new york', 'los angeles', 'san francisco', 'las vegas',
+    'new york', 'los angeles', 'san francisco', 'las vegas', 'long beach', 'port of long beach', 'port of los angeles', 'chicago', 'rotterdam', 'hamburg', 'shanghai', 'singapore', 'antwerp',
     'united states', 'united kingdom', 'north america', 'south america',
     'senior analyst', 'senior engineer', 'senior manager', 'senior consultant',
     'junior analyst', 'junior engineer', 'junior developer',
@@ -559,6 +1503,7 @@ let NAME_STOP_LIST = new Set([
     'page 1', 'page 2', 'page 3', 'page 4', 'page 5',
     'cs101', 'course cs101',
     'docket number', 'docket numbers', 'dockets section', 'case name', 'case names', 'case number', 'case numbers', 'law firm', 'law firms', 'counsel stack', 'counselstack', 'counselstack connector', 'tier 0', 'tier 1', 'tier 2', 'tier 3', 'tier 4', 'do not', 'do not write', 'specific permission', 'write again', 'without permission', 'without specific permission', 'on screen', 'in report', 'own line', 'connector access', 'prompt instruction', 'prompt instructions', 'finding report', 'findings report', 'wage and tax statement', 'form w-2', 'wage and tax', 'tax statement', 'u.s. individual', 'income tax return', 'earnings statement', 'adp totalsource', 'paychex flex', 'clinical progress note', 'inpatient discharge summary', 'mri brain', 'closing disclosure', 'settlement statement', 'clinical protocol', 'research strategy', 'deposit in escrow', 'incident record', 'institutional review board', 'review board', 'national institutes', 'institutes health', 'dana-farber', 'cancer institute', 'harvard medical school', 'medical school', 'department homeland security', 'homeland security', 'control sc-28', 'sc-28 attestation', 'system security plan', 'morgan stanley', 'blackstone capital', 'communicating pi', 'contractual clauses', 'standard contractual clauses', 'driver license', 'drivers license', 'improvement plan', 'performance improvement plan', 'vehicle identification', 'custodial portfolio', 'brokerage acct', 'brokerage account', 'settlement agreement', 'retainer agreement', 'service level agreement', 'master services agreement', 'order form', 'statement of work', 'data processing addendum', 'binding corporate rules', 'commercial register', 'board resolution', 'power of attorney', 'letters testamentary', 'letters of administration', 'court docket', 'state bar', 'incident report', 'threat actor', 'mitre att&ck', 'sigma rule', 'security information', 'virtual data room', 'cap table', 'term sheet', 'confidential disclosure',
+    'us citizen', 'us citizen veteran', 'eeoc charge', 'eeoc complaint', 'eeoc notice', 'eeoc claim', 'citizen veteran', 'veteran status', 'citizenship status', 'blind hiring', 'unconscious bias', 'equal opportunity', 'affirmative action',
     'white bishop', 'black bishop', 'white knight', 'black knight', 'white king', 'black king', 'white queen', 'black queen', 'white rook', 'black rook', 'white pawn', 'black pawn', 'chess piece', 'chess pieces', 'chess game', 'chess match', 'disney-pixar', 'disney pixar', 'pixar animation', 'close-up', 'close up',
     'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
     'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
@@ -599,10 +1544,13 @@ let NAME_STOP_LIST = new Set([
     'wages', 'wage', 'tips', 'compensation', 'withheld', 'withholding', 'medicare', 'deductions', 'deduction',
     'regular', 'hours', 'holiday', 'overtime', 'commission', 'bonus', 'bonuses', 'records', 'record', 'statement', 'statements', 'rate', 'rates', 'current', 'ytd', 'benefits', 'taxable', 'pre-tax', 'post-tax', 'reimbursements', 'reimbursement', 'fica', 'oasdi', 'disability', 'unemployment', 'sui', 'sdi', 'std', 'ltd', 'exemptions', 'exemption', 'allowances', 'allowance', 'filing', 'status', 'single', 'married', 'head', 'household', 'advice', 'frequency', 'bi-weekly', 'biweekly', 'weekly', 'monthly', 'semi-monthly', 'direct', 'deposit', 'routing', 'box', 'boxes', 'code', 'control', 'omb', 'copy', 'instructions', 'information', 'deferred', 'adoption', 'statutory', 'third-party', 'sick', 'form', 'schedule', 'w-2', 'w2', 'w-4', 'w4', '1099', 'k-1', '1040', 'fed', 'med', 'fwt', 'swt', 'fed w/h', 'fed med', 'locality', 'state wages', 'state tax', 'local wages', 'local tax', 'allocated', 'nonqualified', 'suff', 'suffix', 'allocated tips', 'advance eic', 'advance eic payment', 'dependent care', 'dependent care benefits', 'nonqualified plans', 'statutory employee', 'retirement plan', 'third-party sick pay',
     'uk', 'eu', 'us', 'usa', 'dpa', 'ico', 'dpo', 'ciso', 'ssrn', 'elsevier', 'gdpr', 'ccpa', 'cpra', 'hipaa', 'soc2', 'iso27001', 'governance', 'regulatory', 'framework', 'mandate', 'mandates', 'guidance', 'statute', 'statutes', 'jurisdiction', 'jurisdictions', 'recital', 'article', 'articles', 'treatise', 'workstation', 'device', 'endpoint', 'blueprint', 'personal', 'cross-border', 'cross', 'border', 'transfer', 'retrieval', 'augmented', 'generation', 'limitation', 'discrimination', 'imposes', 'heavy', 'identifiable', 'bypasses', 'author', 'authors', 'contact', 'contacts', 'keywords', 'keyword', 'keys', 'key', 'separation', 'pre-print', 'preprint', 'abstract', 'structured', 'background', 'methods', 'results', 'discussion', 'conclusion', 'conclusions', 'introduction', 'overview', 'workflow', 'paradigm', 'nomenclature', 'repository', 'classification', 'phenotypes', 'biomedical', 'bioinformatics', 'identifiers', 'de-identification', 'sanitization', 'ephemeral', 'validation', 'validating', 'genomic', 'genomics', 'clinical', 'phenotype', 'target', 'corresponding', 'subject', 'biorxiv', 'medrxiv', 'arxiv', 'privacyscrubber', 'research', 'lead', 'architect', 'chief', 'founder', 'symbols', 'gene', 'genes', 'sample', 'barcode', 'pipeline', 'downstream', 'pedigree', 'trees', 'exposes', 'violates', 'protecting', 'anonymization', 'redacted', 'redaction', 'zero-trust', 'ztds',
-    'conventional', 'model', 'models', 'potential', 'multi', 'million', 'dollar', 'dollars', 'surrogate', 'surrogates', 'geographic', 'subdivisions', 'subdivision', 'inference', 'response', 'responses', 'latency', 'benchmarks', 'benchmark', 'experimental', 'methodology', 'informatics', 'ethics', 'accountability', 'civil', 'rights', 'perimeter', 'network', 'requirements', 'requirement', 'statutory', 'categories', 'category', 'regulations', 'regulation', 'penalties', 'penalty', 'disclosure', 'disclosures', 'clinician', 'terminal', 'transport', 'inpatient', 'discharge', 'summaries', 'operative', 'reports', 'outpatient', 'psychiatric', 'telehealth', 'consultation', 'pathology', 'sequencing', 'laboratory', 'sensitivity', 'specificity', 'proxy', 'gateways', 'gateway', 'packet', 'packets', 'inspection', 'declarations', 'availability', 'competing', 'interests', 'interventions', 'multicenter', 'multi-center', 'institution', 'institutional', 'protocol', 'deviations', 'adverse', 'events', 'abbreviations', 'agents', 'agent', 'committee', 'committees', 'board', 'boards', 'nih', 'pubmed', 'central', 'open', 'access', 'policy', 'trial', 'trials', 'crf', 'crfs', 'ehr', 'ehrs', 'baa', 'baas', 'hitech', 'safe', 'harbor', 'section']);
+    'conventional', 'model', 'models', 'potential', 'multi', 'million', 'dollar', 'dollars', 'surrogate', 'surrogates', 'geographic', 'subdivisions', 'subdivision', 'inference', 'response', 'responses', 'latency', 'benchmarks', 'benchmark', 'experimental', 'methodology', 'informatics', 'ethics', 'accountability', 'civil', 'rights', 'perimeter', 'network', 'requirements', 'requirement', 'statutory', 'categories', 'category', 'regulations', 'regulation', 'penalties', 'penalty', 'disclosure', 'disclosures', 'clinician', 'terminal', 'transport', 'inpatient', 'discharge', 'summaries', 'operative', 'reports', 'outpatient', 'psychiatric', 'telehealth', 'consultation', 'pathology', 'sequencing', 'laboratory', 'sensitivity', 'specificity', 'proxy', 'gateways', 'gateway', 'packet', 'packets', 'inspection', 'declarations', 'availability', 'competing', 'interests', 'interventions', 'multicenter', 'multi-center', 'institution', 'institutional', 'protocol', 'deviations', 'adverse', 'events', 'abbreviations', 'agents', 'agent', 'committee', 'committees', 'board', 'boards', 'nih', 'pubmed', 'central', 'open', 'access', 'policy', 'trial', 'trials', 'crf', 'crfs', 'ehr', 'ehrs', 'baa', 'baas', 'hitech', 'safe', 'harbor', 'section',
+    'general liability', 'commercial property', 'workers compensation', 'excess casualty', 'inland marine', 'ocean marine', 'commercial auto', 'first notice of loss', 'first notice', 'incident report', 'incurred losses', 'case reserve', 'loss run', 'loss history', 'subrogation claim', 'salvage recovery', 'treaty cession', 'reinsurance treaty', 'retention limit', 'public adjuster', 'independent adjuster', 'lead underwriter', 'producing agent', 'additional insured', 'named insured', 'injured worker', 'tpa examiner']);
 
 let JARGON_WORDS = new Set(['step', 'page', 'grade', 'version', 'course', 'class', 'follow', 'chapter', 'lesson', 'unit', 'marketing', 'manager', 'specialist', 'science', 'administration', 'university', 'skills', 'leadership', 'communication', 'working', 'proficiency', 'decision', 'driven', 'experience', 'summary', 'bachelor', 'ads', 'solutions', 'positioning', 'acquisition', 'strategy', 'research', 'database', 'forecast', 'interest', 'prepared', 'merchant', 'document', 'feedback', 'template', 'campaign', 'partners', 'settings', 'keystone', 'llm', 'gpt', 'chatgpt', 'openai', 'anthropic', 'claude', 'gemini', 'api', 'json', 'xml', 'html', 'css', 'javascript', 'python', 'golang', 'typescript', 'rust', 'fastapi', 'snowflake', 'kubernetes', 'terraform', 'docker', 'redis', 'kafka', 'pytorch', 'policy', 'terms', 'conditions', 'release', 'sprint', 'deployment', 'cluster', 'instance', 'package', 'module', 'revenue', 'margin', 'gross', 'quarter', 'system', 'code', 'data', 'cloud', 'server', 'database', 'artificial', 'intelligence', 'learning', 'generative', 'regular', 'hours', 'holiday', 'earnings', 'deductions', 'withheld', 'withholding', 'taxes', 'medicare', 'benefits', 'reimbursements', 'compensation', 'wages', 'code', 'uk', 'eu', 'us', 'usa', 'dpa', 'ico', 'dpo', 'ciso', 'ssrn', 'elsevier', 'gdpr', 'ccpa', 'cpra', 'hipaa', 'soc2', 'iso27001', 'governance', 'regulatory', 'framework', 'mandate', 'mandates', 'guidance', 'statute', 'statutes', 'jurisdiction', 'jurisdictions', 'recital', 'article', 'articles', 'treatise', 'workstation', 'device', 'endpoint', 'blueprint', 'personal', 'cross-border', 'cross', 'border', 'transfer', 'retrieval', 'augmented', 'generation', 'limitation', 'discrimination', 'imposes', 'heavy', 'identifiable', 'bypasses', 'author', 'authors', 'contact', 'contacts', 'keywords', 'keyword', 'keys', 'key', 'separation', 'pre-print', 'preprint', 'abstract', 'structured', 'background', 'methods', 'results', 'discussion', 'conclusion', 'conclusions', 'introduction', 'overview', 'workflow', 'paradigm', 'nomenclature', 'repository', 'classification', 'phenotypes', 'biomedical', 'bioinformatics', 'identifiers', 'de-identification', 'sanitization', 'ephemeral', 'validation', 'validating', 'genomic', 'genomics', 'clinical', 'phenotype', 'target', 'corresponding', 'subject', 'biorxiv', 'medrxiv', 'arxiv', 'privacyscrubber', 'research', 'lead', 'architect', 'chief', 'founder', 'symbols', 'gene', 'genes', 'sample', 'barcode', 'pipeline', 'downstream', 'pedigree', 'trees', 'exposes', 'violates', 'protecting', 'anonymization', 'redacted', 'redaction', 'zero-trust', 'ztds',
-    'conventional', 'model', 'models', 'potential', 'multi', 'million', 'dollar', 'dollars', 'surrogate', 'surrogates', 'geographic', 'subdivisions', 'subdivision', 'inference', 'response', 'responses', 'latency', 'benchmarks', 'benchmark', 'experimental', 'methodology', 'informatics', 'ethics', 'accountability', 'civil', 'rights', 'perimeter', 'network', 'requirements', 'requirement', 'statutory', 'categories', 'category', 'regulations', 'regulation', 'penalties', 'penalty', 'disclosure', 'disclosures', 'clinician', 'terminal', 'transport', 'inpatient', 'discharge', 'summaries', 'operative', 'reports', 'outpatient', 'psychiatric', 'telehealth', 'consultation', 'pathology', 'sequencing', 'laboratory', 'sensitivity', 'specificity', 'proxy', 'gateways', 'gateway', 'packet', 'packets', 'inspection', 'declarations', 'availability', 'competing', 'interests', 'interventions', 'multicenter', 'multi-center', 'institution', 'institutional', 'protocol', 'deviations', 'adverse', 'events', 'abbreviations', 'agents', 'agent', 'committee', 'committees', 'board', 'boards', 'nih', 'pubmed', 'central', 'open', 'access', 'policy', 'trial', 'trials', 'crf', 'crfs', 'ehr', 'ehrs', 'baa', 'baas', 'hitech', 'safe', 'harbor', 'section']);
+    'conventional', 'model', 'models', 'potential', 'multi', 'million', 'dollar', 'dollars', 'surrogate', 'surrogates', 'geographic', 'subdivisions', 'subdivision', 'inference', 'response', 'responses', 'latency', 'benchmarks', 'benchmark', 'experimental', 'methodology', 'informatics', 'ethics', 'accountability', 'civil', 'rights', 'perimeter', 'network', 'requirements', 'requirement', 'statutory', 'categories', 'category', 'regulations', 'regulation', 'penalties', 'penalty', 'disclosure', 'disclosures', 'clinician', 'terminal', 'transport', 'inpatient', 'discharge', 'summaries', 'operative', 'reports', 'outpatient', 'psychiatric', 'telehealth', 'consultation', 'pathology', 'sequencing', 'laboratory', 'sensitivity', 'specificity', 'proxy', 'gateways', 'gateway', 'packet', 'packets', 'inspection', 'declarations', 'availability', 'competing', 'interests', 'interventions', 'multicenter', 'multi-center', 'institution', 'institutional', 'protocol', 'deviations', 'adverse', 'events', 'abbreviations', 'agents', 'agent', 'committee', 'committees', 'board', 'boards', 'nih', 'pubmed', 'central', 'open', 'access', 'policy', 'trial', 'trials', 'crf', 'crfs', 'ehr', 'ehrs', 'baa', 'baas', 'hitech', 'safe', 'harbor', 'section',
+    'citizen', 'citizenship', 'veteran', 'eeoc', 'charge', 'react', 'postgresql', 'aws', 'gcp', 'azure', 'qps',
+    'subrogation', 'salvage', 'bordereau', 'facultative', 'cession', 'cedant', 'catastrophe', 'ibnr', 'sir', 'retention', 'occurrence', 'aggregate', 'acord', 'ex-mod', 'e-mod', 'reinsurer', 'retrocession', 'underwriter', 'adjuster']);
 
 const US_STATES_SET = new Set([
     'california', 'texas', 'florida', 'york', 'illinois', 'pennsylvania', 'ohio', 'georgia', 'michigan', 'carolina', 'virginia', 'washington', 'arizona', 'massachusetts', 'tennessee', 'indiana', 'maryland', 'missouri', 'wisconsin', 'colorado', 'minnesota', 'alabama', 'louisiana', 'kentucky', 'oregon', 'oklahoma', 'connecticut', 'utah', 'iowa', 'nevada', 'arkansas', 'mississippi', 'kansas', 'new mexico', 'nebraska', 'idaho', 'hawaii', 'maine', 'new hampshire', 'rhode island', 'montana', 'delaware', 'south dakota', 'north dakota', 'alaska', 'vermont', 'wyoming'
@@ -610,14 +1558,46 @@ const US_STATES_SET = new Set([
 
 const CORPORATE_SUFFIXES = new Set([
     'inc', 'llc', 'corp', 'corporation', 'ltd', 'limited', 'co', 'company', 
-    'group', 'holdings', 'solutions', 'services', 'technologies', 'logistics', 
-    'industries', 'capital', 'bank', 'partners', 'llp', 'pllc', 'usa'
+    'group', 'holdings', 'solutions', 'services', 'servicing', 'technologies', 'logistics', 
+    'industries', 'capital', 'bank', 'partners', 'llp', 'pllc', 'usa',
+    'financial', 'mortgage', 'consulting', 'advisors', 'associates', 'investments', 'securities', 'insurance',
+    'exchange', 'title', 'escrow', 'realty', 'properties', 'commercial', 'corporate', 'national', 'global', 'international',
+    'lending', 'credit', 'funding', 'factoring', 'finance', 'trust', 'agency', 'association', 'fund', 'management',
+    'systems', 'enterprises', 'marketing', 'advertising', 'media', 'interactive', 'digital', 'communications',
+    'lines', 'shipping', 'freight', 'forwarding', 'transport', 'express', 'maritime', 'terminals',
+    'mobility', 'relocation', 'talent', 'staffing', 'recruitment', 'workforce', 'benefits',
+    'telecom', 'telecommunications', 'wireless', 'cellular', 'broadband', 'networks', 'fiber',
+    'edtech', 'education', 'learning', 'academy',
+    'motors', 'automotive', 'telematics', 'charging', 'powertrain',
+    'energy', 'utility', 'utilities', 'power', 'renewables', 'generation', 'transmission', 'electric', 'grid',
+    'hospitality', 'travel', 'airlines', 'airways', 'hotels', 'resorts', 'cruise', 'cruises', 'tours',
+    'pharma', 'pharmaceuticals', 'therapeutics', 'biosciences', 'biotech', 'laboratories', 'lifesciences',
+    'genomics', 'diagnostics', 'bioinformatics'
 ]);
 
 let NOT_NAME_WORDS = new Set([
+    'pnr', 'eticket', 'e-ticket', 'reservation', 'booking', 'locator', 'itinerary', 'stateroom', 'cabin', 'folio', 'concierge', 'purser', 'airline', 'airlines', 'flight', 'passenger', 'pax', 'hotel', 'resort', 'cruise', 'tour', 'sabre', 'amadeus', 'travelport', 'galileo', 'worldspan', 'revpar', 'adr', 'occupancy', 'deluxe', 'suite', 'king', 'queen', 'economy', 'business', 'first class', 'boarding', 'pass', 'known traveler', 'tsa precheck', 'global entry', 'secure flight', 'frequent flyer', 'skymiles', 'mileageplus', 'aadvantage', 'bonvoy', 'hilton honors', 'world of hyatt', 'hospitality', 'travel', 'front', 'desk', 'vip', 'services', 'guest', 'night', 'auditor', 'gate', 'agent', 'pilot', 'captain', 'counselor', 'specialist', 'performance', 'average', 'daily', 'british', 'airways', 'lufthansa', 'ba', 'dl', 'ua', 'aa', 'lh',
+    'pharmacokinetics', 'pharmacodynamics', 'bioavailability', 'placebo', 'randomized', 'double-blind', 'investigational', 'investigator', 'sub-investigator', 'adverse', 'event', 'efficacy', 'endpoint', 'endpoints', 'oncology', 'biomarker', 'histology', 'immunotherapy', 'chemotherapy', 'clearance', 'toxicity', 'inclusion', 'exclusion', 'criteria', 'cmax', 'tmax', 'auc', 'mic', 'ic50', 'ec50', 'survival', 'hazard', 'ratio', 'remission', 'response', 'disease', 'stable', 'progressive', 'partial', 'complete', 'overall', 'progression', 'drug', 'drugs', 'vial', 'vials', 'serial', 'ingredient', 'ingredients', 'premarket', 'approval', 'abbreviated', 'formulation', 'formulations', 'dosing', 'regimen', 'regimens', 'qualified', 'person', 'auditor', 'ctcae', 'meddra', 'whodd', 'eudract', 'ctis', 'isrctn', 'eudravigilance', 'cioms', 'medwatch', 'biostatistician', 'coordinator', 'monitor', 'director', 'manager', 'phase', 'arm', 'blinded', 'unblinded', 'sponsor', 'ema', 'pmda', 'mhra', 'ich', 'gcp', 'glp', 'gmp', 'ectd', 'ctd', 'dmf', 'anda', 'bla', 'nda', 'ind', 'allocation', 'assignment', 'dispensing', 'container', 'medication', 'bottle', 'kit', 'cdisc', 'unique', 'sdtm', 'usubjid', 'subjid', 'studyid', 'siteid', 'invid',
+    'genomics', 'bioinformatics', 'sequencing', 'flowcell', 'fastq', 'fasta', 'bam', 'cram', 'vcf', 'bcf', 'bed', 'gtf', 'gff', 'gatk', 'bwa', 'bowtie', 'samtools', 'bcftools', 'snpeff', 'annovar', 'nextflow', 'snakemake', 'blast', 'trimmomatic', 'fastqc', 'multiqc', 'variant', 'mutation', 'snv', 'indel', 'cnv', 'karyotype', 'aneuploidy', 'trisomy', 'monosomy', 'iscn', 'hgvs', 'dbsnp', 'clinvar', 'clingen', 'gnomad', 'exac', 'cosmic', 'hpo', 'omim', 'orphanet', 'proband', 'kindred', 'consanguinity', 'allele', 'genotype', 'haplotype', 'heterozygous', 'homozygous', 'hemizygous', 'autosomal', 'dominant', 'recessive', 'mitochondrial', 'epigenetics', 'methylation', 'crispr', 'cas9', 'plasmid', 'biobank', 'biorepository', 'aliquot', 'ffpe', 'pdx', 'xenograft', 'novaseq', 'nextseq', 'miseq', 'hiseq', 'pacbio', 'sequel', 'nanopore', 'minion', 'promethion', 'facs', 'microarray', 'beadchip', 'genechip', 'grch38', 'grch37', 'hg19', 'hg38', 't2t-chm13', 'tp53', 'brca1', 'brca2', 'egfr', 'kras', 'braf', 'pik3ca', 'alk', 'ros1', 'ret', 'met', 'her2', 'erbb2', 'pten', 'myc', 'cdk4', 'cdkn2a', 'apc', 'rb1', 'vhl', 'wt1', 'nf1', 'nf2', 'cftr', 'dmd', 'hbb', 'htt', 'fbn1', 'mlh1', 'msh2', 'msh6', 'pms2', 'phred', 'q30', 'q20', 'mapq', 'acmg',
+    'substation', 'feeder', 'transformer', 'recloser', 'inverter', 'turbine', 'synchrophasor', 'scada', 'ics', 'dcs', 'plc', 'rtu', 'ied', 'pmu', 'ami', 'bess', 'derms', 'adms', 'hvdc', 'facts', 'avr', 'agc', 'lmp', 'ppa', 'nerc cip', 'cip-002', 'cip-014', 'ferc', 'pjm', 'miso', 'caiso', 'ercot', 'nyiso', 'iso-ne', 'spp', 'entso-e', 'wecc', 'serc', 'rfc', 'tre', 'mro', 'npcc', 'dnp3', 'modbus', 'opc ua', 'openadr', 'active power', 'reactive power', 'apparent power', 'power factor', 'peak demand', 'curtailment', 'bulk electric system', 'critical infrastructure', 'smart grid', 'smart meter',
+    'utility', 'utilities', 'electric', 'electrical', 'meter', 'metering', 'service point', 'delivery point', 'premise', 'premises', 'programmable', 'logic', 'telemetry', 'solar', 'plant', 'wind', 'storage', 'battery', 'bulk', 'ua', 'mqtt', 'sparkplug',
+    'vehicle', 'primary', 'secondary', 'asset', 'fleet', 'engine', 'controller', 'dealer', 'freeze', 'frame', 'work order', 'repair order', 'sedan', 'suv', 'iso 26262', 'iso 21434', 'sae j1939', 'sae j1772', 'sae j1979', 'iso 15118', 'iso 14229', 'ocpp', 'can bus', 'can fd', 'flexray', 'some/ip', 'doip', 'diagnostic trouble codes', 'diagnostic', 'trouble', 'codes', 'dtc', 'obd', 'obd-ii', 'ecu', 'bcm', 'tcu', 'pcm', 'vcu', 'bms', 'telematics', 'odometer', 'powertrain', 'inverter', 'alternator', 'transponder', 'evse', 'dcfc', 'ccs1', 'ccs2', 'nacs', 'chademo', 'state of charge', 'state of health', 'soc', 'soh', 'adas', 'lidar', 'radar', 'asil', 'asil-d', 'nhtsa', 'fmvss', 'fmcsa', 'wltp', 'carb', 'p0300', 'p0420', 'u0100', 'b0001', 'c0035',
+    'sec', 'cftc', 'finra', 'fdic', 'occ', 'cfpb', 'fedwire', 'reserve', 'federal', 'law', 'corporation', 'delaware', 'dgcl',
+    'lms', 'edtech', 'canvas', 'blackboard', 'moodle', 'schoology', 'brightspace', 'proctorio', 'honorlock', 'respondus', 'proctoru', 'coppa', 'idea', 'section 504', 'clery', 'clery act', 'title iv', 'sai', 'student aid index', 'student aid report', 'bip', 'lep', 'ell', 'esl', 'sevis', 'form i-20', 'ds-2019', 'sat', 'act', 'gre', 'gmat', 'mcat', 'lsat', 'toefl', 'ielts', 'abet', 'wasc', 'sacscoc', 'hlc', 'neche', 'valedictorian', 'salutatorian', 'cum laude', 'magna cum laude', 'summa cum laude', 'ed.d', 'edd', 'j.d.', 'student', 'learner', 'conduct', 'behavioral', 'intervention', 'english', 'proficiency', 'accommodations', 'accommodation', 'proctoring',
+    '3gpp', 'etsi', 'itu-t', 'ietf', 'rfc', 'sip', 'sdp', 'rtp', 'rtcp', 'srtp', 'stun', 'turn', 'ice', 'webrtc', 'ss7', 'sigtran', 'diameter', 'radius', 'docsis', 'gpon', 'xgs-pon', 'dwdm', 'cwdm', 'otn', 'mpls', 'bgp', 'ospf', 'is-is', 'ebgp', 'ibgp', 'qos', 'diffserv', 'volte', 'vonr', 'vowifi', 'esim', 'imsi', 'imei', 'imeisv', 'iccid', 'msisdn', 'enodeb', 'gnodeb', 'nodeb', 'cell id', 'pci', 'tac', 'lac', 'cgi', 'ecgi', 'tr-069', 'tr-369', 'cwmp', 'g.711', 'g.729', 'g.722', 'opus', 'amr-wb', 'evs', 'mos', 'jitter', 'packet loss', 'rtt', 'bitrate', 'c-band', 'mmwave', 'sub-6', 'telecom', 'carrier', 'backhaul', 'fronthaul', 'peering', 'circuit id', 'facility id',
+    'caller', 'evaluator', 'diarization', 'transcript', 'transcription', 'scorecard', 'ivr', 'dtmf', 'ani', 'cli', 'dnis', 'aht', 'asa', 'fcr', 'csat', 'nps', 'wrap-up', 'wrapup', 'genesys', 'five9', 'nice', 'incontact', 'talkdesk', 'ucid', 'telephony',
+    'human resources', 'people operations', 'global mobility', 'talent acquisition', 'executive compensation', 'total rewards', 'equity grant', 'stock options', 'restricted stock', 'vesting schedule', 'cliff vesting', 'exercise price', 'strike price', 'fair market value', 'labor condition application', 'prevailing wage', 'alien registration', 'permanent residency', 'work authorization', 'green card', 'certificate of sponsorship', 'whistleblower report', 'ethics hotline', 'title ix', 'title vii', 'works council', 'change in control', 'golden parachute', 'deferred compensation', 'retention bonus', 'severance agreement', 'release of claims', 'headcount', 'compa-ratio', 'turnover rate', 'attrition rate', 'time-to-hire', 'offer acceptance', 'enps', 'flsa', 'erisa', 'fmla', 'warn act', 'cobra', 'adea', 'ofccp', 'esop', 'rsu', 'iso', 'nso', 'sar', 'psu', 'ltip', 'fmv', 'lca', 'perm', 'lmia', 'cos', 'uscis', 'dol',
+    'bill of lading', 'sea waybill', 'air waybill', 'ocean bill', 'shipping instruction', 'booking reference', 'commercial invoice', 'packing list', 'customs declaration', 'entry summary', 'single administrative document', 'cbp entry', 'cbp 7501', 'ata carnet', 'internal transaction number', 'movement reference number', 'vessel manifest', 'cargo manifest', 'verified gross mass', 'container seal', 'bolt seal', 'intermodal container', 'bonded warehouse', 'free trade zone', 'demurrage', 'detention', 'per diem', 'drayage', 'lumper fee', 'chassis fee', 'terminal handling', 'bunker adjustment', 'freight forwarder', 'customs broker', 'port agent', 'stevedore', 'notify party', 'shipper', 'consignee', 'declarant', 'importer of record', 'exporter of record', 'incoterms', 'incoterms 2020', 'cogsa', 'hague-visby', 'hague visby', 'hamburg rules', 'rotterdam rules', 'montreal convention', 'warsaw convention', 'cmr convention', 'solas', 'solas vgm', 'imo', 'mmsi', 'scac', 'iata', 'un/locode', 'un locode', 'iso 6346', 'iso 17712', 'hs code', 'htsus', 'harmonized system', 'tariff schedule', 'duty rate', 'harbor maintenance', 'merchandise processing', 'fob', 'cif', 'cfr', 'exw', 'fca', 'cpt', 'cip', 'dap', 'dpu', 'ddp', 'fas', 'teu', 'feu', 'cbm', 'mawb', 'hawb', 'awb', 'bol', 'b/l', 'isf', 'ams', 'cbp', 'sad', 'mrn', 'itn', 'thc', 'baf', 'caf', 'hmf', 'mpf',
+    'msa', 'sow', 'sla', 'dpa', 'baa', 'nda', 'eula', 'rfp', 'rfi', 'rfq', 'acv', 'tcv', 'arr', 'mrr', 'carr', 'nrr', 'grr', 'asp', 'cac', 'ltv', 'coupa', 'ariba', 'sfdc', 'hubspot', 'zoominfo', 'salesloft', 'gong', 'docusign', 'procurement', 'sourcing', 'solicitation', 'requisition', 'supercap', 'non-solicitation', 'non-compete', 'indemnification', 'order form', 'cpq', 'delaware', 'new york', 'governing law', 'net 30', 'net 60', 'cleartext', 'preservation', 'benchmark', 'benchmarks', 'win rate', 'audit notice', 'bridge letter', 'gap letter', 'comfort letter', 'assessment', 'questionnaire',
+    'can-spam', 'tcpa', 'eprivacy', 'dma', 'att', 'skan', 'skadnetwork', 'roas', 'ctr', 'cpc', 'cpm', 'cpa', 'cvr', 'ctor', 'conversion rate', 'click-through', 'open rate', 'ad spend', 'campaign budget', 'media budget', 'influencer', 'adwords', 'paid', 'media', 'cdp', 'identity',
+    'respa', 'trid', 'tila', 'hud', 'uspap', 'deed', 'reconveyance', 'easement', 'encumbrance', 'lienholder', 'dscr', 'ltv', 'grm', 'fannie', 'freddie', 'earnest', 'money', 'holdback', 'act', 'housing', 'fair', 'estimate', 'promissory',
+    'cmbs', 'snda', 'estoppel', 'rent roll', 'tenant schedule', 'phase i', 'phase ii', 'defeasance', 'intermediary', 'qualified intermediary', 'anchor tenant', 'commercial landlord', 'leasing broker', 'master servicer', 'special servicer', 'liber', 'deed book', 'alta 9', 'alta 3.1', 'schedule b', 'ti allowance', 'exchange', '1031 exchange', 'like-kind', 'securitized', 'securitization', 'loan', 'servicing', 'exception', 'exceptions', 'leasable', 'area',
+    'sba', 'ucc', 'ucc-1', 'article 9', 'borrowing base', 'ineligible', 'eligible', 'factoring', 'lockbox', 'daca', 'funder', 'guarantor', 'guaranty', 'guarantee', 'covenant', 'covenants', 'liquidity', 'collateral', 'advancement', 'revolving', 'subordination', 'subordinated', 'intercreditor', 'remittance', 'advance', 'split-funding', 'ecoa', 'regulation b', 'boi', 'fccr', 'coverage ratio', 'debt service', 'syndicated', 'syndication', 'memorandum', 'funded debt', 'funded', 'debt', 'operating procedures', 'standard operating', 'operating', 'procedure', 'procedures', 'equal credit', 'equal', 'statutory standards', 'standards',
+    'pcs', 'cat', 'pcs cat', 'first notice', 'incident report', 'workers comp', 'market slip', 'lloyd\'s syndicate', 'lloyds syndicate', 'lloyd\'s london', 'lloyds london', 'public adjuster', 'independent adjuster', 'lead underwriter', 'producing agent', 'additional insured', 'named insured', 'injured worker', 'tpa examiner', 'acord', 'loss run', 'subrogation', 'salvage', 'treaty', 'cession', 'facultative', 'bordereau', 'surplus lines',
     'uk', 'eu', 'us', 'usa', 'dpa', 'ico', 'dpo', 'ciso', 'ssrn', 'elsevier', 'gdpr', 'ccpa', 'cpra', 'hipaa', 'soc2', 'iso27001', 'governance', 'regulatory', 'framework', 'mandate', 'mandates', 'guidance', 'statute', 'statutes', 'jurisdiction', 'jurisdictions', 'recital', 'article', 'articles', 'treatise', 'workstation', 'device', 'endpoint', 'blueprint', 'personal', 'cross-border', 'cross', 'border', 'transfer', 'retrieval', 'augmented', 'generation', 'limitation', 'discrimination', 'imposes', 'heavy', 'identifiable', 'bypasses', 'author', 'authors', 'contact', 'contacts', 'keywords', 'keyword', 'keys', 'key', 'separation', 'pre-print', 'preprint', 'abstract', 'structured', 'background', 'methods', 'results', 'discussion', 'conclusion', 'conclusions', 'introduction', 'overview', 'workflow', 'paradigm', 'nomenclature', 'repository', 'classification', 'phenotypes', 'biomedical', 'bioinformatics', 'identifiers', 'de-identification', 'sanitization', 'ephemeral', 'validation', 'validating', 'genomic', 'genomics', 'clinical', 'phenotype', 'target', 'corresponding', 'subject', 'biorxiv', 'medrxiv', 'arxiv', 'privacyscrubber', 'research', 'lead', 'architect', 'chief', 'founder', 'symbols', 'gene', 'genes', 'sample', 'barcode', 'pipeline', 'downstream', 'pedigree', 'trees', 'exposes', 'violates', 'protecting', 'anonymization', 'redacted', 'redaction', 'zero-trust', 'ztds',
     'conventional', 'model', 'models', 'potential', 'multi', 'million', 'dollar', 'dollars', 'surrogate', 'surrogates', 'geographic', 'subdivisions', 'subdivision', 'inference', 'response', 'responses', 'latency', 'benchmarks', 'benchmark', 'experimental', 'methodology', 'informatics', 'ethics', 'accountability', 'civil', 'rights', 'perimeter', 'network', 'requirements', 'requirement', 'statutory', 'categories', 'category', 'regulations', 'regulation', 'penalties', 'penalty', 'disclosure', 'disclosures', 'clinician', 'terminal', 'transport', 'inpatient', 'discharge', 'summaries', 'operative', 'reports', 'outpatient', 'psychiatric', 'telehealth', 'consultation', 'pathology', 'sequencing', 'laboratory', 'sensitivity', 'specificity', 'proxy', 'gateways', 'gateway', 'packet', 'packets', 'inspection', 'declarations', 'availability', 'competing', 'interests', 'interventions', 'multicenter', 'multi-center', 'institution', 'institutional', 'protocol', 'deviations', 'adverse', 'events', 'abbreviations', 'agents', 'agent', 'committee', 'committees', 'board', 'boards', 'nih', 'pubmed', 'central', 'open', 'access', 'policy', 'trial', 'trials', 'crf', 'crfs', 'ehr', 'ehrs', 'baa', 'baas', 'hitech', 'safe', 'harbor', 'section',
-    'retirement', 'roth', 'ira', 'acct', 'custodial', 'brokerage', 'portfolio', 'annuity', 'dividend', 'distribution', 'reconciliation', 'withholding', 'remuneration', 'pin', 'lobby', 'passcode', 'code', 'gate', 'door', 'access', 'tenant', 'landlord', 'escrow', 'cadastral', 'claim', 'claims', 'adjuster', 'insured', 'carrier', 'indemnity', 'underwriter', 'underwriting', 'deductible', 'premium', 'settlement', 'loss', 'cargo', 'writers', 'guild', 'ghostwriter', 'actor', 'screenplay', 'audiovisual', 'cinematic', 'co-production', 'alumnus', 'alumni', 'registrar', 'transcript', 'diploma', 'orchestration', 'runtime', 'helpdesk', 'freshdesk', 'intercom', 'zendesk', 'investigational', 'pharmacovigilance', 'reaction', 'medication', 'manufacturing', 'lot', 'industrial', 'electronics', 'driver', 'drivers', 'license', 'licence', 'clearing', 'house', 'automated', 'central', 'securities', 'depository', 'arbitration', 'tribunal', 'instrument', 'infrastructure', 'talent', 'dossier', 'tel', 'phone', 'fax', 'mobile', 'cell', 'email', 'dpoa', 'poa',
+    'retirement', 'roth', 'ira', 'acct', 'custodial', 'brokerage', 'portfolio', 'annuity', 'dividend', 'distribution', 'reconciliation', 'withholding', 'remuneration', 'pin', 'lobby', 'passcode', 'code', 'gate', 'door', 'access', 'tenant', 'landlord', 'escrow', 'cadastral', 'claim', 'claims', 'adjuster', 'insured', 'carrier', 'indemnity', 'underwriter', 'underwriting', 'deductible', 'premium', 'settlement', 'loss', 'cargo', 'writers', 'guild', 'ghostwriter', 'actor', 'screenplay', 'audiovisual', 'cinematic', 'co-production', 'alumnus', 'alumni', 'registrar', 'transcript', 'diploma', 'orchestration', 'runtime', 'helpdesk', 'freshdesk', 'intercom', 'zendesk', 'investigational', 'pharmacovigilance', 'reaction', 'medication', 'manufacturing', 'lot', 'industrial', 'electronics', 'driver', 'drivers', 'license', 'licence', 'clearing', 'house', 'automated', 'central', 'securities', 'depository', 'arbitration', 'tribunal', 'instrument', 'infrastructure', 'talent', 'dossier', 'tel', 'phone', 'fax', 'mobile', 'cell', 'email', 'dpoa', 'poa', 'senior', 'managing', 'esq', 'esquire', 'associate', 'po', 'bid', 'qd', 'tid', 'qid', 'qhs', 'prn', 'subq', 'inh', 'q4h', 'q6h', 'q8h', 'q12h', 'q24h', 'stat', 'ac', 'pc', 'mcg', 'meq', 'units', 'puffs', 'tab', 'tabs', 'cap', 'caps', 'insulin', 'glargine', 'metformin', 'lisinopril', 'atorvastatin', 'albuterol', 'prednisone', 'morphine', 'egfr', 'bun', 'tsh', 'hba1c', 'ast', 'alt', 'troponin', 'potassium', 'sodium', 'chloride', 'creatinine', 'bilirubin', 'wbc', 'platelets', 'hemoglobin', 'hematocrit', 'phosphatase', 'alkaline', 'fentanyl', 'acetaminophen', 'ibuprofen', 'aspirin', 'warfarin', 'heparin', 'md', 'do', 'mbbs', 'phd', 'msn', 'bsn', 'rn', 'np', 'fnp', 'dnp', 'crna', 'cnm', 'facs', 'faap', 'facc', 'facp', 'cmt', 'financial', 'analysis', 'valuation', 'treasury', 'yield', 'spread', 'margin', 'growth', 'ratio', 'multiple', 'equity', 'ebitda', 'ebit', 'eps', 'diluted', 'roe', 'roic', 'cogs', 'depreciation', 'amortization', 'retained', 'payable', 'receivable', 'accrual', 'accrued', 'liability', 'liabilities', 'quarterly', 'fiscal', 'annual', 'basis', 'points', 'bps', 'nonemployee', 'compensation', 'royalties', 'rents', 'dividends', 'distributions', 'free', 'cash', 'flow',
+    'citizen', 'citizenship', 'veteran', 'eeoc', 'charge', 'blind', 'hiring', 'pronouns', 'demographics', 'demographic', 'ethnicity', 'marital', 'react', 'postgresql', 'aws', 'gcp', 'azure', 'qps', 'events', 'slackbot', 'bot',
     // Grammatical & Sentence Starters
     'the', 'a', 'an', 'this', 'that', 'these', 'those', 'my', 'your', 'his', 'her', 'their', 'our', 'its', 'it', 'he', 'she', 'they', 'we', 'i', 'you', 'who', 'whom', 'which', 'what', 'whose', 'why', 'how', 'when', 'where', 'with', 'for', 'from', 'by', 'to', 'at', 'in', 'on', 'of', 'about', 'as', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'and', 'but', 'or', 'so', 'yet', 'im', "i'm", "you're", "they're", "we're", "it's", "he's", "she's", "that's", "there's", "what's", "who's", "i've", "you've", "we've", "they've", "i'll", "you'll", "we'll", "they'll", "i'd", "you'd", "we'd", "they'd",
     // Verbs, Auxiliaries, Commands & Imperatives
@@ -709,7 +1689,7 @@ let NOT_NAME_WORDS = new Set([
     'while', 'whereas', 'unless', 'although', 'though', 'even', 'because',
     'therefore', 'however', 'furthermore', 'moreover', 'meanwhile', 'otherwise', 'besides', 'further',
     // Greetings & Salutations
-    'hello', 'hi', 'hey', 'dear', 'greetings',
+    'hello', 'hi', 'hey', 'dear', 'greetings', 'beste', 'geachte', 'mevrouw', 'meneer', 'dhr', 'mvr', 'geehrte', 'geehrter', 'monsieur', 'madame', 'mademoiselle', 'estimado', 'estimada', 'egregio',
     // Document & Resume Structure
     'summary', 'experience', 'education', 'skills', 'languages', 'project', 'history', 'background', 'objective', 'profile', 'awards', 'honors', 'certifications', 'publications', 'interests', 'references', 'statement', 'statements', 'form', 'forms',
     // Business & Job Roles
@@ -735,15 +1715,26 @@ let NOT_NAME_WORDS = new Set([
     'incident', 'incidents', 'critical', 'production', 'impacted', 'reported', 'details', 'vulnerability', 'vulnerabilities', 'host', 'types', 'type', 'leaked', 'leak', 'leaks', 'masked', 'mask', 'masking', 'leave', 'screen', 'screens', 'risk', 'risks', 'cluster', 'clusters', 'parameter', 'parameters', 'processing', 'process', 'processed', 'verified', 'verify', 'verification', 'playground', 'guide', 'guides', 'protection', 'protect', 'corporate', 'enterprise', 'log', 'logs', 'airplane', 'mode', 'zero', 'trust', 'top', 'data', 'live', 'scrubber', 'scrub', 'scrubbed', 'note', 'notes', 'secret', 'secrets', 'card', 'cards', 'raw', 'input', 'output', 'contains', 'contain', 'contained', 'platform', 'solutions', 'pricing', 'company', 'news', 'dashboard', 'add', 'chrome', 'sample', 'samples', 'try', 'terms', 'privacy', 'policy', 'policies', 'home', 'compliance', 'framework', 'frameworks', 'audit', 'audits', 'receipt', 'receipts', 'overview', 'explore', 'vectors', 'vector', 'standard', 'standards', 'status', 'preview', 'view', 'actions', 'action', 'button', 'buttons', 'option', 'options', 'general', 'specialized', 'custom', 'rule', 'rules', 'token', 'tokens', 'value', 'values', 'session', 'sessions', 'local', 'server', 'servers', 'cloud', 'ram', 'memory', 'offline', 'online', 'client', 'browser', 'extension', 'workspace', 'workplace', 'pan', 'phi', 'pii', 'soc', 'soc2', 'gdpr', 'hipaa', 'ccpa', 'iso27001', 'pci', 'dss', 'nist', 'chatgpt', 'claude', 'gemini', 'copilot', 'perplexity', 'deepseek', 'qwen', 'grok', 'llama', 'mistral', 'ai', 'llm', 'prompt', 'prompts', 'transmission', 'transit', 'egress', 'neutralized', 'stripped', 'isolated', 'isolation', 'unlocked', 'locked', 'unlock', 'download', 'copy', 'dismiss', 'close', 'save', 'settings', 'protect', 'reveal', 'unmask', 'restore', 'restored', 'export', 'import', 'sanitization', 'sanitizer', 'sensitive', 'entities', 'entity', 'breakdown', 'metrics', 'exposure', 'high', 'low', 'medium', 'cryptographic', 'separation', 'pseudonymization', 'minimization', 'transparency', 'forensic', 'extraction', 'conduit', 'liability', 'processor', 'binding', 'bindings', 'signature', 'certified', 'certificate', 'payload', 'transmitted', 'evaluation', 'air-gapped', 'client-side', 'zero-trust', 'iso', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x', 'statutory', 'declaration', 'pass', 'passed', 'fail', 'failed', 'side', 'privacyscrubber', 'ztds', 'safe harbor', 'harbor', 'safe', 'ciso', 'united', 'states', 'district', 'court', 'northern', 'southern', 'eastern', 'western', 'division', 'in re', 'litigation', 'complaint', 'violation', 'defend', 'trade', 'secrets', 'demand', 'jury', 'trial', 'federal', 'question', 'diversity', 'citizenship', 'mutual', 'non-disclosure', 'confidentiality', 'recitals', 'standard', 'governing', 'jpmorgan', 'chase', 'bank', 'beginning', 'ending', 'balance', 'deposits', 'additions', 'withdrawals', 'electronic', 'transfers', 'subscription', 'billed', 'lifetime', 'amount', 'due', 'subtotal', 'residential', 'commercial', 'lease', 'premises', 'deposit', 'utilities', 'closing', 'disclosure', 'settlement', 'trid', 'hud-1', 'purchase', 'price', 'escrow', 'funds', 'institutional', 'review', 'board', 'irb', 'national', 'institutes', 'health', 'nih', 'research', 'strategy', 'grant', 'adenocarcinoma', 'pancreatic', 'ductal', 'dana-farber', 'cancer', 'institute', 'harvard', 'department', 'homeland', 'cisa', 'controlled', 'unclassified', 'cui', 'foia', 'responsive', 'attestation', 'fedramp', 'ssp', 'package', 'moderate', 'impact', 'sshd', 'publickey', 'cron', 'systemd', 'failed', 'accepted', 'password', 'individual', 'income', 'totalsource', 'paychex', 'flex', 'lisinopril', 'metformin', 'atorvastatin', 'serum', 'creatinine', 'egfr', 'hba1c', 'vitals', 'copd', 'obstructive', 'pulmonary', 'disease', 'chronic', 'mri', 'brain', 'contrast', 'parenchyma', 'ventricles', 'fazekas', 'systems', 'distributed', 'event-driven', 'cfa', 'blackstone', 'morgan', 'chartered', 'confidential', 'information', 'cisa', 'attestation', 'sc-28', 'sp', '800-53', 'fedramp', 'clinicaltrials', 'nct', 'protocol', 'grant', 'r01', 'pancreatic', 'adenocarcinoma', 'dana-farber', 'harvard', 'cardiology', 'diverticulitis', 'resection', 'superbill', 'hcpcs', 'icd-10', 'progress', 'name', 'names', 'partner', 'partners', 'capital', 'adp', 'tax', 'taxes', 'inpatient', 'discharge', 'clinicaltrials.gov', 'id', 'ids', 'phd', 'md', 'do', 'jd', 'mba', 'cpa', 'pi', 'in', 'at', 'on', 'of', 'to', 'by', 'or', 'as', 'if', 'an', 'is', 'it', 'be', 'we', 'us', 'up', 'so', 'no', 'do', 'go', 'he', 'me', 'my',
     // Games, Chess, and Playing Pieces
     'bishop', 'bishops', 'knight', 'knights', 'rook', 'rooks', 'pawn', 'pawns', 'king', 'kings', 'queen', 'queens', 'chessboard', 'checkmate', 'stalemate', 'castling', 'en passant', 'chess',
-    // Colors & Visual Descriptors
-    'white', 'black', 'red', 'blue', 'green', 'yellow', 'orange', 'purple', 'pink', 'brown', 'gray', 'grey', 'dark', 'light', 'gold', 'silver', 'bronze',
+    // Colors & Visual Descriptors (excluding common surnames like Brown, White, Black, Green, Gray)
+    'red', 'blue', 'yellow', 'orange', 'purple', 'pink', 'dark', 'light', 'gold', 'silver', 'bronze',
     // Animation, 3D Rendering & Prompt Terminology
     'pixar', 'disney', 'animation', 'render', 'rendering', 'composition', 'cinematic', 'smooth', 'glides', 'glide', 'gliding', 'capture', 'captures', 'capturing', 'camera', 'orbit', 'orbits', 'orbiting', 'trapped', 'trap', 'trapping', 'square', 'squares', 'character', 'characters', 'expressive', 'living', 'texture', 'textures', 'reflection', 'reflections', 'grain', 'candlelight', 'wooden', 'polished', 'vertical', 'horizontal', 'macro', 'closeup', 'close-up', 'scene', 'scenes', 'shot', 'shots', 'shadow', 'shadows',
     // Email, Outreach, Guest Posting & Agency Business Vocabulary
     'guest', 'post', 'posts', 'posting', 'attached', 'attach', 'attachment', 'attachments', 'updated', 'update', 'updates', 'list', 'lists', 'line', 'lines', 'rate', 'rates', 'affordable', 'services', 'service', 'infotech', 'technologies', 'technology', 'agency', 'agencies', 'digital', 'marketing', 'traffic', 'smart', 'design', 'seo', 'per', 'host', 'hosting', 'sites', 'site', 'inbox', 'starred', 'snoozed', 'important', 'sent', 'drafts', 'draft', 'spam', 'bin', 'trash', 'purchases', 'travel', 'social', 'forums', 'promotions', 'promotion', 'reply', 'forward', 'labels', 'label', 'compose', 'message', 'messages', 'mailer', 'outreach', 'backlink', 'backlinks', 'domain', 'authority', 'da', 'dr', 'founder', 'ceo', 'cto', 'cfo', 'coo', 'vp', 'head', 'lead',
     // US States
-    'california', 'texas', 'florida', 'york', 'illinois', 'pennsylvania', 'ohio', 'georgia', 'michigan', 'carolina', 'virginia', 'washington', 'arizona', 'massachusetts', 'tennessee', 'indiana', 'maryland', 'missouri', 'wisconsin', 'colorado', 'minnesota', 'alabama', 'louisiana', 'kentucky', 'oregon', 'oklahoma', 'connecticut', 'utah', 'iowa', 'nevada', 'arkansas', 'mississippi', 'kansas', 'new mexico', 'nebraska', 'idaho', 'hawaii', 'maine', 'new hampshire', 'rhode island', 'montana', 'delaware', 'south dakota', 'north dakota', 'alaska', 'vermont', 'wyoming',
-    'f.3d', 'f.supp', 'u.s.c.', 'v.', 'plaintiff', 'defendant', 'v', 'u.s.', 'court', 'app.', 'reporter', 'cir.']);
+    // European Street Type & Legal Agreement Stopwords (prevent standalone street/contract titles from being misidentified as names)
+    'rue', 'avenue', 'boulevard', 'allée', 'allee', 'chemin', 'place', 'quai', 'calle', 'paseo', 'via', 'viale', 'corso', 'rua', 'straße', 'strasse',
+    'accord', 'contrat', 'contrato', 'acuerdo', 'avenant', 'convention', 'protocole', 'prestation', 'confidentialite', 'confidentialité',
+    'f.3d', 'f.supp', 'u.s.c.', 'v.', 'plaintiff', 'defendant', 'v', 'u.s.', 'court', 'app.', 'reporter', 'cir.',
+    'civ', 'crim', 'evid', 'bankr', 'proc',
+    'marine', 'inland', 'ocean', 'comp', 'workers', 'actuarial', 'actuary', 'underwriting', 'syndicate', 'lloyd', 'lloyds', 'pcs']);
+
+// Nobiliary particles and conjunctions that should never trigger name disqualification
+const NOBILIARY_PARTICLES = new Set([
+    'de', 'la', 'von', 'van', 'di', 'da', 'do', 'dos', 'das',
+    'del', 'dels', 'du', 'der', 'den', 'ten', 'ter', 'af', 'av',
+    'd', 'l', 'y', 'i', 'und', 'zu'
+]);
 
 const PROFILE_JARGON = {
     medical: [
@@ -756,13 +1747,33 @@ const PROFILE_JARGON = {
         'insurance', 'bcbs', 'bronchitis', 'amoxicillin', 'penicillin', 'antibiotic', 'antibiotics', 'vital',
         'vitals', 'bp', 'hr', 'bpm', 'mmhg', 'allergies', 'dosage', 'parenchyma', 'ventricles', 'fazekas',
         'ischemia', 'lesion', 'cardiology', 'atherosclerotic', 'aortocoronary', 'bypass', 'graft', 'hyperlipidemia',
-        'diverticulitis', 'resection', 'colon', 'superbill', 'encounter', 'cpt', 'hcpcs', 'icd-10', 'pt'
+        'diverticulitis', 'resection', 'colon', 'superbill', 'encounter', 'cpt', 'hcpcs', 'icd-10', 'pt',
+        'po', 'bid', 'qd', 'tid', 'qid', 'qhs', 'prn', 'subq', 'inh', 'q4h', 'q6h', 'q8h', 'q12h', 'q24h',
+        'stat', 'ac', 'pc', 'mcg', 'meq', 'units', 'puffs', 'tab', 'tabs', 'cap', 'caps', 'insulin', 'glargine',
+        'metformin', 'lisinopril', 'atorvastatin', 'albuterol', 'prednisone', 'morphine', 'egfr', 'bun', 'tsh',
+        'hba1c', 'ast', 'alt', 'troponin', 'potassium', 'sodium', 'chloride', 'creatinine', 'bilirubin', 'wbc',
+        'platelets', 'hemoglobin', 'hematocrit', 'subj', 'participant', 'screening', 'randomization', 'cohort',
+        'protocol', 'placebo', 'blinded', 'unblinded', 'ctcae', 'arm', 'adverse', 'sae'
     ],
     realestate: [
         'escrow', 'tenant', 'landlord', 'lease', 'mortgage', 'appraisal', 'broker', 'property', 'zoning',
         'parcel', 'rent', 'buyer', 'seller', 'agent', 'listing', 'residential', 'commercial', 'premises',
         'deposit', 'utilities', 'closing', 'disclosure', 'settlement', 'trid', 'hud-1', 'purchase', 'price',
-        'funds', 'lender', 'deed', 'title', 'disbursement'
+        'funds', 'lender', 'deed', 'title', 'disbursement', 'respa', 'tila', 'cfpb', 'alta', 'hud', 'trustee',
+        'conveyance', 'underwriter', 'guaranty', 'encumbrance', 'easement', 'lien', 'lienholder', 'subdivision',
+        'plat', 'recording', 'reconveyance', 'amortization', 'dscr', 'ltv', 'fannie', 'freddie', 'fha', 'va',
+        'grm', 'noi', 'uspap', 'quitclaim', 'mortgagee', 'mortgagor', 'cap', 'earnest', 'holdback',
+        'cmbs', 'estoppel', 'snda', 'cam', 'rsf', 'usf', 'gla', 'psf', 'mezzanine', 'defeasance', 'intermediary',
+        'relinquished', 'replacement', 'servicer', 'subtenant', 'covenant', 'environmental', 'rec', 'astm', 'liber', 'instrument', 'exchange', 'securitized', 'securitization', 'loan', 'servicing', 'exception', 'exceptions', 'leasable', 'area'
+    ],
+    insurance: [
+        'policy', 'claim', 'insured', 'insurer', 'underwriter', 'adjuster', 'loss', 'coverage', 'deductible',
+        'premium', 'indemnity', 'subrogation', 'endorsement', 'binder', 'coi', 'peril', 'casualty',
+        'liability', 'reinsurance', 'actuary', 'underwriting', 'naic', 'lloyds', 'title', 'escrow', 'alta',
+        'fnol', 'salvage', 'bordereau', 'facultative', 'cession', 'cedant', 'catastrophe', 'ibnr', 'sir',
+        'retention', 'occurrence', 'aggregate', 'acord', 'mod', 'ex-mod', 'e-mod', 'treaty', 'retrocession',
+        'reinsurer', 'coinsurance', 'incurred', 'unearned', 'earned', 'surplus', 'lines', 'underlying', 'attachment', 'float',
+        'syndicate', 'lloyd', 'pcs', 'cat', 'marine', 'ocean', 'inland', 'comp', 'workers'
     ],
     legal: [
         'testator', 'notary', 'commission', 'county', 'court', 'affidavit', 'plaintiff', 'defendant',
@@ -779,7 +1790,7 @@ const PROFILE_JARGON = {
         'grantor', 'grantee', 'fiduciary', 'principal', 'agent', 'officer', 'counsel', 'lead', 'attorney',
         'partner', 'associate', 'representative', 'broker', 'primary', 'privilege', 'privileged', 'doctrine',
         'work-product', 'power', 'durable', 'evidence', 'rules', 'rule', 'statutory', 'disqualification',
-        'acquisition', 'file', 'securities', 'exchange'
+        'acquisition', 'file', 'securities', 'exchange', 'civ', 'crim', 'evid', 'bankr', 'proc'
     ],
     academic: [
         'institutional', 'review', 'board', 'irb', 'protocol', 'national', 'institutes', 'health', 'nih',
@@ -787,7 +1798,65 @@ const PROFILE_JARGON = {
         'institute', 'harvard', 'medical', 'school', 'application', 'study', 'title', 'identifier',
         'investigator', 'principal', 'investigators', 'sponsor', 'protection', 'confidentiality', 'harbor',
         'standards', 'clinical', 'trials', 'de-identification', 'aggregation', 'identifiers', 'aims',
-        'sequencing', 'biomarkers', 'methylation'
+        'sequencing', 'biomarkers', 'methylation', 'university', 'college', 'laboratory', 'symposium',
+        'colloquium', 'conference', 'proceedings', 'abstract', 'methodology', 'manuscript', 'preprint',
+        'citation', 'bibliography', 'doi', 'arxiv', 'pubmed', 'fellowship', 'postdoc', 'undergraduate',
+        'graduate', 'doctoral', 'phd', 'masters', 'bachelors', 'accreditation', 'semester', 'trimester',
+        'quarter', 'prerequisite', 'pedagogy', 'humanities', 'bioethics', 'human', 'subject', 'subjects',
+        'expected', 'family', 'contribution', 'detection', 'epigenetic', 'epigenetics', 'biomarker',
+        'oncology', 'carcinoma', 'pathology', 'standing', 'honors', 'dean', 'probation', 'suspension',
+        'matriculation', 'transcript', 'registrar', 'diploma', 'commencement', 'curriculum', 'syllabus',
+        'transformer', 'transformers', 'cern', 'nature', 'communications', 'springer', 'elsevier', 'wiley',
+        'ieee', 'acm', 'plos', 'cell', 'lancet', 'jama', 'science', 'repository', 'preprints', 'academic', 'literature', 'metrics',
+        'lms', 'edtech', 'canvas', 'blackboard', 'moodle', 'schoology', 'brightspace', 'classroom', 'd2l',
+        'proctorio', 'honorlock', 'respondus', 'proctoru', 'proctoring',
+        'ferpa', 'coppa', 'idea', 'section 504', 'clery', 'clery act', 'title ix', 'title iv', 'fafsa', 'pell', 'efc', 'sai', 'student aid',
+        'iep', 'bip', 'ell', 'esl', 'lep', 'sevis', 'i-20', 'ds-2019', 'opt', 'cpt',
+        'sat', 'act', 'gre', 'gmat', 'mcat', 'lsat', 'toefl', 'ielts',
+        'abet', 'wasc', 'sacscoc', 'hlc', 'neche', 'provost', 'counselor', 'psychologist', 'admissions',
+        'valedictorian', 'salutatorian', 'cum laude', 'magna cum laude', 'summa cum laude', 'coursework',
+        'student', 'learner', 'conduct', 'behavioral', 'intervention', 'english', 'proficiency', 'accommodations', 'accommodation', 'support'
+    ],
+    automotive: [
+        'iso 26262', 'iso 21434', 'sae j1939', 'sae j1772', 'sae j1979', 'iso 15118', 'iso 14229',
+        'ocpp', 'ocpp 1.6', 'ocpp 2.0.1', 'can bus', 'can 2.0b', 'can fd', 'lin', 'flexray', 'ethernet', 'some/ip', 'doip',
+        'dtc', 'diagnostic', 'trouble', 'codes', 'obd', 'obd-ii', 'ecu', 'bcm', 'tcu', 'pcm', 'vcu', 'bms', 'tcm', 'ecm', 'dcu',
+        'telematics', 'telemetry', 'odometer', 'speedometer', 'powertrain', 'inverter', 'alternator', 'transponder',
+        'evse', 'dcfc', 'ccs1', 'ccs2', 'nacs', 'chademo', 'plug and charge', 'charging', 'charger',
+        'soc', 'soh', 'state of charge', 'state of health', 'battery', 'voltage', 'current', 'kilowatt', 'kwh',
+        'adas', 'lidar', 'radar', 'camera', 'ultrasonic', 'sensor', 'actuator', 'abs', 'esp', 'esc',
+        'asil', 'asil a', 'asil b', 'asil c', 'asil d', 'asil-d', 'functional safety',
+        'p0300', 'p0420', 'u0100', 'b0001', 'c0035', 'p0171', 'p0128', 'u0101', 'b0020',
+        'nhtsa', 'fmvss', 'fmcsa', 'epa', 'wltp', 'nedc', 'carb', 'usdot', 'ifta',
+        'fleet', 'truck', 'trailer', 'tractor', 'chassis', 'vin', 'geotab', 'samsara', 'calamp'
+    ],
+    energy: [
+        'nerc', 'nerc cip', 'cip-002', 'cip-003', 'cip-004', 'cip-005', 'cip-006', 'cip-007', 'cip-008', 'cip-009', 'cip-010', 'cip-011', 'cip-012', 'cip-013', 'cip-014',
+        'ferc', 'ferc order 888', 'ferc order 2222', 'ferc order 841', 'ieee 1547', 'ieee 2030.5', 'iec 61850', 'iec 60870-5-104', 'dnp3', 'modbus', 'modbus tcp', 'modbus rtu',
+        'opc ua', 'opc da', 'mqtt-sparkplug b', 'c37.118', 'openadr', 'openadr 2.0b', 'nist sp 800-82',
+        'pjm', 'miso', 'caiso', 'ercot', 'nyiso', 'iso-ne', 'spp', 'entso-e', 'wecc', 'serc', 'rfc', 'tre', 'mro', 'npcc',
+        'scada', 'ics', 'dcs', 'plc', 'rtu', 'ied', 'ami', 'amr', 'bess', 'der', 'derms', 'vpp', 'adms', 'ems', 'oms', 'gis', 'pmu',
+        'hvdc', 'facts', 'avr', 'agc', 'lmp', 'ppa', 'recs', 'ghg',
+        'substation', 'feeder', 'transformer', 'recloser', 'inverter', 'turbine', 'synchrophasor',
+        'active power', 'reactive power', 'apparent power', 'power factor', 'peak demand', 'curtailment',
+        'bulk electric system', 'critical infrastructure', 'smart grid', 'smart meter',
+        'utility', 'utilities', 'electric', 'electrical', 'meter', 'metering', 'service point', 'delivery point', 'premise', 'premises', 'programmable', 'logic', 'controller', 'telemetry', 'solar', 'plant', 'wind', 'storage', 'battery', 'bulk', 'ua', 'mqtt', 'sparkplug', 'water', 'gas',
+        'megawatt', 'kilowatt', 'gigawatt', 'kilovolt', 'hertz', 'megavar', 'mva', 'mwh', 'kwh'
+    ],
+    hospitality: [
+        'pnr', 'record locator', 'booking reference', 'eticket', 'e-ticket', 'electronic ticket', 'boarding pass', 'bcbp',
+        'frequent flyer', 'skymiles', 'mileageplus', 'aadvantage', 'executive club', 'flying blue', 'miles & more',
+        'marriott bonvoy', 'hilton honors', 'world of hyatt', 'ihg one rewards', 'loyalty program', 'member number',
+        'known traveler number', 'ktn', 'tsa precheck', 'precheck', 'global entry', 'passid', 'secure flight', 'sfpd', 'redress number',
+        'hotel confirmation', 'guest folio', 'room folio', 'crs', 'pms', 'folio', 'stateroom', 'cabin', 'itinerary',
+        'sabre', 'amadeus', 'travelport', 'galileo', 'worldspan', 'gds',
+        'iata', 'icao', 'apis', 'e-borders', 'pnr directive',
+        'revpar', 'adr', 'revpash', 'occupancy rate', 'average daily rate',
+        'economy', 'premium economy', 'business class', 'first class', 'basic economy',
+        'deluxe', 'suite', 'king room', 'double room', 'single room', 'presidential suite',
+        'room only', 'bed and breakfast', 'half board', 'full board', 'all inclusive',
+        'boeing', 'airbus', 'aircraft', 'flight', 'airline', 'airport', 'passenger', 'pax', 'concierge', 'purser',
+        'front desk', 'night auditor', 'general manager', 'guest services', 'flight attendant', 'gate agent', 'revenue manager', 'reservation specialist', 'travel counselor', 'chief pilot'
     ],
     finance: [
         'jpmorgan', 'chase', 'bank', 'beginning', 'ending', 'balance', 'deposits', 'additions', 'withdrawals',
@@ -795,33 +1864,217 @@ const PROFILE_JARGON = {
         'amount', 'due', 'subtotal', 'sales', 'tax', 'regular', 'pay', 'bonus', 'gross', 'net', 'earnings',
         'withholding', 'withheld', 'social', 'security', 'medicare', 'fica', 'oasdi', 'swt', 'fwt', 'direct',
         'deposit', 'checking', 'savings', 'account', 'invoice', 'currency', 'status', 'routing', 'check',
-        'advice', 'summary', 'credit', 'debit'
+        'advice', 'summary', 'credit', 'debit', 'financial', 'analysis', 'valuation', 'treasury', 'yield',
+        'spread', 'margin', 'growth', 'ratio', 'multiple', 'equity', 'ebitda', 'ebit', 'eps', 'diluted',
+        'roe', 'roic', 'cogs', 'depreciation', 'amortization', 'retained', 'payable', 'receivable', 'accrual',
+        'imad', 'omad', 'mt103', 'chips', 'fincen', 'bsar', 'ctr', 'pep', 'ofac', 'kyc', 'edd', 'cdd', 'trn',
+        'secrecy', 'act', 'suspicious', 'activity', 'investigation', 'politically', 'exposed', 'person', 'statutory', 'authority', 'filing', 'compliance', 'enhanced', 'diligence', 'settlement', 'mechanism', 'funds', 'rtgs'
+    ],
+    accounting: [
+        'general', 'ledger', 'balance', 'trial', 'journal', 'entry', 'accrual', 'accrued', 'reconciliation',
+        'adjusted', 'gross', 'taxable', 'income', 'wages', 'tips', 'withholding', 'withheld', 'deduction',
+        'exemption', 'depreciation', 'amortization', 'retained', 'earnings', 'payable', 'receivable',
+        'invoice', 'subtotal', 'remittance', 'voucher', 'check', 'credit', 'debit', 'asset', 'assets',
+        'liability', 'liabilities', 'equity', 'capital', 'revenue', 'expense', 'expenses', 'audit', 'audited',
+        'nonemployee', 'compensation', 'rents', 'royalties', 'dividend', 'dividends', 'distribution', 'distributions',
+        'fiscal', 'quarterly', 'annual', 'schedule', 'form', 'efin', 'ptin', 'caf', 'fein', 'ein', 'tin'
     ],
     devops: [
         'failed', 'accepted', 'publickey', 'password', 'cron', 'systemd', 'sshd', 'authentication',
         'connection', 'timeout', 'cluster', 'postgres', 'postgresql', 'root', 'admin', 'syslog', 'daemon',
-        'service', 'kubernetes', 'k8s', 'docker', 'container', 'pod', 'namespace', 'ingress', 'egress'
+        'service', 'kubernetes', 'k8s', 'docker', 'container', 'pod', 'namespace', 'ingress', 'egress',
+        'terraform', 'opentofu', 'ansible', 'helm', 'manifest', 'kubelet', 'apiserver', 'etcd', 'configmap',
+        'statefulset', 'daemonset', 'deployment', 'replicaset', 'cloudtrail', 'cloudwatch', 'iam', 'vpc',
+        'subnet', 'route53', 'securitygroup', 'firewall', 'loadbalancer', 'targetgroup', 'microservice',
+        'microservices', 'gateway', 'envoy', 'istio', 'traefik', 'nginx', 'haproxy', 'stdout', 'stderr',
+        'traceback', 'exception'
     ],
     compliance: [
         'department', 'homeland', 'security', 'cisa', 'controlled', 'unclassified', 'information', 'cui',
         'foia', 'responsive', 'record', 'ciso', 'attestation', 'fedramp', 'ssp', 'package', 'moderate',
         'impact', 'level', 'nist', 'sp', '800-53', 'sc-28', 'fips', '140-3', 'dhs', 'exemption', 'privacy',
-        'mandate', 'statutory', 'declaration'
+        'mandate', 'statutory', 'declaration',
+        'cmmc', 'dfars', 'dod', 'dodaac', 'cage', 'itar', 'ear', 'fria', 'aia', 'mhmda', 'admt', 'uoom', 'tdpsa', 'watermark', 'provenance',
+        'contracting', 'procurement', 'solicitation', 'subcontractor', 'defense', 'disa', 'dcsa', 'dcma', 'darpa', 'army', 'navy', 'air', 'force', 'polygraph', 'munitions', 'cdi', 'cti'
+    ],
+    pharma: [
+        'pharmacokinetics', 'pharmacodynamics', 'endpoint', 'endpoints', 'bioavailability', 'placebo', 'randomized',
+        'double-blind', 'cohort', 'efficacy', 'toxicity', 'clearance', 'metabolite', 'oncology', 'biomarker',
+        'histology', 'immunotherapy', 'chemotherapy', 'adverse', 'event', 'protocol', 'investigator', 'sub-investigator', 'inclusion',
+        'exclusion', 'criteria', 'cmax', 'tmax', 'auc', 'mic', 'ic50', 'ec50', 'overall', 'survival', 'progression-free', 'progression',
+        'hazard', 'ratio', 'objective', 'response', 'complete', 'partial', 'stable', 'disease', 'progressive',
+        'ctcae', 'meddra', 'whodd', 'eudract', 'ctis', 'isrctn', 'gcp', 'glp', 'gmp', 'eudravigilance', 'cioms', 'medwatch',
+        'principal', 'coordinator', 'associate', 'medical', 'monitor', 'biostatistician', 'study', 'director', 'qppv',
+        'qualified', 'person', 'regulatory', 'affairs', 'auditor', 'safety', 'officer', 'data', 'manager',
+        'drug', 'drugs', 'vial', 'vials', 'serial', 'ingredient', 'ingredients', 'premarket', 'approval', 'abbreviated',
+        'formulation', 'formulations', 'dosing', 'regimen', 'regimens', 'monoclonal', 'antibody', 'intravenous', 'infusion',
+        'subcutaneous', 'injection', 'oral', 'administration', 'dose-escalation', 'first-in-human', 'ema', 'pmda', 'mhra',
+        'ich', 'ectd', 'ctd', 'dmf', 'anda', 'bla', 'nda', 'ind',
+        'allocation', 'assignment', 'dispensing', 'container', 'medication', 'bottle', 'kit',
+        'cdisc', 'unique', 'sdtm', 'usubjid', 'subjid', 'studyid', 'siteid', 'invid'
+    ],
+    biotech: [
+        'genomics', 'bioinformatics', 'sequencing', 'next-generation', 'ngs', 'flowcell', 'fastq', 'fasta', 'bam', 'sam', 'cram', 'vcf',
+        'bcf', 'bed', 'gtf', 'gff', 'gatk', 'bwa', 'bowtie', 'samtools', 'bcftools', 'snpeff', 'vep', 'annovar', 'nextflow', 'snakemake',
+        'blast', 'blastp', 'blastn', 'igv', 'trimmomatic', 'fastqc', 'multiqc', 'picard', 'variant', 'mutation', 'snv', 'indel',
+        'cnv', 'structural', 'translocation', 'karyotype', 'aneuploidy', 'trisomy', 'monosomy', 'iscn', 'hgvs', 'dbsnp', 'clinvar',
+        'clingen', 'gnomad', 'exac', 'cosmic', 'hpo', 'omim', 'orphanet', 'phenotype', 'pedigree', 'proband', 'kindred', 'consanguinity',
+        'allele', 'genotype', 'haplotype', 'linkage', 'disequilibrium', 'maf', 'vaf', 'heterozygous', 'homozygous', 'hemizygous',
+        'penetrance', 'expressivity', 'mosaicism', 'somatic', 'germline', 'hereditary', 'familial', 'autosomal', 'dominant', 'recessive',
+        'x-linked', 'y-linked', 'mitochondrial', 'epigenetics', 'methylation', 'chip-seq', 'rna-seq', 'single-cell', 'scrna-seq',
+        'crispr', 'cas9', 'guide', 'pam', 'transfection', 'transduction', 'plasmid', 'vector', 'lentivirus', 'adeno-associated',
+        'biobank', 'biorepository', 'cryopreservation', 'aliquot', 'ffpe', 'pdx', 'xenograft', 'primary', 'cell', 'line',
+        'novaseq', 'nextseq', 'miseq', 'hiseq', 'pacbio', 'sequel', 'nanopore', 'minion', 'promethion', 'facs', 'cytometry',
+        'microarray', 'beadchip', 'genechip', 'grch38', 'grch37', 'hg19', 'hg38', 't2t-chm13', 'tp53', 'brca1', 'brca2',
+        'egfr', 'kras', 'braf', 'pik3ca', 'alk', 'ros1', 'ret', 'met', 'her2', 'erbb2', 'pten', 'myc', 'cdk4', 'cdkn2a', 'apc', 'rb1',
+        'vhl', 'wt1', 'nf1', 'nf2', 'cftr', 'dmd', 'hbb', 'htt', 'fbn1', 'mlh1', 'msh2', 'msh6', 'pms2',
+        'coverage', 'depth', 'uniformity', 'phred', 'q30', 'q20', 'mapq', 'hardy-weinberg', 'lod', 'fdr', 'clia', 'cap', 'acmg', 'amp'
     ],
     support: [
         'ticket', 'status', 'priority', 'requester', 'assignee', 'organization', 'solved', 'open', 'pending',
         'incident', 'record', 'servicenow', 'zendesk', 'jira', 'rate', 'limit', 'quota', 'concurrency',
-        'settings', 'access', 'connection', 'pool', 'exhaustion'
+        'settings', 'access', 'connection', 'pool', 'exhaustion',
+        'dispute', 'billing', 'failure', 'login', 'portal', 'outage', 'upgrade', 'subscription', 'inquiry',
+        'request', 'refund', 'cancellation', 'escalation', 'crash', 'freeze', 'latency', 'timeout', 'downtime',
+        'authentication', 'authorization', 'permission', 'onboarding', 'provisioning', 'checkout', 'payment',
+        'renewal', 'reinstall', 'restart', 'reboot', 'connectivity', 'workaround', 'resolution',
+        'troubleshooting', 'diagnostics', 'unassigned'
     ],
     hr: [
         'candidate', 'employee', 'payroll', 'benefits', 'salary', 'vacation', 'supervisor', 'subordinate',
         'performance', 'appraisal', 'interview', 'resume', 'applicant', 'engineer', 'developer', 'analyst',
         'specialist', 'director', 'manager', 'lead', 'staff', 'senior', 'junior', 'experience', 'education',
-        'skills', 'certifications', 'summary', 'responsibilities'
+        'skills', 'certifications', 'summary', 'responsibilities',
+        'citizen', 'citizenship', 'veteran', 'eeoc', 'charge', 'complaint', 'investigation', 'investigator',
+        'misconduct', 'grievance', 'harassment', 'retaliation', 'disciplinary', 'termination', 'severance',
+        'headcount', 'onboarding', 'offboarding', 'requisition', 'tenure', 'compensation', 'remuneration',
+        'blind', 'hiring', 'diversity', 'equity', 'inclusion', 'dei', 'unconscious', 'bias', 'demographics',
+        'pronouns', 'marital', 'status', 'ethnicity', 'nationality', 'affiliation', 'membership', 'association',
+        'accommodations', 'ada', 'fmla', 'flsa', 'erisa', 'osha', 'shpe', 'nsbe', 'swe', 'wit', 'oit',
+        'principal', 'architect', 'vp', 'vice', 'president', 'officer', 'systems', 'product', 'engineering',
+        'technology', 'reliability', 'operations', 'python', 'kubernetes', 'typescript', 'golang', 'rust',
+        'react', 'postgresql', 'docker', 'terraform', 'graphql', 'kafka', 'redis', 'aws', 'gcp', 'azure',
+        'computer', 'science', 'bachelor', 'master', 'doctorate', 'events', 'budget', 'reduction', 'latency',
+        'throughput', 'qps',
+        'esop', 'rsu', 'iso', 'nso', 'sar', 'psu', 'ltip', 'grant', 'option', 'options', 'vesting', 'cliff',
+        'exercise', 'strike', 'price', 'valuation', 'fmv', '409a', '280g', 'parachute', 'severance', 'retention',
+        'sign-on', 'clawback', 'mobility', 'relocation', 'expatriate', 'expat', 'cola', 'stipend', 'equalization',
+        'hypo', 'visa', 'petition', 'uscis', 'lca', 'perm', 'cos', 'lmia', 'h-1b', 'h1b', 'l-1', 'l1', 'o-1',
+        'o1', 'green', 'card', 'alien', 'sponsorship', 'whistleblower', 'hotline', 'ethics', 'navex', 'ethicpoint',
+        'title', 'ix', 'vii', 'grievance', 'leave', 'disability', 'std', 'ltd', 'enps', 'turnover', 'attrition',
+        'compa-ratio', 'headcount', 'fte', 'band', 'grade', 'level', 'leveling', 'ic1', 'ic2', 'ic3', 'ic4', 'ic5',
+        'ic6', 'l3', 'l4', 'l5', 'l6', 'l7', 'l8', 'chro', 'cpo', 'hrbp', 'ombuds', 'ombudsperson'
+    ],
+    marketing: [
+        'campaign', 'ad', 'ads', 'advertiser', 'advertising', 'agency', 'audience', 'audiences',
+        'attribution', 'cohort', 'segment', 'segments', 'conversion', 'conversions', 'lead', 'leads',
+        'prospect', 'prospects', 'funnel', 'creative', 'creatives', 'placement', 'placements',
+        'impression', 'impressions', 'click', 'clicks', 'reach', 'frequency', 'engagement',
+        'budget', 'spend', 'bidding', 'bid', 'bids', 'retargeting', 'remarketing', 'lookalike',
+        'google', 'meta', 'facebook', 'instagram', 'linkedin', 'tiktok', 'twitter', 'pinterest', 'bing',
+        'pixel', 'pixels', 'tag', 'tags', 'tracker', 'tracking', 'analytics', 'ga4', 'munchkin',
+        'marketo', 'pardot', 'hubspot', 'klaviyo', 'segment', 'braze', 'iterable', 'customerio',
+        'roas', 'ctr', 'cpc', 'cpm', 'cpa', 'cvr', 'cac', 'ltv', 'ctor', 'open', 'rate', 'bounce',
+        'unsubscribe', 'deliverability', 'sponsorship', 'influencer', 'creator', 'affiliate',
+        'commission', 'can-spam', 'tcpa', 'eprivacy', 'dma', 'sandbox', 'skan', 'skadnetwork',
+        'paid', 'media', 'buyer', 'creator', 'manager', 'director', 'marketer', 'strategist',
+        'cdp', 'identity'
     ],
     sales: [
         'prospect', 'opportunity', 'quota', 'pipeline', 'deal', 'revenue', 'forecast', 'lead', 'churn',
-        'client', 'customer'
+        'client', 'customer',
+        'billing', 'dispute', 'login', 'failure', 'subscription', 'renewal', 'cancellation', 'refund',
+        'escalation', 'inquiry', 'commission', 'attainment', 'enablement', 'qualification', 'procurement',
+        'redlines', 'gong', 'chorus', 'salesloft', 'outreach', 'apollo', 'zoominfo',
+        'msa', 'sow', 'sla', 'dpa', 'baa', 'eula', 'nda', 'rfp', 'rfq', 'rfi', 'acv', 'tcv', 'arr', 'mrr', 'carr', 'nrr', 'grr', 'asp', 'cac', 'ltv', 'magic', 'payback',
+        'coupa', 'ariba', 'sap', 'netsuite', 'purchase', 'order', 'requisition', 'supplier', 'vendor', 'supercap', 'indemnity', 'liability', 'covenant', 'governing',
+        'jurisdiction', 'delaware', 'arbitration', 'severability', 'survival', 'warranty', 'disclaimer', 'force', 'majeure', 'confidentiality', 'amendment', 'addendum',
+        'schedule', 'annex', 'exhibit', 'signatory', 'redline', 'counterparty', 'desk', 'general', 'counsel', 'sourcing', 'commercial', 'pricing', 'discount', 'tier',
+        'uplift', 'term', 'termination', 'breach', 'cure', 'period', 'notice', 'bridge', 'letter', 'letters', 'assessment', 'questionnaire'
+    ],
+    wealthmgmt: [
+        'portfolio', 'custodial', 'custodian', 'schwab', 'fidelity', 'pershing', 'vanguard', 'dtc',
+        'trust', 'trustee', 'grantor', 'beneficiary', 'fiduciary', 'annuity', 'rmd', 'allocation',
+        'adviser', 'advisor', 'rebalancing', 'wealth', 'private', 'banking', 'family', 'office',
+        'uhnw', 'liquidity', 'endowment', 'foundation', 'charitable', 'testamentary', 'revocable', 'irrevocable',
+        'alternative', 'liquid', 'strategies', 'allocation', 'global', 'equity', 'treasuries', 'etf', 'asset'
+    ],
+    underwriting: [
+        'safe', 'cap', 'table', 'convertible', 'note', 'vesting', 'strike', 'price', 'preferred',
+        'common', 'dilution', 'liquidation', 'preference', 'post-money', 'pre-money', 'valuation',
+        'equity', 'shares', 'certificate', 'option', 'pool', 'cliff', 'exercise', 'iso', 'nso',
+        'rsu', 'founder', 'investor', 'due', 'diligence', 'borrower', 'payroll', 'w-2', 'ein', 'm&a',
+        'sba', 'ucc', 'article', 'financing', 'statement', 'secured', 'party', 'debtor', 'covenant',
+        'covenants', 'liquidity', 'collateral', 'advancement', 'revolving', 'guarantor', 'guaranty',
+        'guarantee', 'funder', 'subordination', 'subordinated', 'intercreditor', 'factoring', 'lockbox',
+        'daca', 'remittance', 'ineligible', 'eligible', 'advance', 'borrowing', 'base', 'mca', 'holdback',
+        'ecoa', 'regulation', 'leverage', 'coverage', 'dscr', 'fccr', 'ratio', 'syndication', 'facility'
+    ],
+    bizops: [
+        'merger', 'acquisition', 'deal', 'kpi', 'metric', 'valuation', 'ebitda', 'margin', 'profit', 'revenue',
+        'term', 'sheet', 'loi', 'vdr', 'dataroom', 'shareholder', 'cap', 'table', 'duns', 'cik',
+        'bill', 'lading', 'waybill', 'bol', 'awb', 'mawb', 'hawb', 'freight', 'cargo', 'container', 'vessel',
+        'shipper', 'consignee', 'customs', 'broker', 'forwarder', 'stevedore', 'voyage', 'carrier', 'scac',
+        'booking', 'manifest', 'demurrage', 'detention', 'drayage', 'chassis', 'intermodal', 'seal', 'imo',
+        'mmsi', 'cbp', 'sad', 'mrn', 'itn', 'carnet', 'entry', 'summary', 'tariff', 'duty', 'incoterm',
+        'incoterms', 'fob', 'cif', 'cfr', 'exw', 'fca', 'cpt', 'cip', 'dap', 'dpu', 'ddp', 'fas', 'teu',
+        'feu', 'cbm', 'gross', 'tare', 'payload', 'solas', 'vgm', 'cogsa', 'hague', 'visby', 'hamburg',
+        'rotterdam', 'montreal', 'warsaw', 'cmr', 'bonded', 'warehouse', 'ftz', 'baf', 'caf', 'thc', 'hmf',
+        'mpf', 'per', 'diem', 'port', 'terminal', 'locode', 'unlocode', 'origin', 'destination', 'discharge',
+        'loading', 'transshipment', 'transit', 'cross-dock', 'consignment', 'pallet', 'dispatch', 'clearance'
+    ],
+    tech: [
+        'instance', 'cluster', 'node', 'gateway', 'transit', 'route', 'peering', 'interconnect',
+        'vpc', 'subnet', 'cidr', 'terraform', 'kubernetes', 'k8s', 'docker', 'container', 'manifest',
+        'telecom', 'telephony', 'voip', 'sip', 'signaling', 'trunk', 'carrier', 'circuit', 'facility',
+        'codec', 'packet', 'jitter', 'latency', 'bitrate', 'loss', 'mos', 'bandwidth', 'uplink', 'downlink',
+        'cellular', 'tower', 'antenna', 'sector', 'baseband', 'backhaul', 'fronthaul', 'core', 'ran',
+        'enodeb', 'gnodeb', 'imsi', 'imei', 'iccid', 'msisdn', 'subscriber', 'provisioning', 'radius', 'diameter',
+        'session', 'authentication', 'accounting', 'authorization', 'billing', 'cdr', 'switch',
+        'fiber', 'optical', 'dwdm', 'gpon', 'pon', 'docsis', 'mpls', 'bgp', 'ospf', 'asn',
+        'volte', 'vonr', 'vowifi', '3gpp', 'etsi', 'itu', 'itu-t', 'ietf', 'rfc3261', 'rfc3550'
+    ],
+    telecom: [
+        'telecom', 'telecommunications', 'telephony', 'voip', 'sip', 'sdp', 'rtp', 'rtcp', 'srtp', 'webrtc',
+        'call', 'center', 'contact', 'acd', 'cti', 'ivr', 'dtmf', 'pbx', 'trunk', 'carrier', 'circuit', 'facility',
+        'ani', 'cli', 'dnis', 'msisdn', 'imsi', 'imei', 'imeisv', 'iccid', 'esim', 'eid',
+        'genesys', 'five9', 'nice', 'incontact', 'cisco', 'webex', 'finesse', 'avaya', 'aura', 'cms', 'ucid',
+        'amazon', 'connect', 'talkdesk', '3cx', 'asterisk', 'freepbx', 'twilio', 'flex',
+        'aht', 'asa', 'fcr', 'csat', 'nps', 'ces', 'abandonment', 'service', 'level', 'occupancy', 'shrinkage',
+        'acw', 'wrap-up', 'hold', 'talk', 'dial', 'ring', 'queue', 'skill', 'hunt', 'group',
+        'diarization', 'transcript', 'transcription', 'speech-to-text', 'stt', 'tts', 'audio', 'recording',
+        'pci', 'pause', 'resume', 'mute', 'scorecard', 'evaluator', 'coaching', 'survey',
+        'g.711', 'pcmu', 'pcma', 'g.729', 'g.722', 'opus', 'amr', 'amr-wb', 'evs', 'codec', 'codecs',
+        'mos', 'jitter', 'latency', 'packet', 'loss', 'rtt', 'bitrate', 'transcoding', 'buffer',
+        'ss7', 'sigtran', 'diameter', 'radius', 'docsis', 'gpon', 'xgs-pon', 'dwdm', 'cwdm', 'otn', 'mpls', 'bgp',
+        'volte', 'vonr', 'vowifi', 'enodeb', 'gnodeb', 'nodeb', 'cell', 'pci', 'tac', 'lac', 'cgi', 'ecgi',
+        'tr-069', 'tr-369', 'cwmp', 'acs', '3gpp', 'etsi', 'itu-t', 'ietf', 'rfc'
+    ],
+    personal: [
+        'bodyguard', 'protection', 'detail', 'cpo', 'escort', 'convoy', 'motorcade', 'advance', 'counter-surveillance',
+        'chaperone', 'armored', 'ballistic', 'vr7', 'vr9', 'b6', 'b7', 'cen 1063', 'stanag 4569', 'panic room',
+        'safe', 'vault', 'alarm', 'duress', 'fob', 'keycard', 'keypad', 'checkpoint', 'perimeter', 'residence',
+        'chateau', 'villa', 'penthouse', 'superyacht', 'yacht', 'vessel', 'aircraft', 'jet', 'fbo', 'charter',
+        'itinerary', 'concierge', 'estate', 'butler', 'chauffeur', 'nanny', 'chef', 'inreach', 'garmin', 'spot',
+        'tracker', 'beacon', 'asis', 'asis international', 'cpp', 'psp', 'app', 'executive protection',
+        'gulfstream', 'g650', 'g650er', 'g700', 'global', 'bombardier', 'falcon', 'dassault', 'citation', 'cessna', 'challenger', 'maybach', 'suburban', 'guard',
+        'kteb', 'eggw', 'lfmn', 'vhhh', 'lsgg', 'eham', 'klax', 'kjfk', 'signature flight support', 'jet aviation'
+    ],
+    agents: [
+        'agent', 'agents', 'autonomous', 'multi-agent', 'langchain', 'langgraph', 'langsmith', 'llamaindex', 'crewai', 'autogen',
+        'semantic-kernel', 'haystack', 'vllm', 'litellm', 'ollama', 'pinecone', 'weaviate', 'qdrant', 'milvus', 'chroma',
+        'chromadb', 'faiss', 'hnsw', 'ivf-pq', 'embedding', 'embeddings', 'vector', 'vectors', 'similarity', 'cosine',
+        'euclidean', 'dot', 'product', 'rerank', 'reranker', 'chunk', 'chunking', 'rag', 'retrieval', 'augmented',
+        'generation', 'hallucination', 'guardrail', 'guardrails', 'token', 'tokens', 'context', 'window', 'temperature',
+        'top-p', 'top-k', 'presence', 'penalty', 'frequency', 'system', 'prompt', 'zero-shot', 'few-shot', 'chain-of-thought',
+        'cot', 'react', 'mcp', 'stdio', 'sse', 'json-rpc', 'model', 'context', 'protocol', 'function', 'calling', 'tool',
+        'gpt-4o', 'gpt-4.5', 'claude-3-7-sonnet', 'claude-3-5-sonnet', 'gemini-2.0-flash', 'gemini-1.5-pro', 'deepseek-r1',
+        'llama-3.3', 'o1', 'o3-mini', 'mistral', 'anthropic', 'openai', 'groq', 'together', 'fireworks', 'cohere',
+        'assistant', 'assistants', 'execution', 'executions', 'identifier', 'identifiers', 'pipeline', 'pipelines',
+        'orchestration', 'workflow', 'workflows', 'runtime', 'runtimes', 'manifest', 'manifests', 'session', 'sessions',
+        'thread', 'threads', 'instance', 'instances', 'benchmark', 'benchmarks', 'dataset', 'datasets', 'namespace',
+        'namespaces', 'collection', 'collections', 'trace', 'traces', 'span', 'spans', 'latency', 'telemetry', 'inference',
+        'semantic', 'kernel', 'deepseek', 'huggingface'
     ]
 };
     // --- END DEFAULT RULES ---
@@ -862,12 +2115,20 @@ const PROFILE_JARGON = {
     const PROFILE_ALIAS_MAP = {
         'general': 'general',
         'underwriting': 'underwriting', 'lending': 'underwriting', 'mortgage': 'underwriting', 'loan': 'underwriting', 'income': 'underwriting', 'income_verification': 'underwriting', 'payroll': 'underwriting', 'w2': 'underwriting', 'paystub': 'underwriting',
-        'medical': 'medical', 'healthcare': 'medical', 'health': 'medical', 'pharma': 'pharma', 'hipaa': 'medical',
-        'engineering': 'engineering', 'dev': 'dev', 'api': 'dev', 'devops': 'engineering', 'tech': 'tech',
-        'finance': 'finance', 'financial': 'finance', 'bizops': 'bizops', 'sales': 'sales', 'wealthmgmt': 'wealthmgmt', 'wealth': 'wealthmgmt', 'insurance': 'insurance', 'accounting': 'accounting', 'pci': 'finance',
-        'legal': 'legal', 'compliance': 'compliance', 'ccpa': 'ccpa', 'gdpr': 'compliance', 'soc2': 'compliance', 'iso27001': 'compliance', 'nist': 'compliance', 'dpo': 'compliance', 'grc': 'compliance',
-        'hr': 'hr', 'security': 'security', 'marketing': 'marketing', 'support': 'support',
-        'realestate': 'realestate', 'academic': 'academic', 'agents': 'agents', 'ai_agents': 'agents', 'creative': 'creative', 'personal': 'personal'
+        'medical': 'medical', 'healthcare': 'medical', 'health': 'medical', 'pharma': 'pharma', 'clinical': 'pharma', 'trials': 'pharma', 'lifesciences': 'pharma', 'cro': 'pharma', 'pharmacovigilance': 'pharma', 'hipaa': 'medical',
+        'biotech': 'biotech', 'genomics': 'biotech', 'bioinformatics': 'biotech', 'genetics': 'biotech', 'sequencing': 'biotech', 'dna': 'biotech',
+        'engineering': 'engineering', 'dev': 'dev', 'api': 'dev', 'devops': 'engineering', 'tech': 'tech', 'network': 'tech',
+        'telecom': 'telecom', 'callcenter': 'telecom', 'contactcenter': 'telecom', 'voip': 'telecom', 'telephony': 'telecom', 'ivr': 'telecom', 'telco': 'telecom', 'sip': 'telecom', 'cdr': 'telecom', 'audio': 'telecom',
+        'finance': 'finance', 'financial': 'finance', 'bizops': 'bizops', 'logistics': 'bizops', 'supplychain': 'bizops', 'customs': 'bizops', 'freight': 'bizops', 'shipping': 'bizops', 'trade': 'bizops', 'ops': 'bizops', 'sales': 'sales', 'procurement': 'sales', 'clm': 'sales', 'contracts': 'sales', 'sourcing': 'sales', 'wealthmgmt': 'wealthmgmt', 'wealth': 'wealthmgmt', 'insurance': 'insurance', 'accounting': 'accounting', 'pci': 'finance',
+        'legal': 'legal', 'compliance': 'compliance', 'defense': 'compliance', 'gov': 'compliance', 'government': 'compliance', 'dod': 'compliance', 'cmmc': 'compliance', 'cui': 'compliance', 'itar': 'compliance', 'ccpa': 'ccpa', 'gdpr': 'compliance', 'soc2': 'compliance', 'iso27001': 'compliance', 'nist': 'compliance', 'dpo': 'compliance', 'grc': 'compliance',
+        'hr': 'hr', 'people': 'hr', 'talent': 'hr', 'mobility': 'hr', 'recruiting': 'hr', 'hcm': 'hr', 'compensation': 'hr', 'security': 'security', 'marketing': 'marketing', 'support': 'support',
+        'realestate': 'realestate', 'realty': 'realestate', 'property': 'realestate', 'title': 'realestate', 'escrow': 'realestate', 'hoa': 'realestate', 'academic': 'academic', 'education': 'academic', 'edu': 'academic', 'student': 'academic', 'highered': 'academic', 'edtech': 'academic', 'lms': 'academic',
+        'agents': 'agents', 'ai_agents': 'agents', 'agent': 'agents', 'langchain': 'agents', 'llamaindex': 'agents', 'mcp': 'agents', 'vector': 'agents',
+        'creative': 'creative',
+        'personal': 'personal', 'vip': 'personal', 'executive': 'personal', 'protection': 'personal', 'familyoffice': 'personal', 'family_office': 'personal',
+        'automotive': 'automotive', 'auto': 'automotive', 'vehicle': 'automotive', 'telematics': 'automotive', 'ev': 'automotive', 'fleet': 'automotive',
+        'energy': 'energy', 'utility': 'energy', 'utilities': 'energy', 'grid': 'energy', 'smartgrid': 'energy', 'scada': 'energy', 'power': 'energy', 'water': 'energy', 'gas': 'energy',
+        'hospitality': 'hospitality', 'travel': 'hospitality', 'airline': 'hospitality', 'airlines': 'hospitality', 'hotel': 'hospitality', 'hotels': 'hospitality', 'flight': 'hospitality', 'flights': 'hospitality', 'passenger': 'hospitality', 'pax': 'hospitality', 'tourism': 'hospitality'
     };
 
     function getActiveRules(activeProfile) {
@@ -887,7 +2148,11 @@ const PROFILE_JARGON = {
         if (prof === 'medical' || prof === 'general') {
             text = text.replace(/(Patient\s+Name|Emergency\s+Contact|In\s+Case\s+of\s+Emergency|ICE(?:\s+Contact)?):\s*\r?\n+([A-Z\p{Lu}][A-Za-z0-9&.,'’ \t-]*?[A-Za-z0-9\p{Lu}\p{Ll}])(?=\r?\n|$)/gui, '$1: $2');
         } else if (prof === 'legal') {
-            text = text.replace(/Defendant:\s*\r?\n+([A-Z][a-zA-Z]+\s[A-Z][a-zA-Z]+)/g, 'Defendant: $1');
+            text = text.replace(/Defendant:\s*\r?\n+([A-Z\p{Lu}][\p{L}'’–-]+\s+[A-Z\p{Lu}][\p{L}'’–-]+)/gu, 'Defendant: $1');
+        } else if (prof === 'personal' || prof === 'vip' || prof === 'executive') {
+            text = text.replace(/(Close\s+Protection\s+Officer|CPO|Bodyguard|Detail\s+Leader|Shift\s+Leader|Protection\s+Agent|Estate\s+Manager|Private\s+Butler|Chauffeur|Personal\s+Driver):\s*\r?\n+([A-Z\p{Lu}][\p{L}'’–-]+\s+[A-Z\p{Lu}][\p{L}'’–-]+)/gu, '$1: $2');
+        } else if (prof === 'agents' || prof === 'ai_agents') {
+            text = text.replace(/(AI\s+Research\s+Scientist|Lead\s+ML\s+Engineer|Machine\s+Learning\s+Engineer|Prompt\s+Engineer|Agent\s+Architect|Agentic\s+Systems\s+Lead|AI\s+Safety\s+Researcher|AI\s+Red\s+Teamer|LLM\s+Security\s+Architect|Agent\s+Ops\s+Engineer|Principal\s+AI\s+Engineer):\s*\r?\n+([A-Z\p{Lu}][\p{L}'’–-]+\s+[A-Z\p{Lu}][\p{L}'’–-]+)/gu, '$1: $2');
         }
         return text;
     }
@@ -965,7 +2230,10 @@ const PROFILE_JARGON = {
                     matches.push({ start, end, value: matchedText, type: rule.type });
                 } else {
                     if (rule.type === 'NAME') {
-                        matchedText = matchedText.replace(/[.,;:]+$/, '').trim();
+                        matchedText = matchedText.replace(/[,;:]+$/, '').trim();
+                        if (!/\b[A-Za-z]\.$/.test(matchedText) && !/\b(?:Jr|Sr)\.$/.test(matchedText)) {
+                            matchedText = matchedText.replace(/\.+$/, '').trim();
+                        }
                     }
                     let val = matchedText.toLowerCase().trim();
                     if (!val || NAME_STOP_LIST.has(val) || currentJargon.has(val) || NOT_NAME_WORDS.has(val)) continue;
@@ -986,16 +2254,17 @@ const PROFILE_JARGON = {
                                     break;
                                 }
                             }
+                            if (!val || NAME_STOP_LIST.has(val) || currentJargon.has(val) || NOT_NAME_WORDS.has(val)) continue;
                         }
                         if (!rule.isContextName && (
                             words.some(w => {
                                 const cleanW = w.replace(/[^\p{L}]/gu, '');
-                                if (cleanW.length <= 1) return false;
+                                if (cleanW.length <= 1 || NOBILIARY_PARTICLES.has(cleanW.toLowerCase())) return false;
                                 return currentJargon.has(w) || NOT_NAME_WORDS.has(w) || NOT_NAME_WORDS.has(cleanW) || NAME_STOP_LIST.has(w) || NAME_STOP_LIST.has(cleanW);
                             }) ||
                             val.split(/[ \t\xA0\^\-]+/).some(sw => {
                                 const cleanSW = sw.replace(/[^\p{L}]/gu, '');
-                                if (cleanSW.length <= 1) return false;
+                                if (cleanSW.length <= 1 || NOBILIARY_PARTICLES.has(cleanSW.toLowerCase())) return false;
                                 return currentJargon.has(sw) || NOT_NAME_WORDS.has(sw) || NOT_NAME_WORDS.has(cleanSW) || NAME_STOP_LIST.has(sw) || NAME_STOP_LIST.has(cleanSW);
                             })
                         )) continue;
@@ -1009,10 +2278,15 @@ const PROFILE_JARGON = {
                             }
                         }
 
+                        const hasCorporateSuffix = !!rule.isCorporateName || words.some(sw => {
+                            const csw = sw.replace(/[^\p{L}]/gu, '');
+                            return CORPORATE_SUFFIXES.has(csw);
+                        });
+
                         if (rule.isContextName && words.length > 0 && words.some(w => {
                             const cleanW = w.replace(/[^\p{L}]/gu, '');
-                            if (cleanW.length <= 1) return false;
-                            if (rule.isCorporateName && (CORPORATE_SUFFIXES.has(cleanW) || US_STATES_SET.has(cleanW))) {
+                            if (cleanW.length <= 1 || NOBILIARY_PARTICLES.has(cleanW.toLowerCase())) return false;
+                            if (hasCorporateSuffix && (CORPORATE_SUFFIXES.has(cleanW) || US_STATES_SET.has(cleanW))) {
                                 return false;
                             }
                             return !cleanW || currentJargon.has(w) || NOT_NAME_WORDS.has(w) || NOT_NAME_WORDS.has(cleanW) || NAME_STOP_LIST.has(w) || NAME_STOP_LIST.has(cleanW);
@@ -1062,6 +2336,9 @@ const PROFILE_JARGON = {
         const learnedNames = new Set();
         matches.forEach(m => {
             if (m.type === 'NAME' && m.isHighConfidence) {
+                if (/\b(?:Inc\.?|LLC|Corp\.?|Corporation|Co\.?|Company|L\.?P\.?|LLP|Ltd\.?|Group|Trust|Bank|Servicing|Lending|Credit|Funding|Factoring|Capital|Partners|Exchange|Association|Technologies|Solutions|Enterprises|Systems)\b/i.test(m.value)) {
+                    return;
+                }
                 const nameWords = m.value.split(/[^\p{L}'-]+/u);
                 nameWords.forEach(w => {
                     if (w && w.length >= 2 && /^\p{Lu}/u.test(w)) {
@@ -1085,6 +2362,17 @@ const PROFILE_JARGON = {
             });
         }
 
+        // Discard false positive LOCATION matches that swallow doctor credentials (, MD, , PA, , DO, , DC) over a detected NAME
+        const nameMatches = matches.filter(m => m.type === 'NAME');
+        if (nameMatches.length > 0) {
+            matches = matches.filter(m => {
+                if (m.type === 'LOCATION' && /,\s*(?:MD|PA|DO|DC)\b/i.test(m.value)) {
+                    return !nameMatches.some(nm => nm.start >= m.start && nm.end <= m.end);
+                }
+                return true;
+            });
+        }
+
         matches.sort((a, b) => a.start - b.start || b.end - a.end);
         let filtered = [];
         let lastEnd = 0;
@@ -1096,10 +2384,10 @@ const PROFILE_JARGON = {
     }
 
     const LABEL_ALIASES = {
-        NAME: ['NAME', 'NAMES', 'USERNAME', 'USER_NAME', 'CLIENTNAME', 'CLIENT_NAME', 'CANDIDATE_NAME', 'FULL_NAME', 'FIRSTNAME', 'FIRST_NAME', 'LASTNAME', 'LAST_NAME', 'SURNAME', 'ИМЯ', 'ИМЕНА', 'ПОЛЬЗОВАТЕЛЬ', 'ФИО', 'КЛИЕНТ', 'NOMBRE', 'NOMBRES', 'USUARIO', 'CLIENTE', 'NOM', 'NOMS', 'UTILISATEUR', 'NAME', 'NAMEN', 'BENUTZER', 'KUNDE', 'NOME', 'COGNOME', 'UTENTE', 'NAAM', 'GEBRUIKER', 'KLANT'],
+        NAME: ['NAME', 'NAMES', 'USERNAME', 'USER_NAME', 'USER', 'USERS', 'CLIENTNAME', 'CLIENT_NAME', 'CANDIDATE_NAME', 'FULL_NAME', 'FIRSTNAME', 'FIRST_NAME', 'LASTNAME', 'LAST_NAME', 'SURNAME', 'ИМЯ', 'ИМЕНА', 'ПОЛЬЗОВАТЕЛЬ', 'ФИО', 'КЛИЕНТ', 'NOMBRE', 'NOMBRES', 'USUARIO', 'CLIENTE', 'NOM', 'NOMS', 'UTILISATEUR', 'NAME', 'NAMEN', 'BENUTZER', 'KUNDE', 'NOME', 'COGNOME', 'UTENTE', 'NAAM', 'GEBRUIKER', 'KLANT'],
         EMAIL: ['EMAIL', 'EMAILS', 'EMAILADDR', 'EMAIL_ADDR', 'EMAILADDRESS', 'EMAIL_ADDRESS', 'EMAIL_ADR', 'MAIL', 'MAILS', 'ПОЧТА', 'ЭЛ_ПОЧТА', 'АДРЕС_ПОЧТЫ', 'МЕЙЛ', 'МАЙЛ', 'CORREO', 'COURRIEL', 'CORREO_ELECTRONICO', 'MEL'],
         PHONE: ['PHONE', 'PHONES', 'PHONENUM', 'PHONE_NUM', 'PHONENUMBER', 'PHONE_NUMBER', 'TEL', 'TELS', 'TELEPHONE', 'TELEPHONES', 'MOBILE', 'CELL', 'ТЕЛЕФОН', 'ТЕЛЕФОНЫ', 'НОМЕР_ТЕЛЕФОНА', 'НОМЕР', 'MOVIL', 'PORTABLE', 'HANDY', 'TELEFONI', 'CELLULARE'],
-        ID: ['ID', 'IDS', 'IDNUM', 'ID_NUM', 'IDNUMBER', 'ID_NUMBER', 'IDENTIFIER', 'IDENTIFIERS', 'PASSPORT', 'SSN', 'EIN', 'TAXID', 'TAX_ID', 'LICENSE', 'LICENSE_PLATE', 'ИД', 'ИДЕНТИФИКАТОР', 'ПАСПОРТ', 'СНИЛС', 'ИНН', 'IDENTIFICADOR', 'PASAPORTE', 'IDENTIFIANT', 'PASSEPORT', 'IDENTIFIKATOR', 'PASS', 'IDENTIFICATORE', 'PASSAPORTO'],
+        ID: ['ID', 'IDS', 'IDNUM', 'ID_NUM', 'IDNUMBER', 'ID_NUMBER', 'IDENTIFIER', 'IDENTIFIERS', 'ARN', 'ARNS', 'PASSPORT', 'SSN', 'EIN', 'TAXID', 'TAX_ID', 'LICENSE', 'LICENSE_PLATE', 'DEMOGRAPHIC', 'DEMOGRAPHICS', 'ИД', 'ИДЕНТИФИКАТОР', 'ПАСПОРТ', 'СНИЛС', 'ИНН', 'IDENTIFICADOR', 'PASAPORTE', 'IDENTIFIANT', 'PASSEPORT', 'IDENTIFIKATOR', 'PASS', 'IDENTIFICATORE', 'PASSAPORTO'],
         FINANCIAL: ['FINANCIAL', 'FINANCIALS', 'MONEY', 'AMOUNT', 'PRICE', 'COST', 'CARD', 'CREDITCARD', 'DEBITCARD', 'ACCOUNT', 'IBAN', 'BIC', 'ДЕНЬГИ', 'СУММА', 'КАРТА', 'СЧЕТ', 'БАНК', 'DINERO', 'CANTIDAD', 'TARJETA', 'CUENTA', 'ARGENT', 'MONTANT', 'COMPTE', 'GELD', 'BETRAG', 'KONTO'],
         ADDRESS: ['ADDRESS', 'ADDRESSES', 'STREET', 'STREET_ADDRESS', 'CITY', 'STATE', 'ZIP', 'ZIPCODE', 'ZIP_CODE', 'COUNTRY', 'LOCATION', 'АДРЕС', 'АДРЕСА', 'УЛИЦА', 'ГОРОД', 'СТРАНА', 'DIRECCION', 'DIRECCIONES', 'CALLE', 'CIUDAD', 'PAIS', 'ADRESSE', 'ADRESSES', 'RUE', 'VILLE', 'STRASSE', 'STADT', 'LAND'],
         DATE: ['DATE', 'DATES', 'BIRTHDAY', 'DOB', 'ДАТА', 'ДАТЫ', 'ДЕНЬ_РОЖДЕНИЯ', 'FECHA', 'FECHAS', 'CUMPLEANOS', 'ANNIVERSAIRE', 'DATUM', 'DATEN', 'GEBURTSTAG'],
@@ -1117,6 +2405,15 @@ const PROFILE_JARGON = {
         aliases.add(label.replace(/ /g, '_'));
         aliases.add(label.replace(/-/g, '_'));
         return Array.from(aliases);
+    }
+
+    function resolveTypeFromTokenLabel(label) {
+        if (!label) return 'CUSTOM';
+        const upper = String(label).toUpperCase();
+        for (const [type, aliases] of Object.entries(LABEL_ALIASES)) {
+            if (aliases.includes(upper)) return type;
+        }
+        return upper;
     }
 
     function formatToken(label, index, format = 'brackets') {
@@ -1452,6 +2749,7 @@ const PROFILE_JARGON = {
         getDevopsRules: () => DEVOPS_SECRETS,
         LABEL_ALIASES,
         getLabelAliases,
+        resolveTypeFromTokenLabel,
         PROFILE_ALIAS_MAP,
         formatToken,
         buildRestorationRegexAndRules,
