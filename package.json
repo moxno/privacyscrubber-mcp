@@ -65,7 +65,10 @@
     "hipaa",
     "soc2",
     "grc",
-    "ciso"
+    "ciso",
+    "presidio",
+    "presidio-alternative",
+    "langchain"
   ],
   "author": "Ilya Sibiryakov (BrandMeWeb)",
   "license": "SEE LICENSE IN LICENSE.md",
