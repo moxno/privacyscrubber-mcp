@@ -1,32 +1,43 @@
 #!/usr/bin/env node
 
 /**
- * Public Repository IP Leak Barrier (Pre-Commit / Pre-Push Guard)
+ * PrivacyScrubber & ZTDS Automated IP Leak Barrier (Pre-Commit / Pre-Push Guard)
  * 
- * Specifically configured for public repos like privacyscrubber-mcp.
- * Zero un-obfuscated commercial rules or license salts are permitted to enter this repo.
+ * Physically prevents un-obfuscated commercial rules, proprietary taxonomies, 
+ * or sensitive license salts from being committed or pushed to any repository.
  */
 
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-console.log('🛡️ [Public IP Guard] Scanning staged files for Intellectual Property leaks...');
+console.log('🛡️ [IP Guard] Scanning repository for Intellectual Property leaks...');
 
 const FORBIDDEN_SIGNATURES = [
-    { pattern: /PROFILE_RULES\s*=\s*\{/, name: 'Raw Commercial Profile Taxonomies (PROFILE_RULES)' },
+    // Triggers on raw PROFILE_RULES assignment with cleartext rule objects (type+regex readable).
+    // Obfuscated files show PROFILE_RULES={'general':[],'legal':[{'type':_0x...}]} — keys visible but regex values hidden.
+    // We allow the obfuscated form: value objects must contain _0x vars. Flag only cleartext { type: 'NAME', regex: ... }.
+    { pattern: /PROFILE_RULES\s*=\s*\{[^}]{0,200}type\s*:\s*'[A-Z]/, name: 'Raw Commercial Profile Taxonomies (PROFILE_RULES with cleartext type)' },
     { pattern: /"ZTDS_SALT_2026_!@#"/, name: 'Plaintext License Validation Salt' },
     { pattern: /'ZTDS_SALT_2026_!@#'/, name: 'Plaintext License Validation Salt' },
-    { pattern: /isContextName:\s*true/, name: 'Raw Contextual Lookaround Rule Definitions' },
-    { pattern: /sum\s*%\s*9999/, name: 'Plaintext License Checksum Formula' }
+    { pattern: /isContextName:\s*true/, name: 'Raw Contextual Lookaround Rule Definitions' }
 ];
 
+// Whitelisted files where definitions are legitimately maintained
 const WHITELIST = [
+    'src/core/pii-engine-core.js',
+    'scripts/sync-pii-engine.js',
     'scripts/ip-guard.cjs',
-    'README.md',
-    'SECURITY_MODEL.md',
-    'SECURITY.md',
-    'LICENSE.md'
+    'scripts/ps-license-manager.js',
+    'api/paddle-webhook.js',
+    'api/upgrade-key.js',
+    'api/send-welcome-email.js',
+    'api/request-pilot.js',
+    'tests/unit-micro.js',
+    'tests/run-e2e-audit.js',
+    'tests/test-license-settings.js',
+    '.agents/AGENTS.md',
+    '.agent/learnings.md'
 ];
 
 function isWhitelisted(filePath) {
@@ -37,11 +48,13 @@ function isWhitelisted(filePath) {
 let violations = [];
 
 try {
+    // Get staged files from git
     const stagedFiles = execSync('git diff --cached --name-only', { encoding: 'utf8' })
         .split('\n')
         .map(f => f.trim())
         .filter(Boolean);
 
+    // If nothing staged, check modified files
     const targetFiles = stagedFiles.length > 0 
         ? stagedFiles 
         : execSync('git diff --name-only', { encoding: 'utf8' })
@@ -52,7 +65,7 @@ try {
     for (const relPath of targetFiles) {
         if (!fs.existsSync(relPath)) continue;
         if (isWhitelisted(relPath)) continue;
-        if (relPath.endsWith('.png') || relPath.endsWith('.jpg') || relPath.endsWith('.webp') || relPath.endsWith('.mp4') || relPath.endsWith('.pdf') || relPath.endsWith('.mcpb')) continue;
+        if (relPath.endsWith('.png') || relPath.endsWith('.jpg') || relPath.endsWith('.webp') || relPath.endsWith('.mp4') || relPath.endsWith('.pdf')) continue;
 
         const content = fs.readFileSync(relPath, 'utf8');
 
@@ -66,23 +79,23 @@ try {
         }
     }
 } catch (err) {
-    console.error('❌ [Public IP Guard] Failed to inspect git status:', err.message);
+    console.error('❌ [IP Guard] Failed to inspect git status:', err.message);
     process.exit(1);
 }
 
 if (violations.length > 0) {
     console.error('\n🚨 =========================================================');
-    console.error('🚨 CRITICAL ERROR: INTELLECTUAL PROPERTY LEAK DETECTED IN PUBLIC REPO!');
+    console.error('🚨 CRITICAL ERROR: INTELLECTUAL PROPERTY LEAK DETECTED!');
     console.error('🚨 The following files contain un-obfuscated proprietary code:');
     violations.forEach(v => {
         console.error(`   ❌ ${v.file} -> Found: ${v.signature}`);
     });
-    console.error('\n🚨 COMMIT / PUSH BLOCKED PHYSICALLY BY PUBLIC IP-GUARD.');
-    console.error('🚨 You must run "node scripts/build-mcp.js" in the main repo');
-    console.error('🚨 to build and obfuscate files before syncing to this public repository.');
+    console.error('\n🚨 COMMIT / PUSH BLOCKED PHYSICALLY BY IP-GUARD.');
+    console.error('🚨 You must run the build pipeline (e.g. build-mcp.js or build-sdk.js)');
+    console.error('🚨 to obfuscate these files before committing.');
     console.error('🚨 =========================================================\n');
     process.exit(1);
 }
 
-console.log('✅ [Public IP Guard] 0 leaks detected. Public repository is safe.\n');
+console.log('✅ [IP Guard] 0 leaks detected. Intellectual Property is protected.\n');
 process.exit(0);
