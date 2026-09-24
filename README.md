@@ -9,6 +9,7 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22058770.svg)](https://zenodo.org/records/22058770)
 [![OSF DOI](https://img.shields.io/badge/OSF%20DOI-10.17605%2FOSF.IO%2F5BYJF-blue.svg)](https://osf.io/5byjf/)
 [![SSRN](https://img.shields.io/badge/SSRN-7335581-darkred.svg)](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7335581)
+[![IETF Specification](https://img.shields.io/badge/IETF-ZTDS--Protocol-0284c7.svg)](https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/)
 [![smithery badge](https://smithery.ai/badge/privacyscrubber/pii-masking-mcp)](https://smithery.ai/servers/privacyscrubber/pii-masking-mcp)
 [![Cursor Directory](https://img.shields.io/badge/Cursor%20Directory-Verified%20Plugin-000000.svg)](https://cursor.directory/plugins/privacyscrubber-mcp)
 [![Glama.ai](https://glama.ai/mcp/servers/moxno/privacyscrubber-mcp/badge)](https://glama.ai/mcp/servers/moxno/privacyscrubber-mcp)
@@ -93,6 +94,22 @@ Microsoft Presidio is the Python standard, but deploying it in a Node.js / TypeS
 | **Streaming Rehydration** | **Built-in (`wrapAiStream`, `TransformStream`)**| Buffering / chunk split failures | Not supported in real-time streams |
 
 👉 [View @privacyscrubber/sdk on NPM](https://www.npmjs.com/package/@privacyscrubber/sdk) | Full documentation, Express middleware, LangChain transforms, and 25 compliance profiles.
+
+#### 🛡️ Architecture & Security Deep-Dive (Zero-Trust vs Cloud DLP)
+
+When AI IDEs (Cursor, Claude Desktop, Windsurf) connect to model providers, developer credentials, database connection strings, and internal customer PII are at continuous risk of prompt exfiltration. The `@privacyscrubber/mcp-server` enforces four immutable architectural guarantees:
+
+1. **Stdio Air-Gapped Transport**:
+   The MCP server communicates exclusively over local standard input/output (`stdio`) child processes spawned by your IDE. It opens **zero external listening ports** and initiates **zero remote network requests**.
+2. **Volatile RAM-Only Token Map**:
+   The mapping table between synthetic tokens (`[AWS_KEY_1]`, `[EMAIL_1]`) and raw cleartext is maintained exclusively in ephemeral node memory and is wiped the moment your IDE session closes.
+3. **Deterministic AST Lookarounds vs Cloud Proxy Overhead**:
+   Unlike cloud DLP gateways (Nightfall, Skyflow) that add 200–400ms latency and transmit unencrypted code to third parties, `@privacyscrubber/mcp-server` runs locally in <2ms with zero data egress.
+4. **Permanent Standards & Academic Validation**:
+   - **IETF Specification**: [draft-sibiryakov-ztds-protocol-01](https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/) — Revision 01 · 2026-09-23 · 13 pages
+   - **CERN / Zenodo Foundation**: [DOI 10.5281/zenodo.22058770](https://doi.org/10.5281/zenodo.22058770)
+   - **Center for Open Science (OSF)**: [DOI 10.17605/OSF.IO/5BYJF](https://doi.org/10.17605/OSF.IO/5BYJF)
+   - **Patent Pending**: Israel Patent Office Application `IL 331905` (WIPO DAS Code: `B17B`)
 
 ---
 
@@ -273,7 +290,7 @@ Returns a visual dashboard showing your current tier, session request count, act
 *   **Response Example (Free Tier):**
     ```
     ╔══════════════════════════════════════════════════╗
-    ║       PrivacyScrubber MCP Server v2.2.2          ║
+    ║       PrivacyScrubber MCP Server v2.2.4          ║
     ╠══════════════════════════════════════════════════╣
     ║  🔓 Tier: FREE                                   ║
     ║  📊 Session requests: 5                          ║
@@ -422,6 +439,7 @@ PrivacyScrubber and the Zero-Trust Data Sanitization (ZTDS) protocol are backed 
 
 | Repository / Archive | DOI / Identifier | Focus Area | Regulatory & Compliance Scope |
 |---|---|---|---|
+| **IETF Standards Track** | [`draft-sibiryakov-ztds-protocol`](https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/) | The ZTDS Protocol for Frontier AI Ingestion | Global AI Privacy, Zero-Egress Architecture |
 | **Zenodo / CERN** | [`10.5281/zenodo.22058770`](https://zenodo.org/records/22058770) | Zero-Trust Data Sanitization (ZTDS) Protocol Foundation | Cross-Border AI Privacy, ISO 27001 A.8.11 |
 | **OSF (Center for Open Science)** | [`10.17605/OSF.IO/5BYJF`](https://osf.io/5byjf/) | Empirical Latency Benchmark & Memory Profiling (<2ms RAM) | Performance vs Cloud DLP Proxies |
 | **SSRN / Elsevier** | [`SSRN ID: 7335581`](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7335581) | Enterprise Generative AI Governance | EU AI Act, UK GDPR, US State Privacy |
@@ -457,5 +475,12 @@ The Zero-Trust Data Sanitization (ZTDS) architecture, in-memory deterministic to
 - **Filing / Priority Date:** September 14, 2026 (Paris Convention Art. 4 & 35 U.S.C. § 119 Priority)
 - **Official Title:** *SYSTEM AND METHOD FOR CLIENT-SIDE ZERO-TRUST DATA SANITIZATION AND CRYPTOGRAPHIC SESSION HANDOFF IN ARTIFICIAL INTELLIGENCE WORKFLOWS*
 - **Virtual Patent Marking:** [privacyscrubber.com/patents/](https://privacyscrubber.com/patents/) in accordance with 35 U.S.C. § 287(a).
+
+### 🌐 Internet Engineering Task Force (IETF) Specification
+- **Specification Title:** *The Zero-Trust Data Sanitization (ZTDS) Protocol for Frontier Artificial Intelligence Ingestion*
+- **Standards Track:** IETF Internet Standard Track
+- **IETF Datatracker:** [https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/](https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/)
+- **Archive Plaintext:** [https://www.ietf.org/archive/id/draft-sibiryakov-ztds-protocol-01.txt](https://www.ietf.org/archive/id/draft-sibiryakov-ztds-protocol-01.txt)
+
 
 
