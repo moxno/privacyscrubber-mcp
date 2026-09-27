@@ -27,7 +27,7 @@ const cmdIndex = args.indexOf("--");
 
 if (args.includes("--version") || args.includes("-v")) {
   const pkgPath = path.resolve(__dirname, './package.json');
-  let version = '2.2.2';
+  let version = '2.2.4';
   try { version = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version; } catch (_) {}
   console.log(`ps-guard / pii-masking-run v${version} (PrivacyScrubber MCP)`);
   process.exit(0);

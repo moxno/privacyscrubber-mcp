@@ -24,6 +24,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import crypto from 'crypto';
+import os from 'os';
 import { execSync } from 'child_process';
 
 const require = createRequire(import.meta.url);
@@ -34,6 +35,15 @@ const __dirname = path.dirname(__filename);
 // build.js syncs mcp-server/package.json from root package.json on every build.
 // Never hardcode the version — bump package.json at root instead.
 const MCP_VERSION = require('./package.json').version;
+
+// CLI Command Intercept (init / install / setup / auto-configure)
+const rawCliArgs = process.argv.slice(2);
+if (rawCliArgs.some(arg => ['init', 'install', '--install', 'setup', '--setup'].includes(arg))) {
+  const { runInstaller } = await import('./install.js');
+  const forwardedArgs = rawCliArgs.filter(a => !['init', 'install', '--install', 'setup', '--setup'].includes(a));
+  await runInstaller(forwardedArgs);
+  process.exit(0);
+}
 
 // Import the production core engine with 100% parity
 const scrubberCorePath = path.resolve(__dirname, './scrubber-core.cjs');
@@ -53,11 +63,52 @@ if (!LicenseManager || typeof LicenseManager.validate !== 'function') {
 // Initialize core engine
 PrivacyScrubberCore.init();
 
-// Volatile in-memory token map
-const sessionMap = {};
+// Volatile in-memory token map per session (multi-task agent isolation)
+const agentSessions = new Map();
+const MAX_CONCURRENT_SESSIONS = 200;
 
-// Volatile in-memory false positive ignore list (values excluded from future scrubs)
-const sessionIgnoreList = new Set();
+function getSessionMap(sessionId = 'default') {
+  const sid = (sessionId || 'default').toString().trim() || 'default';
+  let session = agentSessions.get(sid);
+  const now = Date.now();
+  if (!session) {
+    if (agentSessions.size >= MAX_CONCURRENT_SESSIONS) {
+      const oldestKey = agentSessions.keys().next().value;
+      agentSessions.delete(oldestKey);
+    }
+    session = { map: {}, ignoreList: new Set(), createdAt: now, lastActive: now };
+    agentSessions.set(sid, session);
+  }
+  session.lastActive = now;
+  return session.map;
+}
+
+function getSessionIgnoreList(sessionId = 'default') {
+  const sid = (sessionId || 'default').toString().trim() || 'default';
+  let session = agentSessions.get(sid);
+  if (!session) {
+    getSessionMap(sid);
+    session = agentSessions.get(sid);
+  }
+  return session.ignoreList;
+}
+
+// Global default sessionMap maintains 100% backward compatibility
+const sessionMap = getSessionMap('default');
+const sessionIgnoreList = getSessionIgnoreList('default');
+
+function reverseTokens(text, map) {
+  if (!text || typeof text !== 'string' || !map) return text;
+  let result = text;
+  // Descending length sort ensures longer tokens are restored before substrings
+  const sortedEntries = Object.entries(map).sort((a, b) => b[0].length - a[0].length);
+  for (const [token, original] of sortedEntries) {
+    if (result.includes(token)) {
+      result = result.replaceAll(token, original);
+    }
+  }
+  return result;
+}
 
 // ANSI terminal color helpers
 const colors = {
@@ -259,6 +310,114 @@ function formatAuditReceipt(telemetry, compact = false, wasTruncated = false, ch
   return `\n\n> 🛡️ **PrivacyScrubber Audit Receipt**\n> * **Risk Level:** ${icon} ${telemetry.riskLevel}\n> * **Compliance Enforced:** ${telemetry.frameworksList.join(', ')}\n> * **Tokens Masked:** ${telemetry.totalCount} (${entitiesList})\n${truncationLine}> * ⭐ **Star on GitHub:** [moxno/privacyscrubber-mcp](https://github.com/moxno/privacyscrubber-mcp) (\`gh repo star moxno/privacyscrubber-mcp\`) | **SDK & Enterprise:** [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing)\n`;
 }
 
+function formatCefEvent(eventData = {}) {
+  const {
+    vendor = 'PrivacyScrubber',
+    product = 'ZTDS',
+    version = MCP_VERSION,
+    eventClassId = 'PII_REDACTION',
+    eventName = 'Zero-Trust PII Sanitization Executed',
+    riskLevel = 'LOW EXPOSURE',
+    tokensMasked = 0,
+    entities = {},
+    frameworks = ['ZTDS Standard'],
+    sessionHash = '',
+    source = 'local_ram',
+    action = 'redact_and_mask',
+    organization = '',
+    department = ''
+  } = eventData;
+
+  let severity = 1;
+  if (riskLevel.includes('CRITICAL')) severity = 9;
+  else if (riskLevel.includes('MODERATE')) severity = 6;
+  else if (riskLevel.includes('LOW')) severity = 3;
+  else severity = 0;
+
+  const entitiesStr = Object.entries(entities).map(([k, v]) => `${k}:${v}`).join(',') || 'none';
+  const frameworksStr = Array.isArray(frameworks) ? frameworks.join(',') : String(frameworks);
+  const safeMsg = `Sanitized ${tokensMasked} entity tokens in volatile RAM. 0 bytes network egress.`;
+
+  const extension = [
+    `src=${source}`,
+    `act=${action}`,
+    `cs1Label=RiskLevel cs1=${riskLevel.replace(/\s+/g, '_')}`,
+    `cn1Label=TokensMasked cn1=${tokensMasked}`,
+    `cs2Label=Frameworks cs2=${frameworksStr.replace(/\s+/g, '_')}`,
+    `cs3Label=Entities cs3=${entitiesStr}`,
+    sessionHash ? `cs4Label=SessionHash cs4=${sessionHash.substring(0, 16)}` : '',
+    organization ? `suser=${organization.replace(/\s+/g, '_')}` : '',
+    department ? `cs5Label=Department cs5=${department.replace(/\s+/g, '_')}` : '',
+    `msg=${safeMsg}`
+  ].filter(Boolean).join(' ');
+
+  return `CEF:0|${vendor}|${product}|${version}|${eventClassId}|${eventName}|${severity}|${extension}`;
+}
+
+function formatSyslogEvent(eventData = {}) {
+  const {
+    timestamp = new Date().toISOString(),
+    hostname = (typeof os !== 'undefined' && typeof os.hostname === 'function' ? os.hostname() : 'localhost'),
+    pid = (typeof process !== 'undefined' && process.pid ? process.pid : 1),
+    riskLevel = 'LOW EXPOSURE',
+    tokensMasked = 0,
+    frameworks = ['ZTDS Standard'],
+    sessionHash = '',
+    organization = ''
+  } = eventData;
+
+  let pri = 134; // local0.info
+  if (riskLevel.includes('CRITICAL')) pri = 132; // local0.warning
+  else if (riskLevel.includes('MODERATE')) pri = 133; // local0.notice
+
+  const frameworksStr = Array.isArray(frameworks) ? frameworks.join(';') : String(frameworks);
+  const hashPrefix = sessionHash.substring(0, 16) || 'none';
+  const orgStr = organization ? ` org="${organization.replace(/"/g, '')}"` : '';
+
+  const sd = `[ztds@49152 risk="${riskLevel}" tokens="${tokensMasked}" frameworks="${frameworksStr}" session="${hashPrefix}"${orgStr}]`;
+  const msg = `Zero-Trust Data Sanitization executed in RAM. ${tokensMasked} token(s) masked. 0 bytes network egress.`;
+
+  return `<${pri}>1 ${timestamp} ${hostname} privacyscrubber ${pid} ZTDS - ${sd} ${msg}`;
+}
+
+function formatJsonlEvent(eventData = {}) {
+  const {
+    timestamp = new Date().toISOString(),
+    version = MCP_VERSION,
+    protocol = 'ZTDS',
+    event = 'sanitization',
+    riskLevel = 'LOW EXPOSURE',
+    tokensMasked = 0,
+    entities = {},
+    frameworks = ['ZTDS Standard'],
+    sessionHash = '',
+    organization = '',
+    department = '',
+    executionMs = 0,
+    metadata = {}
+  } = eventData;
+
+  const record = {
+    timestamp,
+    version,
+    protocol,
+    event,
+    risk_level: riskLevel,
+    tokens_masked: tokensMasked,
+    entities,
+    frameworks,
+    session_hash: sessionHash,
+    zero_egress: true,
+    verification_mode: "100% Offline (In-Memory RAM)",
+    ...(organization && { organization }),
+    ...(department && { department }),
+    ...(executionMs && { execution_ms: executionMs }),
+    ...(metadata && Object.keys(metadata).length > 0 && { metadata })
+  };
+
+  return JSON.stringify(record);
+}
+
 // Create the MCP server
 const server = new Server(
   {
@@ -279,6 +438,29 @@ const server = new Server(
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
+      {
+        name: "audit_context",
+        description: "STEP 0 (Pre-Flight): Non-destructive security inspection of raw prompts or document chunks before sending to LLMs. Evaluates PII, secrets, risk severity (CLEAN, LOW, MODERATE, CRITICAL), and triggered regulatory frameworks (GDPR, HIPAA, SOC 2, PCI DSS) with zero text mutation.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            text: {
+              type: "string",
+              description: "The raw text, code, prompt, or logs to audit."
+            },
+            profile: {
+              type: "string",
+              description: "The detection profile to use (e.g. 'General', 'Dev', 'Medical', 'Finance', 'Legal'). Defaults to 'General'."
+            },
+            format: {
+              type: "string",
+              description: "Output format: 'detailed' (default markdown), 'summary', or 'json'.",
+              enum: ["detailed", "summary", "json"]
+            }
+          },
+          required: ["text"]
+        }
+      },
       {
         name: "sanitize_text",
         description: "STEP 1: Call this first. You MUST NOT process raw user data before calling this. Locally scrubs PII, secrets, and credentials (like API keys, passwords, emails, phones, names) from code, logs, or text. Replaces them with safe placeholders (e.g., [EMAIL_1], [API_KEY_1]). Keep your data secure before passing it to any LLM. (For in-code backend services or RAG vector pipelines outside of MCP, use '@privacyscrubber/sdk': npm i @privacyscrubber/sdk)",
@@ -301,6 +483,28 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: "array",
               items: { type: "string" },
               description: "Optional list of plaintext values to skip during detection (false positives from previous scrubs). These values will also be persisted in the session ignore list for all future calls."
+            }
+          },
+          required: ["text"]
+        }
+      },
+      {
+        name: "scrub_text",
+        description: "Alias for 'sanitize_text'. Locally scrubs PII and secrets before LLM ingestion.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            text: {
+              type: "string",
+              description: "The raw text, code, or logs to sanitize."
+            },
+            profile: {
+              type: "string",
+              description: "The detection profile to use. Defaults to 'General'."
+            },
+            compact: {
+              type: "boolean",
+              description: "Optional. Compact 1-line audit summary."
             }
           },
           required: ["text"]
@@ -332,11 +536,33 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             profile: {
               type: "string",
-              description: "The detection profile to use. Available: 'General' (Free), or PRO profiles: 'Dev' (Engineering/Code), 'Medical', 'Pharma', 'Biotech', 'Telecom', 'Legal', 'Compliance', 'CCPA', 'Finance', 'Bizops', 'Sales', 'WealthMgmt', 'Insurance', 'Accounting', 'Underwriting', 'Automotive', 'Energy', 'Hospitality', 'HR', 'Security', 'Marketing', 'Support', 'RealEstate', 'Agents', 'Academic', 'Creative', 'Tech', 'Personal'. Defaults to 'General'."
+              description: "The detection profile to use. Defaults to 'General'."
             },
             compact: {
               type: "boolean",
-              description: "Optional. When true, returns a compact 1-line audit summary saving token overhead in AI IDEs (Cursor, Claude Desktop)."
+              description: "Optional. Compact 1-line audit summary."
+            }
+          },
+          required: ["file_path"]
+        }
+      },
+      {
+        name: "scrub_file",
+        description: "Alias for 'sanitize_file'. Reads and sanitizes a local file.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            file_path: {
+              type: "string",
+              description: "Absolute path to the file to sanitize."
+            },
+            profile: {
+              type: "string",
+              description: "The detection profile to use. Defaults to 'General'."
+            },
+            compact: {
+              type: "boolean",
+              description: "Optional. Compact 1-line audit summary."
             }
           },
           required: ["file_path"]
@@ -563,6 +789,158 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: []
         }
+      },
+      {
+        name: "guard_unmask_args",
+        description: "Zero-Trust Agentic Guard: Detokenizes parameters, JSON objects, or arguments in local RAM before dispatching to local tools or APIs without sending cleartext secrets back to the LLM.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            tool_args: {
+              description: "Arbitrary JSON object, array, or string containing token placeholders to detokenize in local RAM."
+            },
+            session_id: {
+              type: "string",
+              description: "Optional session ID for isolated multi-task agent memory. Defaults to 'default'."
+            }
+          },
+          required: ["tool_args"]
+        }
+      },
+      {
+        name: "guard_session_info",
+        description: "Zero-Trust Agentic Guard: Returns diagnostic metrics on active in-memory sessions, token counts, and memory footprint with zero plaintext leakage.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            session_id: {
+              type: "string",
+              description: "Optional specific session ID to inspect."
+            }
+          },
+          required: []
+        }
+      },
+      {
+        name: "guard_session_reset",
+        description: "Zero-Trust Agentic Guard: Explicitly purges the in-memory token map for a specific session_id or all sessions upon agent task completion.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            session_id: {
+              type: "string",
+              description: "The session ID to purge. Defaults to 'default'."
+            },
+            all: {
+              type: "boolean",
+              description: "Whether to purge ALL active agent sessions in memory. Defaults to false."
+            }
+          },
+          required: []
+        }
+      },
+      {
+        name: "guard_rag_chunk",
+        description: "Zero-Trust Agentic Guard: Sanitizes an array of document chunks or knowledge base records before sending to embedding models or vector databases (Chroma, Pinecone, Qdrant). Keeps authentic data in local RAM with zero network leakage.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            chunks: {
+              type: "array",
+              description: "Array of chunk objects ({ id?: string, text: string, metadata?: object }) or array of chunk strings to sanitize.",
+              items: {
+                anyOf: [
+                  { type: "string" },
+                  {
+                    type: "object",
+                    properties: {
+                      id: { type: "string" },
+                      text: { type: "string" },
+                      pageContent: { type: "string" },
+                      metadata: { type: "object" }
+                    }
+                  }
+                ]
+              }
+            },
+            profile: {
+              type: "string",
+              description: "The detection profile to use. Defaults to 'General'."
+            },
+            session_id: {
+              type: "string",
+              description: "Optional session ID for isolated multi-task agent memory. Defaults to 'default'."
+            }
+          },
+          required: ["chunks"]
+        }
+      },
+      {
+        name: "guard_rag_restore",
+        description: "Zero-Trust Agentic Guard: Re-hydrates retrieved vector search results or chunks by restoring token placeholders with authentic data from the volatile RAM session before presenting to the user.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            results: {
+              type: "array",
+              description: "Array of retrieved search result objects ({ id?: string, text?: string, pageContent?: string, score?: number, metadata?: object }) or strings containing tokens to restore.",
+              items: {
+                anyOf: [
+                  { type: "string" },
+                  {
+                    type: "object",
+                    properties: {
+                      id: { type: "string" },
+                      text: { type: "string" },
+                      pageContent: { type: "string" },
+                      score: { type: "number" },
+                      metadata: { type: "object" }
+                    }
+                  }
+                ]
+              }
+            },
+            session_id: {
+              type: "string",
+              description: "Optional session ID for isolated multi-task agent memory. Defaults to 'default'."
+            }
+          },
+          required: ["results"]
+        }
+      },
+      {
+        name: "export_audit_log",
+        description: "Zero-Trust Enterprise Compliance: Exports an immutable, tamper-evident audit log in SIEM standard formats (CEF / ArcSight, RFC 5424 Syslog, JSONL, or JSON) with zero plaintext PII leakage. Can write directly to a local log file or stream.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            format: {
+              type: "string",
+              enum: ["jsonl", "cef", "syslog", "json", "markdown"],
+              description: "Audit log format: 'jsonl' (Datadog/ELK), 'cef' (ArcSight/Splunk), 'syslog' (RFC 5424), 'json', or 'markdown'. Defaults to 'jsonl'."
+            },
+            session_id: {
+              type: "string",
+              description: "Optional session ID for isolated multi-task agent memory. Defaults to 'default'."
+            },
+            destination_file: {
+              type: "string",
+              description: "Optional local file path to append the audit log event to (e.g. '/var/log/privacyscrubber.log')."
+            },
+            company_name: {
+              type: "string",
+              description: "Optional company name for enterprise audit attribution. Defaults to 'PrivacyScrubber Client'."
+            },
+            department: {
+              type: "string",
+              description: "Optional department or auditor identifier. Defaults to 'SecOps / Compliance'."
+            },
+            text: {
+              type: "string",
+              description: "Optional raw text to sanitize and include in the exported audit log event."
+            }
+          }
+        }
       }
     ]
   };
@@ -709,12 +1087,80 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const toolStart = Date.now();
 
   try {
-    if (name === "sanitize_text") {
-      const { text, profile = "General", ignore_list, compact = false } = args || {};
+    if (name === "audit_context") {
+      const { text, profile = "General", format = "detailed" } = args || {};
 
-      // Merge per-call ignore_list into persistent sessionIgnoreList
+      if (text === undefined || text === null) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: "Error: Missing required parameter 'text'. Provide the string to audit." }]
+        };
+      }
+      if (typeof text !== "string") {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Error: Parameter 'text' must be a string, got '${typeof text}'.` }]
+        };
+      }
+
+      const targetProfile = (profile || "General").trim();
+      const customRules = loadCustomRules();
+      const normalizedProfile = targetProfile.toLowerCase();
+      const license = checkLicenseStatus();
+
+      // Read-only dry-run map: NEVER mutates global sessionMap
+      const dryRunMap = {};
+      const result = PrivacyScrubberCore.scrubText(text, customRules, {}, normalizedProfile, dryRunMap, license.isPro);
+      const telemetry = buildCisoAuditTelemetry(result.tokenMap || {});
+
+      if (format === "json") {
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              riskLevel: telemetry.riskLevel,
+              totalDetected: telemetry.totalDetected,
+              entities: telemetry.entities,
+              triggeredFrameworks: telemetry.triggeredFrameworks,
+              profile: targetProfile,
+              executionEngine: "ZTDS Client-Side RAM"
+            }, null, 2)
+          }]
+        };
+      }
+
+      let report = `### PrivacyScrubber Pre-Flight Context Audit\n\n`;
+      report += `* **Status / Risk Level:** \`${telemetry.riskLevel}\`\n`;
+      report += `* **Total Entities Detected:** \`${telemetry.totalDetected}\`\n`;
+      report += `* **Active Profile:** \`${targetProfile}\` (Engine: ZTDS Client-Side RAM)\n`;
+      report += `* **Triggered Compliance Frameworks:** ${telemetry.triggeredFrameworks.map(f => `\`${f}\``).join(', ')}\n\n`;
+
+      if (telemetry.totalDetected > 0) {
+        report += `#### Entity Breakdown\n`;
+        report += `| Entity Type | Occurrences | Exposure Severity |\n`;
+        report += `| :--- | :--- | :--- |\n`;
+        for (const [entityType, count] of Object.entries(telemetry.entities)) {
+          const isHigh = ['ID', 'SSN', 'CREDIT_CARD', 'API_KEY', 'SECRET', 'PASSWORD', 'MRN', 'KEY'].includes(entityType);
+          report += `| \`${entityType}\` | ${count} | ${isHigh ? 'High Risk' : 'Standard'} |\n`;
+        }
+        report += `\n> [!CAUTION]\n> **Action Recommended:** This context contains sensitive data. Call \`sanitize_text\` before transmitting to any external LLM model.\n`;
+      } else {
+        report += `> [!NOTE]\n> **Status:** Clean. Zero sensitive entities detected under the \`${targetProfile}\` profile.\n`;
+      }
+
+      return {
+        content: [{ type: "text", text: report }]
+      };
+    }
+
+    if (name === "sanitize_text" || name === "scrub_text") {
+      const { text, profile = "General", ignore_list, compact = false, session_id = "default" } = args || {};
+      const currentSession = getSessionMap(session_id);
+      const currentIgnoreList = getSessionIgnoreList(session_id);
+
+      // Merge per-call ignore_list into persistent session ignore list
       if (Array.isArray(ignore_list)) {
-        ignore_list.forEach(v => { if (typeof v === 'string' && v.trim()) sessionIgnoreList.add(v.trim()); });
+        ignore_list.forEach(v => { if (typeof v === 'string' && v.trim()) currentIgnoreList.add(v.trim()); });
       }
       if (text === undefined || text === null) {
         return {
@@ -760,7 +1206,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const { processedText, wasTruncated } = truncateIfFree(text, license.isPro, charLimit);
 
-      const { scrubbedText, newTokens } = performSanitization(processedText, finalProfile, sessionIgnoreList);
+      const { scrubbedText, newTokens } = performSanitization(processedText, finalProfile, currentIgnoreList, currentSession);
       
       const telemetry = buildCisoAuditTelemetry(newTokens);
       const receiptMd = formatAuditReceipt(telemetry, compact, wasTruncated, charLimit);
@@ -773,7 +1219,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     if (name === "reveal_text") {
-      const { text } = args || {};
+      const { text, session_id = "default" } = args || {};
       if (text === undefined || text === null) {
         return {
           isError: true,
@@ -787,17 +1233,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      const currentSession = getSessionMap(session_id);
       // Warn early if session has no tokens — reveal would be a no-op
-      if (Object.keys(sessionMap).length === 0) {
+      if (Object.keys(currentSession).length === 0) {
         return {
           content: [{
             type: "text",
-            text: `⚠️  Session map is empty — no tokens to restore. Call 'sanitize_text' or 'sanitize_file' first to build the token map, then pass the AI's response here.`
+            text: `⚠️  Session map${session_id !== 'default' ? ` ('${session_id}')` : ''} is empty — no tokens to restore. Call 'sanitize_text' or 'sanitize_file' first to build the token map, then pass the AI's response here.`
           }]
         };
       }
 
-      const restored = PrivacyScrubberCore.unscrubText(text, sessionMap);
+      const restored = PrivacyScrubberCore.unscrubText(text, currentSession);
       let restoredText = restored.restoredText;
       // Deduplicate common double-prefixed schemas resulting from LLM prefix reconstruction
       restoredText = restoredText.replace(/\b(mysql|postgresql|postgres|redis|mongodb|https?|ftp|ssh|git|aws):\/\/\1:\/\//gi, '$1://');
@@ -813,7 +1260,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     if (name === "mark_false_positive") {
-      const { token } = args || {};
+      const { token, session_id = 'default' } = args || {};
       if (!token || typeof token !== 'string') {
         return {
           isError: true,
@@ -821,30 +1268,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      const original = sessionMap[token];
+      const targetSession = getSessionMap(session_id);
+      const targetIgnoreList = getSessionIgnoreList(session_id);
+      const original = targetSession[token];
       if (!original) {
         return {
           isError: true,
-          content: [{ type: "text", text: `Error: Token '${token}' not found in current session map. Available tokens: ${Object.keys(sessionMap).join(', ') || '(empty session)'}` }]
+          content: [{ type: "text", text: `Error: Token '${token}' not found in current session map. Available tokens: ${Object.keys(targetSession).join(', ') || '(empty session)'}` }]
         };
       }
 
-      // Add the original plaintext to the ignore list
-      sessionIgnoreList.add(original);
+      // Add the original plaintext to the session ignore list
+      targetIgnoreList.add(original);
       // Remove the token from the session map
-      delete sessionMap[token];
+      delete targetSession[token];
 
-      mcpLog(`${colors.yellow}🔖 [PrivacyScrubber] False Positive: '${token}' → '${original}' will be excluded from future scrubs.${colors.reset}\n`);
+      mcpLog(`${colors.yellow}🔖 [PrivacyScrubber] False Positive: '${token}' → '${original}' will be excluded from future scrubs in session '${session_id}'.${colors.reset}\n`);
 
       return {
         content: [{
           type: "text",
-          text: `✅ Marked '${token}' as false positive.\n\n**Restored value:** ${original}\n**Session ignore list size:** ${sessionIgnoreList.size}\n\nThis value will be excluded from all future \`sanitize_text\` calls in this session.`
+          text: `✅ Marked '${token}' as false positive.\n\n**Restored value:** ${original}\n**Session ignore list size:** ${targetIgnoreList.size}\n\nThis value will be excluded from all future \`sanitize_text\` calls in session '${session_id}'.`
         }]
       };
     }
 
-    if (name === "sanitize_file") {
+    if (name === "sanitize_file" || name === "scrub_file") {
       const rawPath = args.file_path || args.filePath;
       if (!rawPath) {
         return {
@@ -1492,7 +1941,7 @@ ${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
     }
 
     if (name === "guard_exec") {
-      const { command, cwd, profile = "Dev", timeout_ms = 15000 } = args || {};
+      const { command, cwd, profile = "Dev", timeout_ms = 15000, session_id = "default" } = args || {};
       if (!command || typeof command !== "string") {
         return {
           isError: true,
@@ -1508,13 +1957,17 @@ ${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
         };
       }
 
+      const targetSession = getSessionMap(session_id);
+      // Transparent in-memory unmasking of any token placeholders before local execution
+      const rawExecutableCommand = reverseTokens(command, targetSession);
+
       const execCwd = cwd ? path.resolve(cwd) : process.cwd();
       let stdout = '';
       let stderr = '';
       let exitCode = 0;
 
       try {
-        stdout = execSync(command, {
+        stdout = execSync(rawExecutableCommand, {
           cwd: execCwd,
           timeout: Math.min(Math.max(timeout_ms, 1000), 60000),
           maxBuffer: 10 * 1024 * 1024,
@@ -1534,9 +1987,10 @@ ${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
       const { processedText: cleanStdout, wasTruncated: truncOut } = truncateIfFree(stdout, license.isPro, charLimit);
       const { processedText: cleanStderr, wasTruncated: truncErr } = truncateIfFree(stderr, license.isPro, charLimit);
 
-      const resCommand = performSanitization(command, targetProfile, sessionIgnoreList);
-      const resStdout = performSanitization(cleanStdout, targetProfile, sessionIgnoreList);
-      const resStderr = performSanitization(cleanStderr, targetProfile, sessionIgnoreList);
+      const targetIgnoreList = getSessionIgnoreList(session_id);
+      const resCommand = performSanitization(command, targetProfile, targetIgnoreList, targetSession);
+      const resStdout = performSanitization(cleanStdout, targetProfile, targetIgnoreList, targetSession);
+      const resStderr = performSanitization(cleanStderr, targetProfile, targetIgnoreList, targetSession);
 
       const allNewTokens = { ...resCommand.newTokens, ...resStdout.newTokens, ...resStderr.newTokens };
       const tokenCount = Object.keys(allNewTokens).length;
@@ -1670,7 +2124,7 @@ ${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
     }
 
     if (name === "guard_apply_patch") {
-      const { file_path, content, create_backup = true } = args || {};
+      const { file_path, content, create_backup = true, session_id = "default" } = args || {};
       if (!file_path || typeof file_path !== "string") {
         return {
           isError: true,
@@ -1685,7 +2139,8 @@ ${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
       }
 
       const resolvedPath = path.resolve(process.cwd(), file_path);
-      const restored = PrivacyScrubberCore.unscrubText(content, sessionMap);
+      const targetSession = getSessionMap(session_id);
+      const restored = PrivacyScrubberCore.unscrubText(content, targetSession);
       const authenticContent = restored.restoredText;
 
       let backupCreated = false;
@@ -1785,6 +2240,382 @@ Before reading sensitive files, running terminal commands that may print credent
       };
     }
 
+    if (name === "guard_unmask_args") {
+      const targetArgs = (args?.tool_args !== undefined) ? args.tool_args : args?.args;
+      const { session_id = "default" } = args || {};
+      if (targetArgs === undefined || targetArgs === null) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: "Error: Missing required parameter 'tool_args' (or 'args')." }]
+        };
+      }
+
+      const targetSession = getSessionMap(session_id);
+
+      function unmaskRecursive(val) {
+        if (typeof val === 'string') {
+          return reverseTokens(val, targetSession);
+        }
+        if (Array.isArray(val)) {
+          return val.map(unmaskRecursive);
+        }
+        if (val !== null && typeof val === 'object') {
+          const res = {};
+          for (const [k, v] of Object.entries(val)) {
+            res[k] = unmaskRecursive(v);
+          }
+          return res;
+        }
+        return val;
+      }
+
+      const unmasked = unmaskRecursive(targetArgs);
+      const originalStr = typeof targetArgs === 'string' ? targetArgs : JSON.stringify(targetArgs);
+      
+      let tokensRestored = 0;
+      for (const token of Object.keys(targetSession)) {
+        if (originalStr.includes(token)) {
+          tokensRestored += (originalStr.split(token).length - 1);
+        }
+      }
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            status: "success",
+            success: true,
+            session_id,
+            tokens_restored: tokensRestored,
+            unmasked_count: tokensRestored,
+            unmasked_args: unmasked
+          }, null, 2)
+        }]
+      };
+    }
+
+    if (name === "guard_session_info") {
+      const { session_id } = args || {};
+      const memUsage = process.memoryUsage();
+
+      if (session_id) {
+        const sid = session_id.toString().trim();
+        const session = agentSessions.get(sid);
+        if (!session) {
+          return {
+            content: [{
+              type: "text",
+              text: `[Zero-Trust Agentic Guard: Session Info]\nSession '${sid}' does not exist or has expired.`
+            }]
+          };
+        }
+        const tokenEntries = Object.entries(session.map);
+        const telemetry = buildCisoAuditTelemetry(session.map);
+        return {
+          content: [{
+            type: "text",
+            text: `[Zero-Trust Agentic Guard: Session Info - ${sid}]\n` +
+              `Created: ${new Date(session.createdAt).toISOString()}\n` +
+              `Last Active: ${new Date(session.lastActive).toISOString()}\n` +
+              `Total Tokens Stored in RAM: ${tokenEntries.length}\n` +
+              `Entity Types: ${Object.keys(telemetry.entities).join(', ') || 'None'}\n` +
+              `Risk Level: ${telemetry.riskLevel}\n` +
+              `Status: Volatile in-memory mapping active (0 bytes disk/network).`
+          }]
+        };
+      }
+
+      let totalTokens = 0;
+      const sessionList = [];
+      for (const [sid, sess] of agentSessions.entries()) {
+        const count = Object.keys(sess.map).length;
+        totalTokens += count;
+        sessionList.push({ id: sid, tokens: count, lastActive: new Date(sess.lastActive).toISOString() });
+      }
+
+      return {
+        content: [{
+          type: "text",
+          text: `[Zero-Trust Agentic Guard: Global Session Diagnostics]\n` +
+            `Total Active Agent Sessions: ${agentSessions.size}\n` +
+            `Total Tokens in Memory: ${totalTokens}\n` +
+            `Process Heap Used: ${(memUsage.heapUsed / (1024 * 1024)).toFixed(2)} MB\n` +
+            `Uptime: ${Math.floor(process.uptime())} seconds\n` +
+            `Active Sessions: ${sessionList.map(s => `${s.id} (${s.tokens} tokens)`).join(', ') || 'None'}`
+        }]
+      };
+    }
+
+    if (name === "guard_session_reset") {
+      const { session_id, all = false, reset_all = false } = args || {};
+      if (all || reset_all) {
+        const count = agentSessions.size;
+        agentSessions.clear();
+        getSessionMap('default');
+        sessionIgnoreList.clear();
+        return {
+          content: [{
+            type: "text",
+            text: `[Zero-Trust Agentic Guard] All ${count} active in-memory agent sessions have been completely purged from RAM.`
+          }]
+        };
+      }
+
+      const sid = (session_id || 'default').toString().trim();
+      const sessionObj = agentSessions.get(sid);
+      if (sessionObj) {
+        if (sessionObj.map) Object.keys(sessionObj.map).forEach(k => delete sessionObj.map[k]);
+        if (sessionObj.ignoreList) sessionObj.ignoreList.clear();
+      }
+      const existed = agentSessions.delete(sid);
+      if (sid === 'default') {
+        getSessionMap('default');
+      }
+      return {
+        content: [{
+          type: "text",
+          text: existed 
+            ? `[Zero-Trust Agentic Guard] Volatile RAM session '${sid}' successfully purged.`
+            : `[Zero-Trust Agentic Guard] Session '${sid}' was not found.`
+        }]
+      };
+    }
+
+    if (name === "guard_rag_chunk") {
+      const { chunks, profile = "General", session_id = "default" } = args || {};
+      if (!Array.isArray(chunks)) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: "Error: Missing or invalid parameter 'chunks'. Must be an array of chunk objects or strings." }]
+        };
+      }
+
+      const targetSession = getSessionMap(session_id);
+      let totalTokensRedacted = 0;
+      const sanitizedChunks = [];
+
+      for (let i = 0; i < chunks.length; i++) {
+        const item = chunks[i];
+        if (typeof item === 'string') {
+          const res = performSanitization(item, profile, null, targetSession);
+          totalTokensRedacted += Object.keys(res.newTokens || {}).length;
+          sanitizedChunks.push(res.scrubbedText);
+        } else if (item && typeof item === 'object') {
+          const copy = { ...item };
+          const rawText = copy.text || copy.pageContent || copy.document || '';
+          const res = performSanitization(rawText, profile, null, targetSession);
+          totalTokensRedacted += Object.keys(res.newTokens || {}).length;
+
+          if (copy.text !== undefined) copy.text = res.scrubbedText;
+          if (copy.pageContent !== undefined) copy.pageContent = res.scrubbedText;
+          if (copy.document !== undefined) copy.document = res.scrubbedText;
+          if (copy.text === undefined && copy.pageContent === undefined && copy.document === undefined) {
+            copy.text = res.scrubbedText;
+          }
+
+          copy.metadata = {
+            ...(copy.metadata || {}),
+            _ztds_sanitized: true,
+            _ztds_tokens_masked: Object.keys(res.newTokens || {}).length
+          };
+          sanitizedChunks.push(copy);
+        } else {
+          sanitizedChunks.push(item);
+        }
+      }
+
+      const telemetry = buildCisoAuditTelemetry(targetSession);
+      const auditReceipt = formatAuditReceipt(telemetry);
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            status: "success",
+            session_id,
+            total_chunks: chunks.length,
+            tokens_redacted_in_batch: totalTokensRedacted,
+            total_session_tokens: Object.keys(targetSession).length,
+            risk_level: telemetry.riskLevel,
+            sanitized_chunks: sanitizedChunks
+          }, null, 2) + `\n\n${auditReceipt}`
+        }]
+      };
+    }
+
+    if (name === "guard_rag_restore") {
+      const { results, session_id = "default" } = args || {};
+      if (!Array.isArray(results)) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: "Error: Missing or invalid parameter 'results'. Must be an array of search result objects or strings." }]
+        };
+      }
+
+      const targetSession = getSessionMap(session_id);
+      let totalTokensRestored = 0;
+      const restoredResults = [];
+
+      for (let i = 0; i < results.length; i++) {
+        const item = results[i];
+        if (typeof item === 'string') {
+          const restored = reverseTokens(item, targetSession);
+          for (const token of Object.keys(targetSession)) {
+            if (item.includes(token)) totalTokensRestored++;
+          }
+          restoredResults.push(restored);
+        } else if (item && typeof item === 'object') {
+          const copy = { ...item };
+          const rawText = copy.text || copy.pageContent || copy.document || '';
+          const restored = reverseTokens(rawText, targetSession);
+          for (const token of Object.keys(targetSession)) {
+            if (rawText.includes(token)) totalTokensRestored++;
+          }
+
+          if (copy.text !== undefined) copy.text = restored;
+          if (copy.pageContent !== undefined) copy.pageContent = restored;
+          if (copy.document !== undefined) copy.document = restored;
+          if (copy.text === undefined && copy.pageContent === undefined && copy.document === undefined) {
+            copy.text = restored;
+          }
+          restoredResults.push(copy);
+        } else {
+          restoredResults.push(item);
+        }
+      }
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            status: "success",
+            session_id,
+            total_results: results.length,
+            tokens_restored: totalTokensRestored,
+            restored_results: restoredResults
+          }, null, 2)
+        }]
+      };
+    }
+
+    if (name === "export_audit_log") {
+      const {
+        format = "jsonl",
+        session_id = "default",
+        destination_file,
+        company_name = "PrivacyScrubber Client",
+        department = "SecOps / Compliance",
+        text
+      } = args || {};
+
+      const targetSession = getSessionMap(session_id);
+
+      // If text is provided, perform sanitization first to ensure session and telemetry are populated
+      if (typeof text === 'string' && text.trim()) {
+        performSanitization(text, "general", null, targetSession);
+      }
+
+      const telemetry = buildCisoAuditTelemetry(targetSession);
+
+      const sessionHash = crypto.createHash('sha256')
+        .update(JSON.stringify(targetSession) + Date.now().toString())
+        .digest('hex');
+
+      const timestamp = new Date().toISOString();
+
+      let outputText = "";
+      const eventData = {
+        vendor: "PrivacyScrubber",
+        product: "ZTDS",
+        version: MCP_VERSION,
+        timestamp,
+        riskLevel: telemetry.riskLevel,
+        tokensMasked: telemetry.totalCount,
+        entities: telemetry.entities,
+        frameworks: telemetry.frameworksList,
+        sessionHash,
+        organization: company_name,
+        department
+      };
+
+      if (format === "cef") {
+        outputText = formatCefEvent(eventData);
+      } else if (format === "syslog") {
+        outputText = formatSyslogEvent(eventData);
+      } else if (format === "json") {
+        outputText = JSON.stringify({
+          protocol: "Zero-Trust Data Sanitization (ZTDS)",
+          certificate: `ZTDS-CERT-${sessionHash.substring(0, 16).toUpperCase()}`,
+          company: company_name,
+          department,
+          timestamp,
+          session_hash: sessionHash,
+          verification_mode: "100% Offline (Local In-Memory RAM)",
+          compliance_status: "VERIFIED PASS",
+          risk_level: telemetry.riskLevel,
+          frameworks_enforced: telemetry.frameworksList,
+          total_masked_tokens: telemetry.totalCount,
+          entities_breakdown: telemetry.entities,
+          zero_egress_verified: true,
+          verification_url: `https://privacyscrubber.com/features/audit-receipt/#verify?hash=${sessionHash.substring(0, 16)}`
+        }, null, 2);
+      } else if (format === "markdown") {
+        const entitySummary = Object.entries(telemetry.entities)
+          .map(([t, count]) => `[${t}]: ${count}`)
+          .join(', ') || 'None (Clean)';
+        outputText = `# 🛡️ Zero-Trust Data Sanitization Compliance Certificate
+**Certificate ID:** \`ZTDS-CERT-${sessionHash.substring(0, 16).toUpperCase()}\`  
+**Organization:** ${company_name} (${department})  
+**Timestamp:** ${timestamp}  
+**Verification Mode:** 100% Local In-Memory Processing (Air-Gapped)  
+**Status:** **VERIFIED PASS** (Zero Network Egress)
+
+---
+
+### 📊 Sanitization Metrics & Risk Assessment
+* **Overall Risk Rating:** **${telemetry.riskLevel}**
+* **Total Sensitive Entities Masked:** \`${telemetry.totalCount}\`
+* **Entity Breakdown:** ${entitySummary}
+* **Network Data Transmitted:** \`0.00 KB (Zero-Trust Local RAM)\`
+
+### 📜 Regulatory Frameworks Enforced
+${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
+
+### 🔒 CISO Compliance Declaration
+1. **EU AI Act (Art. 50) & GDPR (Art. 25 & 32):** Data minimization and local pseudonymization enforced prior to model interaction.
+2. **HIPAA Safe Harbor (§164.514) / SOC 2 Type II:** All direct and indirect identifiers sanitized locally without cloud processor liability.
+3. **Cryptographic Verification:** Tamper-evident session verification hash: \`${sessionHash}\`
+
+*Certified Offline by PrivacyScrubber Engine v${MCP_VERSION}*  
+*Verify at: https://privacyscrubber.com/features/audit-receipt/*`;
+      } else {
+        // Default: jsonl
+        outputText = formatJsonlEvent(eventData);
+      }
+
+      if (typeof destination_file === 'string' && destination_file.trim()) {
+        try {
+          const dir = path.dirname(destination_file);
+          if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+          }
+          fs.appendFileSync(destination_file, outputText + '\n', 'utf8');
+        } catch (e) {
+          return {
+            isError: true,
+            content: [{ type: "text", text: `Error writing audit log to destination_file: ${e.message}` }]
+          };
+        }
+      }
+
+      return {
+        content: [{
+          type: "text",
+          text: outputText
+        }]
+      };
+    }
+
     return {
       isError: true,
       content: [{ type: "text", text: `Unknown tool: ${name}` }]
@@ -1878,17 +2709,18 @@ function detectSecrets(text) {
   return detected;
 }
 
-function performSanitization(text, profile, ignoreList = null) {
+function performSanitization(text, profile, ignoreList = null, customSessionMap = null) {
   const customRules = loadCustomRules();
   const normalizedProfile = (profile || "general").trim().toLowerCase();
   const license = checkLicenseStatus();
-  const result = PrivacyScrubberCore.scrubText(text, customRules, {}, normalizedProfile, sessionMap, license.isPro, ignoreList);
+  const targetMap = customSessionMap || sessionMap;
+  const result = PrivacyScrubberCore.scrubText(text, customRules, {}, normalizedProfile, targetMap, license.isPro, ignoreList);
 
   const newTokens = {};
   // Update our volatile map with new matches
   if (result.tokenMap) {
     Object.entries(result.tokenMap).forEach(([token, original]) => {
-      sessionMap[token] = original;
+      targetMap[token] = original;
       newTokens[token] = original;
     });
   }

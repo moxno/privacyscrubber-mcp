@@ -94,12 +94,15 @@ async function runMcpSession() {
     console.log(`<-- Tools list received. Total tools: ${tools.length}`);
     tools.forEach(t => console.log(`  - Tool: ${t.name} (${t.description.substring(0, 60)}...)`));
 
-    if (tools.length !== 14) {
-      throw new Error(`Expected 14 tools, got ${tools.length}`);
+    if (tools.length !== 23) {
+      throw new Error(`Expected 23 tools, got ${tools.length}`);
     }
     const expectedToolNames = [
+      'audit_context', 'sanitize_text', 'scrub_text', 'reveal_text', 'sanitize_file', 'scrub_file',
       'check_status', 'create_default_config', 'mark_false_positive',
-      'guard_exec', 'guard_read_file', 'guard_git_diff', 'guard_apply_patch', 'create_agent_rules'
+      'guard_exec', 'guard_read_file', 'guard_git_diff', 'guard_apply_patch', 'create_agent_rules',
+      'guard_unmask_args', 'guard_session_info', 'guard_session_reset',
+      'guard_rag_chunk', 'guard_rag_restore', 'export_audit_log'
     ];
     for (const toolName of expectedToolNames) {
       if (!tools.find(t => t.name === toolName)) {
