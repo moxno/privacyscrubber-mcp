@@ -243,7 +243,7 @@ function performSanitization(text) {
     }
   }
 
-  return result.scrubbedText + (wasTruncated ? `\n\n[PrivacyScrubber Free Tier: Payload truncated to ${limit.toLocaleString()} characters. Upgrade to PRO ($15/mo or $110 Lifetime) or Developer SDK ($199/mo) for unlimited payload processing: https://privacyscrubber.com/pricing]` : '');
+  return result.scrubbedText + (wasTruncated ? `\n\n[PrivacyScrubber Free Tier: Payload truncated to ${limit.toLocaleString()} characters. Upgrade to PRO ($15/mo or $110 Lifetime) or Developer SDK ($299/mo) for unlimited payload processing: https://privacyscrubber.com/pricing]` : '');
 }
 
 function buildCisoAuditTelemetry(currentTokenMap = {}) {
@@ -305,7 +305,7 @@ function emitProofFeedback() {
   if (isQuiet) return;
 
   if (sessionWasTruncated) {
-    process.stderr.write(`\x1b[33m[ps-guard] Free Tier limit reached (${sessionTruncatedLimit.toLocaleString()} chars). Upgrade to PRO ($15/mo) or Developer SDK ($199/mo): https://privacyscrubber.com/pricing\x1b[0m\n`);
+    process.stderr.write(`\x1b[33m[ps-guard] Free Tier limit reached (${sessionTruncatedLimit.toLocaleString()} chars). Upgrade to PRO ($15/mo) or Developer SDK ($299/mo): https://privacyscrubber.com/pricing\x1b[0m\n`);
   }
 
   const totalMasked = Object.keys(localSessionMap).length;

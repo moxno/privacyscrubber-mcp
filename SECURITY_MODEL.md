@@ -73,7 +73,7 @@ PrivacyScrubber MCP is an **application-layer, defense-in-depth data sanitizatio
   - Sessions are scoped to the running process lifecycle.
 
 ### Caveat 4: Detection Heuristics & Coverage Scope
-- **Mechanism:** Detection relies on specialized multi-pass regex patterns, Luhn algorithm verification, IBAN check-digit validations, and 25 industry profiles (Medical, FinTech, Legal, DevOps secrets, etc.).
+- **Mechanism:** Detection relies on specialized multi-pass regex patterns, Luhn algorithm verification, IBAN check-digit validations, and 30 industry profiles (Medical, FinTech, Legal, DevOps secrets, etc.).
 - **Boundary Reality:** While highly optimized for corporate PII and credentials, pattern-based redaction cannot guarantee 100% capture of obscure, unstructured, or deliberately obfuscated prose. It serves as an essential compliance and risk reduction layer, not a substitute for data classification policies.
 
 ---

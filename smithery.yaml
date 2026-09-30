@@ -10,8 +10,8 @@ startCommand:
         description: "Optional PRO or TEAMS license key. Leave blank to run on the Free tier."
   commandFunction: |-
     (config) => ({
-      command: 'node',
-      args: ['./index.js'],
+      command: 'npx',
+      args: ['-y', '@privacyscrubber/mcp-server'],
       env: {
         PRIVACYSCRUBBER_KEY: (config && config.PRIVACYSCRUBBER_KEY) || ''
       }

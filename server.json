@@ -1,17 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.moxno/privacyscrubber-mcp",
-  "description": "Zero-Trust PII & secrets sanitizer for AI agents with in-memory local redaction.",
+  "description": "Zero-Trust PII and secrets sanitizer for Cursor, Claude, and AI agents. 100% in-memory.",
   "repository": {
     "url": "https://github.com/moxno/privacyscrubber-mcp",
     "source": "github"
   },
-  "version": "2.2.5",
+  "version": "2.2.6",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@privacyscrubber/mcp-server",
-      "version": "2.2.5",
+      "version": "2.2.6",
       "transport": {
         "type": "stdio"
       },

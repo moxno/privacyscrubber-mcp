@@ -1,7 +1,7 @@
 {
   "manifest_version": "0.3",
   "name": "privacyscrubber/pii-masking-mcp",
-  "version": "2.2.4",
+  "version": "2.2.6",
   "description": "CISO-Approved Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Windsurf, and Claude Desktop. Prevent API leaks and comply with HIPAA/SOC 2 locally.",
   "author": {
     "name": "PrivacyScrubber",
@@ -32,6 +32,22 @@
     {
       "name": "sanitize_file",
       "description": "Reads a local file, sanitizes its contents using the selected profile, and outputs the safe version for AI analysis. Securely keeps original identifiers in memory."
+    },
+    {
+      "name": "audit_directory_for_pii",
+      "description": "Audits a local directory or project tree for PII, secrets, and compliance vulnerabilities without sending data to any external server."
+    },
+    {
+      "name": "generate_compliance_report",
+      "description": "Generates a structured compliance report (GDPR, HIPAA, SOC 2, PCI DSS) and enterprise CISO audit receipt for the current session or workspace."
+    },
+    {
+      "name": "export_audit_log",
+      "description": "Exports a zero-knowledge immutable audit receipt verifying zero-egress data sanitization for compliance documentation."
+    },
+    {
+      "name": "guard_exec",
+      "description": "Sanitizes command line execution strings and arguments for autonomous AI agents prior to tool dispatch."
     }
   ],
   "user_config": {

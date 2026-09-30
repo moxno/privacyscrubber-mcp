@@ -23,6 +23,8 @@
 **CISO-Approved Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Windsurf, and Claude Desktop.**
 Locally scrubs PII, secrets, credentials, and custom regex rules from files and text contexts before they reach remote LLM providers to prevent API leaks and ensure HIPAA/SOC 2 compliance at the developer endpoint.
 
+> ⭐ **Support Zero-Trust Open Source:** If PrivacyScrubber protects your API keys and code from leaks, please **[Star this repository](https://github.com/moxno/privacyscrubber-mcp)** or run `gh repo star moxno/privacyscrubber-mcp` in your terminal!
+
 ---
 
 ## 🔒 Zero-Trust Data Flow
@@ -94,6 +96,76 @@ Microsoft Presidio is the Python standard, but deploying it in a Node.js / TypeS
 | **Streaming Rehydration** | **Built-in (`wrapAiStream`, `TransformStream`)**| Buffering / chunk split failures | Not supported in real-time streams |
 
 👉 [View @privacyscrubber/sdk on NPM](https://www.npmjs.com/package/@privacyscrubber/sdk) | Full documentation, Express middleware, LangChain transforms, and 25 compliance profiles.
+
+#### 🤖 AI Orchestrator Recipes: LangChain, LlamaIndex, CrewAI & AutoGPT
+
+If you are building autonomous agents, RAG vector pipelines, or backend services rather than single-user IDE prompts, use `@privacyscrubber/sdk` to sanitize data in-memory:
+
+##### 1. LangChain.js & LCEL Pipelines
+```typescript
+import { ChatOpenAI } from '@langchain/openai';
+import { createLangChainTransform } from '@privacyscrubber/sdk';
+
+const transform = createLangChainTransform({ defaultProfile: 'Dev' });
+
+// 1. Sanitize in local RAM before LLM call:
+const { scrubbedText, tokenMap } = transform.preprocess(
+  "Deploying database with user admin and pwd postgresql://user:SecretPass123@db.internal:5432/prod"
+);
+
+// 2. Outbound LLM receives only [DB_URI_1]
+const model = new ChatOpenAI({ model: 'gpt-4o' });
+const response = await model.invoke(scrubbedText);
+
+// 3. Inbound response is automatically restored with original secrets in local RAM:
+const finalOutput = transform.postprocess(response.content, tokenMap);
+```
+
+##### 2. LlamaIndex.TS & RAG Vector Ingestion
+```typescript
+import { sanitize } from '@privacyscrubber/sdk';
+import { Document, VectorStoreIndex } from 'llamaindex';
+
+// Strip customer PII and credentials BEFORE vector embedding into Pinecone / Chroma:
+const rawText = "Customer John Doe (SSN: 042-88-9124, email: john@example.com) requested refund.";
+const { scrubbedText, tokenMap, telemetry } = sanitize(rawText, { profile: 'Finance' });
+
+// Vector store indexes only syntax-preserving tokens [NAME_1], [SSN_1], [EMAIL_1]:
+const document = new Document({ text: scrubbedText, metadata: { psRiskLevel: telemetry.riskLevel } });
+const index = await VectorStoreIndex.fromDocuments([document]);
+```
+
+##### 3. CrewAI & Multi-Agent Swarms (Sidecar Mode / Python Interop)
+```bash
+# Run lightweight zero-dependency local daemon (<1ms in-memory, 0 external network calls):
+npx @privacyscrubber/sdk sidecar --port 3100
+```
+```python
+# In your Python CrewAI / AutoGen Agent tools:
+import requests
+
+def sanitize_agent_input(prompt: str) -> tuple[str, dict]:
+    res = requests.post("http://127.0.0.1:3100/sanitize", json={"text": prompt, "profile": "Dev"}).json()
+    return res["scrubbedText"], res["tokenMap"]
+
+def restore_agent_output(ai_response: str, token_map: dict) -> str:
+    res = requests.post("http://127.0.0.1:3100/restore", json={"text": ai_response, "tokenMap": token_map}).json()
+    return res["restoredText"]
+```
+
+##### 4. AutoGPT / Multi-Turn Autonomous Agents
+```typescript
+import { PrivacyScrubberEngine, createGuardedTools } from '@privacyscrubber/sdk';
+
+const engine = new PrivacyScrubberEngine({ defaultProfile: 'Dev' });
+// Equips agent with tools that intercept commands, file reads, and git diffs before model exposure:
+const guardedTools = createGuardedTools(engine);
+```
+
+> 🏢 **Enterprise & Production Licensing:**  
+> - **Self-Serve Developer SDK ($299/mo flat or $2,990/yr):** Unlimited internal backend nodes, microservices, and RAG pipelines. [Get SDK License](https://privacyscrubber.com/pricing?tier=sdk&utm_source=mcp_readme)  
+> - **PrivacyScrubber TEAMS ($99/mo flat):** Unlimited team seats, centralized policy enforcement, encrypted session handoff. [Deploy TEAMS](https://privacyscrubber.com/teams?utm_source=mcp_readme)  
+> - **Enterprise Air-Gapped License:** On-premise source code distribution, zero-network custom models. [Contact Enterprise](https://privacyscrubber.com/enterprise?utm_source=mcp_readme)
 
 #### 🛡️ Architecture & Security Deep-Dive (Zero-Trust vs Cloud DLP)
 
@@ -439,7 +511,7 @@ PrivacyScrubber and the Zero-Trust Data Sanitization (ZTDS) protocol are backed 
 
 | Repository / Archive | DOI / Identifier | Focus Area | Regulatory & Compliance Scope |
 |---|---|---|---|
-| **IETF Standards Track** | [`draft-sibiryakov-ztds-protocol`](https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/) | The ZTDS Protocol for Frontier AI Ingestion | Global AI Privacy, Zero-Egress Architecture |
+| **IETF Specification** | [`draft-sibiryakov-ztds-protocol`](https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/) | The ZTDS Protocol for Frontier AI Ingestion (Internet-Draft) | Global AI Privacy, Zero-Egress Architecture |
 | **Zenodo / CERN** | [`10.5281/zenodo.22058770`](https://zenodo.org/records/22058770) | Zero-Trust Data Sanitization (ZTDS) Protocol Foundation | Cross-Border AI Privacy, ISO 27001 A.8.11 |
 | **OSF (Center for Open Science)** | [`10.17605/OSF.IO/5BYJF`](https://osf.io/5byjf/) | Empirical Latency Benchmark & Memory Profiling (<2ms RAM) | Performance vs Cloud DLP Proxies |
 | **SSRN / Elsevier** | [`SSRN ID: 7335581`](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7335581) | Enterprise Generative AI Governance | EU AI Act, UK GDPR, US State Privacy |
@@ -478,7 +550,7 @@ The Zero-Trust Data Sanitization (ZTDS) architecture, in-memory deterministic to
 
 ### 🌐 Internet Engineering Task Force (IETF) Specification
 - **Specification Title:** *The Zero-Trust Data Sanitization (ZTDS) Protocol for Frontier Artificial Intelligence Ingestion*
-- **Standards Track:** IETF Internet Standard Track
+- **Document Category:** IETF Internet-Draft (Individual Submission)
 - **IETF Datatracker:** [https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/](https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/)
 - **Archive Plaintext:** [https://www.ietf.org/archive/id/draft-sibiryakov-ztds-protocol-01.txt](https://www.ietf.org/archive/id/draft-sibiryakov-ztds-protocol-01.txt)
 

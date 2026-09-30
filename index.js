@@ -76,39 +76,29 @@ function getSessionMap(sessionId = 'default') {
       const oldestKey = agentSessions.keys().next().value;
       agentSessions.delete(oldestKey);
     }
-    session = { map: {}, ignoreList: new Set(), createdAt: now, lastActive: now };
+    session = { map: {}, createdAt: now, lastActive: now };
     agentSessions.set(sid, session);
   }
   session.lastActive = now;
   return session.map;
 }
 
-function getSessionIgnoreList(sessionId = 'default') {
-  const sid = (sessionId || 'default').toString().trim() || 'default';
-  let session = agentSessions.get(sid);
-  if (!session) {
-    getSessionMap(sid);
-    session = agentSessions.get(sid);
-  }
-  return session.ignoreList;
-}
-
 // Global default sessionMap maintains 100% backward compatibility
 const sessionMap = getSessionMap('default');
-const sessionIgnoreList = getSessionIgnoreList('default');
 
 function reverseTokens(text, map) {
   if (!text || typeof text !== 'string' || !map) return text;
   let result = text;
-  // Descending length sort ensures longer tokens are restored before substrings
-  const sortedEntries = Object.entries(map).sort((a, b) => b[0].length - a[0].length);
-  for (const [token, original] of sortedEntries) {
+  for (const [token, original] of Object.entries(map)) {
     if (result.includes(token)) {
       result = result.replaceAll(token, original);
     }
   }
   return result;
 }
+
+// Volatile in-memory false positive ignore list (values excluded from future scrubs)
+const sessionIgnoreList = new Set();
 
 // ANSI terminal color helpers
 const colors = {
@@ -281,7 +271,7 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
 function formatAuditReceipt(telemetry, compact = false, wasTruncated = false, charLimit = 15000) {
   const isCompact = compact === true || process.env.PRIVACYSCRUBBER_COMPACT_RECEIPT === '1' || process.env.PRIVACYSCRUBBER_COMPACT_RECEIPT === 'true';
   const truncationLine = wasTruncated
-    ? `> * ⚠️ **Free Tier Limit:** Input truncated to ${charLimit.toLocaleString()} chars. Upgrade to PRO ($15/mo or $110 Lifetime) or Developer SDK ($199/mo): [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing)\n`
+    ? `> * ⚠️ **Free Tier Limit:** Input truncated to ${charLimit.toLocaleString()} chars. Upgrade to PRO ($15/mo or $110 Lifetime) or Developer SDK ($299/mo): [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing)\n`
     : '';
 
   if (isCompact) {
@@ -1156,11 +1146,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (name === "sanitize_text" || name === "scrub_text") {
       const { text, profile = "General", ignore_list, compact = false, session_id = "default" } = args || {};
       const currentSession = getSessionMap(session_id);
-      const currentIgnoreList = getSessionIgnoreList(session_id);
 
-      // Merge per-call ignore_list into persistent session ignore list
+      // Merge per-call ignore_list into persistent sessionIgnoreList
       if (Array.isArray(ignore_list)) {
-        ignore_list.forEach(v => { if (typeof v === 'string' && v.trim()) currentIgnoreList.add(v.trim()); });
+        ignore_list.forEach(v => { if (typeof v === 'string' && v.trim()) sessionIgnoreList.add(v.trim()); });
       }
       if (text === undefined || text === null) {
         return {
@@ -1206,7 +1195,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const { processedText, wasTruncated } = truncateIfFree(text, license.isPro, charLimit);
 
-      const { scrubbedText, newTokens } = performSanitization(processedText, finalProfile, currentIgnoreList, currentSession);
+      const { scrubbedText, newTokens } = performSanitization(processedText, finalProfile, sessionIgnoreList, currentSession);
       
       const telemetry = buildCisoAuditTelemetry(newTokens);
       const receiptMd = formatAuditReceipt(telemetry, compact, wasTruncated, charLimit);
@@ -1260,7 +1249,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     if (name === "mark_false_positive") {
-      const { token, session_id = 'default' } = args || {};
+      const { token } = args || {};
       if (!token || typeof token !== 'string') {
         return {
           isError: true,
@@ -1268,27 +1257,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      const targetSession = getSessionMap(session_id);
-      const targetIgnoreList = getSessionIgnoreList(session_id);
-      const original = targetSession[token];
+      const original = sessionMap[token];
       if (!original) {
         return {
           isError: true,
-          content: [{ type: "text", text: `Error: Token '${token}' not found in current session map. Available tokens: ${Object.keys(targetSession).join(', ') || '(empty session)'}` }]
+          content: [{ type: "text", text: `Error: Token '${token}' not found in current session map. Available tokens: ${Object.keys(sessionMap).join(', ') || '(empty session)'}` }]
         };
       }
 
-      // Add the original plaintext to the session ignore list
-      targetIgnoreList.add(original);
+      // Add the original plaintext to the ignore list
+      sessionIgnoreList.add(original);
       // Remove the token from the session map
-      delete targetSession[token];
+      delete sessionMap[token];
 
-      mcpLog(`${colors.yellow}🔖 [PrivacyScrubber] False Positive: '${token}' → '${original}' will be excluded from future scrubs in session '${session_id}'.${colors.reset}\n`);
+      mcpLog(`${colors.yellow}🔖 [PrivacyScrubber] False Positive: '${token}' → '${original}' will be excluded from future scrubs.${colors.reset}\n`);
 
       return {
         content: [{
           type: "text",
-          text: `✅ Marked '${token}' as false positive.\n\n**Restored value:** ${original}\n**Session ignore list size:** ${targetIgnoreList.size}\n\nThis value will be excluded from all future \`sanitize_text\` calls in session '${session_id}'.`
+          text: `✅ Marked '${token}' as false positive.\n\n**Restored value:** ${original}\n**Session ignore list size:** ${sessionIgnoreList.size}\n\nThis value will be excluded from all future \`sanitize_text\` calls in this session.`
         }]
       };
     }
@@ -1893,7 +1880,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           total_masked_tokens: telemetry.totalCount,
           entities_breakdown: telemetry.entities,
           zero_egress_verified: true,
-          verification_url: `https://privacyscrubber.com/features/audit-receipt/#verify?hash=${sessionHash.substring(0, 16)}`
+          verification_url: `https://privacyscrubber.com/features/audit-receipt/#verify?hash=${sessionHash.substring(0, 16)}`,
+          licensing_and_governance: {
+            teams_governance_url: "https://privacyscrubber.com/teams?src=mcp_compliance_json",
+            sdk_pipeline_url: "https://privacyscrubber.com/pricing?tier=sdk&src=mcp_compliance_json"
+          }
         };
 
         return {
@@ -1932,8 +1923,12 @@ ${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
 2. **HIPAA Safe Harbor (§164.514) / SOC 2 Type II:** All direct and indirect identifiers sanitized locally without cloud processor liability.
 3. **Cryptographic Verification:** Tamper-evident session verification hash: \`${sessionHash}\`
 
+### 🏢 Enterprise & Team Governance
+* **Team Governance & Encrypted Handoff:** Centrally deploy redaction rules, audit logs, and zero-knowledge session handoff with **PrivacyScrubber TEAMS** ($99/mo flat): [privacyscrubber.com/teams](https://privacyscrubber.com/teams?src=mcp_compliance_report)
+* **Backend Microservices & RAG Pipelines:** Integrate in-memory sanitization (<1ms) into your Node.js/Python infrastructure with **Developer SDK** ($299/mo): [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing?tier=sdk&src=mcp_compliance_report)
+
 *Certified Offline by PrivacyScrubber Engine v${MCP_VERSION}*  
-*Verify at: https://privacyscrubber.com/features/audit-receipt/*`;
+*Verify at: https://privacyscrubber.com/features/audit-receipt/* | ⭐ *Star on GitHub: https://github.com/moxno/privacyscrubber-mcp*`;
 
       return {
         content: [{ type: "text", text: mdReport }]
@@ -1987,10 +1982,9 @@ ${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
       const { processedText: cleanStdout, wasTruncated: truncOut } = truncateIfFree(stdout, license.isPro, charLimit);
       const { processedText: cleanStderr, wasTruncated: truncErr } = truncateIfFree(stderr, license.isPro, charLimit);
 
-      const targetIgnoreList = getSessionIgnoreList(session_id);
-      const resCommand = performSanitization(command, targetProfile, targetIgnoreList, targetSession);
-      const resStdout = performSanitization(cleanStdout, targetProfile, targetIgnoreList, targetSession);
-      const resStderr = performSanitization(cleanStderr, targetProfile, targetIgnoreList, targetSession);
+      const resCommand = performSanitization(command, targetProfile, sessionIgnoreList, targetSession);
+      const resStdout = performSanitization(cleanStdout, targetProfile, sessionIgnoreList, targetSession);
+      const resStderr = performSanitization(cleanStderr, targetProfile, sessionIgnoreList, targetSession);
 
       const allNewTokens = { ...resCommand.newTokens, ...resStdout.newTokens, ...resStderr.newTokens };
       const tokenCount = Object.keys(allNewTokens).length;
@@ -2362,11 +2356,6 @@ Before reading sensitive files, running terminal commands that may print credent
       }
 
       const sid = (session_id || 'default').toString().trim();
-      const sessionObj = agentSessions.get(sid);
-      if (sessionObj) {
-        if (sessionObj.map) Object.keys(sessionObj.map).forEach(k => delete sessionObj.map[k]);
-        if (sessionObj.ignoreList) sessionObj.ignoreList.clear();
-      }
       const existed = agentSessions.delete(sid);
       if (sid === 'default') {
         getSessionMap('default');
@@ -2557,7 +2546,11 @@ Before reading sensitive files, running terminal commands that may print credent
           total_masked_tokens: telemetry.totalCount,
           entities_breakdown: telemetry.entities,
           zero_egress_verified: true,
-          verification_url: `https://privacyscrubber.com/features/audit-receipt/#verify?hash=${sessionHash.substring(0, 16)}`
+          verification_url: `https://privacyscrubber.com/features/audit-receipt/#verify?hash=${sessionHash.substring(0, 16)}`,
+          licensing_and_governance: {
+            teams_governance_url: "https://privacyscrubber.com/teams?src=mcp_audit_json",
+            sdk_pipeline_url: "https://privacyscrubber.com/pricing?tier=sdk&src=mcp_audit_json"
+          }
         }, null, 2);
       } else if (format === "markdown") {
         const entitySummary = Object.entries(telemetry.entities)
@@ -2586,8 +2579,12 @@ ${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
 2. **HIPAA Safe Harbor (§164.514) / SOC 2 Type II:** All direct and indirect identifiers sanitized locally without cloud processor liability.
 3. **Cryptographic Verification:** Tamper-evident session verification hash: \`${sessionHash}\`
 
+### 🏢 Enterprise & Team Governance
+* **Team Governance & Encrypted Handoff:** Centrally deploy redaction rules, audit logs, and zero-knowledge session handoff with **PrivacyScrubber TEAMS** ($99/mo flat): [privacyscrubber.com/teams](https://privacyscrubber.com/teams?src=mcp_audit_export)
+* **Backend Microservices & RAG Pipelines:** Integrate in-memory sanitization (<1ms) into your Node.js/Python infrastructure with **Developer SDK** ($299/mo): [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing?tier=sdk&src=mcp_audit_export)
+
 *Certified Offline by PrivacyScrubber Engine v${MCP_VERSION}*  
-*Verify at: https://privacyscrubber.com/features/audit-receipt/*`;
+*Verify at: https://privacyscrubber.com/features/audit-receipt/* | ⭐ *Star on GitHub: https://github.com/moxno/privacyscrubber-mcp*`;
       } else {
         // Default: jsonl
         outputText = formatJsonlEvent(eventData);
@@ -2731,7 +2728,7 @@ function performSanitization(text, profile, ignoreList = null, customSessionMap 
 function truncateIfFree(text, isPro, charLimit = 15000) {
   if (!isPro && text.length > charLimit) {
     mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Input truncated to ${charLimit.toLocaleString()} characters (Free Tier Limit).${colors.reset}\n${colors.cyan}👉  Set PRIVACYSCRUBBER_KEY to your PRO license key for unlimited size: https://privacyscrubber.com/pricing${colors.reset}\n`);
-    const upsellNotice = `\n\n[PrivacyScrubber Free Tier: Payload truncated to ${charLimit.toLocaleString()} chars. Upgrade to PRO ($15/mo or $110 Lifetime) or Developer SDK ($199/mo) for unlimited payload processing: https://privacyscrubber.com/pricing]`;
+    const upsellNotice = `\n\n[PrivacyScrubber Free Tier: Payload truncated to ${charLimit.toLocaleString()} chars. Upgrade to PRO ($15/mo or $110 Lifetime) or Developer SDK ($299/mo) for unlimited payload processing: https://privacyscrubber.com/pricing]`;
     return { processedText: text.substring(0, charLimit), wasTruncated: true, upsellNotice, charLimit };
   }
   return { processedText: text, wasTruncated: false, upsellNotice: "", charLimit };
