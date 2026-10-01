@@ -437,7 +437,7 @@ Before reading sensitive files, running terminal commands that may print credent
   generatedFiles.forEach(f => console.log(`  - ${f}`));
   console.log(`\nSupport open-source Zero-Trust AI tools:`);
   console.log(`  GitHub Star: https://github.com/moxno/privacyscrubber-mcp (or: gh repo star moxno/privacyscrubber-mcp)`);
-  console.log(`  Backend SDK: npm install @privacyscrubber/sdk (https://privacyscrubber.com/pricing)`);
+  console.log(`  Backend SDK: npm install @privacyscrubber/sdk (https://privacyscrubber.com/sdk/)`);
   process.exit(0);
 }
 

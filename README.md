@@ -101,39 +101,52 @@ Microsoft Presidio is the Python standard, but deploying it in a Node.js / TypeS
 
 If you are building autonomous agents, RAG vector pipelines, or backend services rather than single-user IDE prompts, use `@privacyscrubber/sdk` to sanitize data in-memory:
 
-##### 1. LangChain.js & LCEL Pipelines
+##### 1. LangChain.js (LCEL & RAG Document Ingestion)
 ```typescript
 import { ChatOpenAI } from '@langchain/openai';
-import { createLangChainTransform } from '@privacyscrubber/sdk';
+import { createLangChainTransform, createDocumentTransformer } from '@privacyscrubber/sdk';
 
+// A. RAG Pre-Ingestion: sanitize documents before embedding into vector stores
+const docTransformer = createDocumentTransformer({
+  profile: 'General',
+  sensitiveMetadataKeys: ['account_owner', 'submitter_email'],
+  attachTelemetry: true
+});
+const sanitizedDocs = await docTransformer.transformDocuments(rawDocs);
+
+// B. LCEL Runtime Chains: sanitize prompts and restore responses in local RAM
 const transform = createLangChainTransform({ defaultProfile: 'Dev' });
-
-// 1. Sanitize in local RAM before LLM call:
 const { scrubbedText, tokenMap } = transform.preprocess(
   "Deploying database with user admin and pwd postgresql://user:SecretPass123@db.internal:5432/prod"
 );
-
-// 2. Outbound LLM receives only [DB_URI_1]
 const model = new ChatOpenAI({ model: 'gpt-4o' });
 const response = await model.invoke(scrubbedText);
-
-// 3. Inbound response is automatically restored with original secrets in local RAM:
 const finalOutput = transform.postprocess(response.content, tokenMap);
 ```
 
-##### 2. LlamaIndex.TS & RAG Vector Ingestion
+##### 2. LlamaIndex.TS & Universal Vector DB Ingestion (Chroma, Pinecone, Qdrant)
 ```typescript
-import { sanitize } from '@privacyscrubber/sdk';
-import { Document, VectorStoreIndex } from 'llamaindex';
+import { createVectorIngestionGuard, createLlamaIndexTransform } from '@privacyscrubber/sdk';
 
-// Strip customer PII and credentials BEFORE vector embedding into Pinecone / Chroma:
-const rawText = "Customer John Doe (SSN: 042-88-9124, email: john@example.com) requested refund.";
-const { scrubbedText, tokenMap, telemetry } = sanitize(rawText, { profile: 'Finance' });
+// Initialize in-memory Vector Ingestion Guard (<1ms per batch, zero network egress)
+const guard = createVectorIngestionGuard({
+  profile: 'Finance',
+  sensitiveMetadataKeys: ['contractor_email', 'billing_contact']
+});
 
-// Vector store indexes only syntax-preserving tokens [NAME_1], [SSN_1], [EMAIL_1]:
-const document = new Document({ text: scrubbedText, metadata: { psRiskLevel: telemetry.riskLevel } });
-const index = await VectorStoreIndex.fromDocuments([document]);
+// A. Sanitize Chroma columnar batches ({ ids, documents, metadatas })
+const cleanChroma = guard.sanitizeRecords(chromaBatch);
+
+// B. Sanitize Pinecone / Qdrant record arrays ({ id, text/payload, metadata })
+const cleanRecords = guard.sanitizeRecords(pineconeRecords);
+
+// C. Align search query tokens with sanitized vector space before embedding
+const { query: alignedQuery } = guard.sanitizeQuery("Search user john@example.com records");
+
+// D. Transparent Vector Store Proxy: auto-sanitizes on write, re-hydrates on query
+const guardedStore = guard.wrapVectorStore(nativeVectorStore);
 ```
+> Complete runnable recipes are included inside the npm package under `@privacyscrubber/sdk/examples/` (or run `npx @privacyscrubber/sdk`).
 
 ##### 3. CrewAI & Multi-Agent Swarms (Sidecar Mode / Python Interop)
 ```bash
@@ -163,7 +176,7 @@ const guardedTools = createGuardedTools(engine);
 ```
 
 > 🏢 **Enterprise & Production Licensing:**  
-> - **Self-Serve Developer SDK ($299/mo flat or $2,990/yr):** Unlimited internal backend nodes, microservices, and RAG pipelines. [Get SDK License](https://privacyscrubber.com/pricing?tier=sdk&utm_source=mcp_readme)  
+> - **Self-Serve Developer SDK ($299/mo flat or $2,990/yr):** Unlimited internal backend nodes, microservices, and RAG pipelines. [Developer SDK Specs & Pricing](https://privacyscrubber.com/sdk/?utm_source=mcp_readme)  
 > - **PrivacyScrubber TEAMS ($99/mo flat):** Unlimited team seats, centralized policy enforcement, encrypted session handoff. [Deploy TEAMS](https://privacyscrubber.com/teams?utm_source=mcp_readme)  
 > - **Enterprise Air-Gapped License:** On-premise source code distribution, zero-network custom models. [Contact Enterprise](https://privacyscrubber.com/enterprise?utm_source=mcp_readme)
 
@@ -377,7 +390,7 @@ Returns a visual dashboard showing your current tier, session request count, act
     ║  After purchase, add your key to MCP config:     ║
     ║  "PRIVACYSCRUBBER_KEY": "<your-key-here>"        ║
     ║  Full setup guide:                               ║
-    ║  https://privacyscrubber.com/features/mcp/?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server       ║
+    ║  https://privacyscrubber.com/pii-mcp/?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server          ║
     ╚══════════════════════════════════════════════════╝
     ```
 
@@ -497,7 +510,7 @@ Use the check_status tool from PrivacyScrubber MCP
 ## 🔗 Ecosystem & Production Architecture Guides
 
 - 🌐 **Web App**: [https://privacyscrubber.com](https://privacyscrubber.com)
-- 📦 **Node.js / TypeScript SDK**: [@privacyscrubber/sdk](https://www.npmjs.com/package/@privacyscrubber/sdk)
+- 📦 **Node.js / TypeScript SDK**: [@privacyscrubber/sdk](https://privacyscrubber.com/sdk/) ([npm](https://www.npmjs.com/package/@privacyscrubber/sdk))
 - 🧩 **Chrome Extension**: [Chrome Web Store](https://chromewebstore.google.com/detail/privacyscrubber-%E2%80%94-zero-tr/pimoejgefeilajmmbpghifdmhdlkgjol)
 - 🛡️ **RAG & Vector Databases**: [Sanitizing PII Before Vector DB Ingestion (Pinecone, Chroma, Qdrant)](https://privacyscrubber.com/solutions/dev/rag-vector-database-pii-masking/)
 - 🤖 **LangChain & LlamaIndex**: [In-Memory PII Middleware for AI Agent Pipelines](https://privacyscrubber.com/solutions/agents/langchain-llamaindex-pii-anonymizer/)

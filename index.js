@@ -288,7 +288,7 @@ function formatAuditReceipt(telemetry, compact = false, wasTruncated = false, ch
   }
 
   if (telemetry.totalCount === 0) {
-    return `\n\n> 🛡️ **PrivacyScrubber Audit Receipt**: CLEAN (ZERO PII DETECTED)\n${truncationLine}> * ⭐ **Star on GitHub:** [moxno/privacyscrubber-mcp](https://github.com/moxno/privacyscrubber-mcp) (\`gh repo star moxno/privacyscrubber-mcp\`) | **SDK & Enterprise:** [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing)\n`;
+    return `\n\n> 🛡️ **PrivacyScrubber Audit Receipt**: CLEAN (ZERO PII DETECTED)\n${truncationLine}> * ⭐ **Star on GitHub:** [moxno/privacyscrubber-mcp](https://github.com/moxno/privacyscrubber-mcp) (\`gh repo star moxno/privacyscrubber-mcp\`) | **SDK & Enterprise:** [privacyscrubber.com/sdk](https://privacyscrubber.com/sdk/)\n`;
   }
   
   const entitiesList = Object.entries(telemetry.entities)
@@ -297,7 +297,7 @@ function formatAuditReceipt(telemetry, compact = false, wasTruncated = false, ch
 
   const icon = telemetry.riskLevel.includes('CRITICAL') ? '🔴' : (telemetry.riskLevel.includes('MODERATE') ? '🟠' : '🟢');
 
-  return `\n\n> 🛡️ **PrivacyScrubber Audit Receipt**\n> * **Risk Level:** ${icon} ${telemetry.riskLevel}\n> * **Compliance Enforced:** ${telemetry.frameworksList.join(', ')}\n> * **Tokens Masked:** ${telemetry.totalCount} (${entitiesList})\n${truncationLine}> * ⭐ **Star on GitHub:** [moxno/privacyscrubber-mcp](https://github.com/moxno/privacyscrubber-mcp) (\`gh repo star moxno/privacyscrubber-mcp\`) | **SDK & Enterprise:** [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing)\n`;
+  return `\n\n> 🛡️ **PrivacyScrubber Audit Receipt**\n> * **Risk Level:** ${icon} ${telemetry.riskLevel}\n> * **Compliance Enforced:** ${telemetry.frameworksList.join(', ')}\n> * **Tokens Masked:** ${telemetry.totalCount} (${entitiesList})\n${truncationLine}> * ⭐ **Star on GitHub:** [moxno/privacyscrubber-mcp](https://github.com/moxno/privacyscrubber-mcp) (\`gh repo star moxno/privacyscrubber-mcp\`) | **SDK & Enterprise:** [privacyscrubber.com/sdk](https://privacyscrubber.com/sdk/)\n`;
 }
 
 function formatCefEvent(eventData = {}) {
@@ -1883,7 +1883,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           verification_url: `https://privacyscrubber.com/features/audit-receipt/#verify?hash=${sessionHash.substring(0, 16)}`,
           licensing_and_governance: {
             teams_governance_url: "https://privacyscrubber.com/teams?src=mcp_compliance_json",
-            sdk_pipeline_url: "https://privacyscrubber.com/pricing?tier=sdk&src=mcp_compliance_json"
+            sdk_pipeline_url: "https://privacyscrubber.com/sdk/?src=mcp_compliance_json"
           }
         };
 
@@ -1925,7 +1925,7 @@ ${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
 
 ### 🏢 Enterprise & Team Governance
 * **Team Governance & Encrypted Handoff:** Centrally deploy redaction rules, audit logs, and zero-knowledge session handoff with **PrivacyScrubber TEAMS** ($99/mo flat): [privacyscrubber.com/teams](https://privacyscrubber.com/teams?src=mcp_compliance_report)
-* **Backend Microservices & RAG Pipelines:** Integrate in-memory sanitization (<1ms) into your Node.js/Python infrastructure with **Developer SDK** ($299/mo): [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing?tier=sdk&src=mcp_compliance_report)
+* **Backend Microservices & RAG Pipelines:** Integrate in-memory sanitization (<1ms) into your Node.js/Python infrastructure with **Developer SDK** ($299/mo): [privacyscrubber.com/sdk](https://privacyscrubber.com/sdk/?src=mcp_compliance_report)
 
 *Certified Offline by PrivacyScrubber Engine v${MCP_VERSION}*  
 *Verify at: https://privacyscrubber.com/features/audit-receipt/* | ⭐ *Star on GitHub: https://github.com/moxno/privacyscrubber-mcp*`;
@@ -2549,7 +2549,7 @@ Before reading sensitive files, running terminal commands that may print credent
           verification_url: `https://privacyscrubber.com/features/audit-receipt/#verify?hash=${sessionHash.substring(0, 16)}`,
           licensing_and_governance: {
             teams_governance_url: "https://privacyscrubber.com/teams?src=mcp_audit_json",
-            sdk_pipeline_url: "https://privacyscrubber.com/pricing?tier=sdk&src=mcp_audit_json"
+            sdk_pipeline_url: "https://privacyscrubber.com/sdk/?src=mcp_audit_json"
           }
         }, null, 2);
       } else if (format === "markdown") {
@@ -2581,7 +2581,7 @@ ${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
 
 ### 🏢 Enterprise & Team Governance
 * **Team Governance & Encrypted Handoff:** Centrally deploy redaction rules, audit logs, and zero-knowledge session handoff with **PrivacyScrubber TEAMS** ($99/mo flat): [privacyscrubber.com/teams](https://privacyscrubber.com/teams?src=mcp_audit_export)
-* **Backend Microservices & RAG Pipelines:** Integrate in-memory sanitization (<1ms) into your Node.js/Python infrastructure with **Developer SDK** ($299/mo): [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing?tier=sdk&src=mcp_audit_export)
+* **Backend Microservices & RAG Pipelines:** Integrate in-memory sanitization (<1ms) into your Node.js/Python infrastructure with **Developer SDK** ($299/mo): [privacyscrubber.com/sdk](https://privacyscrubber.com/sdk/?src=mcp_audit_export)
 
 *Certified Offline by PrivacyScrubber Engine v${MCP_VERSION}*  
 *Verify at: https://privacyscrubber.com/features/audit-receipt/* | ⭐ *Star on GitHub: https://github.com/moxno/privacyscrubber-mcp*`;
@@ -2740,7 +2740,7 @@ server.connect(transport).then(() => {
   mcpLog(`${colors.greenBold}✅ PrivacyScrubber ZTDS MCP Server v${MCP_VERSION} started successfully.${colors.reset}\n`);
   mcpLog(`${colors.cyan}📦 Need programmatic in-code redaction? Try: npm install @privacyscrubber/sdk${colors.reset}\n`);
   mcpLog(`${colors.yellowBold}⭐ Star us on GitHub: https://github.com/moxno/privacyscrubber-mcp${colors.reset}\n`);
-  mcpLog(`${colors.cyan}👉 Developer SDK & Enterprise: https://privacyscrubber.com/pricing${colors.reset}\n`);
+  mcpLog(`${colors.cyan}👉 Developer SDK & Enterprise: https://privacyscrubber.com/sdk/${colors.reset}\n`);
 }).catch((error) => {
   console.error("Failed to connect MCP server transport:", error);
   process.exit(1);
