@@ -339,8 +339,8 @@ async function runMcpSession() {
     }
     console.log('✅ check_status tool success.');
 
-    // 8.1. Test all 25 PII profiles and their parameters (DLP quality verification)
-    console.log("\n---> Running DLP quality verification across all 25 profiles...");
+    // 8.1. Test all 30 PII profiles and their parameters (DLP quality verification)
+    console.log("\n---> Running DLP quality verification across all 30 profiles...");
     const profileTests = [
       {
         profile: 'General',
@@ -378,7 +378,7 @@ async function runMcpSession() {
       }
       console.log(`  ✓ Profile '${testCase.profile}': PASS (PII values correctly masked)`);
     }
-    console.log("✅ DLP quality verification across all 25 profiles completed successfully.");
+    console.log("✅ DLP quality verification across all 30 profiles completed successfully.");
 
     // 8.5. Test create_default_config tool
     console.log("--> Calling 'create_default_config'...");

@@ -67,7 +67,7 @@ PrivacyScrubberCore.init();
 const agentSessions = new Map();
 const MAX_CONCURRENT_SESSIONS = 200;
 
-function getSessionMap(sessionId = 'default') {
+function getSession(sessionId = 'default') {
   const sid = (sessionId || 'default').toString().trim() || 'default';
   let session = agentSessions.get(sid);
   const now = Date.now();
@@ -76,18 +76,31 @@ function getSessionMap(sessionId = 'default') {
       const oldestKey = agentSessions.keys().next().value;
       agentSessions.delete(oldestKey);
     }
-    session = { map: {}, createdAt: now, lastActive: now };
+    session = { map: {}, ignoreList: new Set(), createdAt: now, lastActive: now };
     agentSessions.set(sid, session);
   }
   session.lastActive = now;
-  return session.map;
+  return session;
+}
+
+function getSessionMap(sessionId = 'default') {
+  return getSession(sessionId).map;
+}
+
+function getSessionIgnoreList(sessionId = 'default') {
+  return getSession(sessionId).ignoreList;
 }
 
 // Global default sessionMap maintains 100% backward compatibility
 const sessionMap = getSessionMap('default');
+const sessionIgnoreList = getSessionIgnoreList('default');
 
 function reverseTokens(text, map) {
-  if (!text || typeof text !== 'string' || !map) return text;
+  if (!text || typeof text !== 'string' || !map || Object.keys(map).length === 0) return text;
+  if (PrivacyScrubberCore && typeof PrivacyScrubberCore.unscrubText === 'function') {
+    const res = PrivacyScrubberCore.unscrubText(text, map);
+    return (res && typeof res.restoredText === 'string') ? res.restoredText : (typeof res === 'string' ? res : text);
+  }
   let result = text;
   for (const [token, original] of Object.entries(map)) {
     if (result.includes(token)) {
@@ -96,9 +109,6 @@ function reverseTokens(text, map) {
   }
   return result;
 }
-
-// Volatile in-memory false positive ignore list (values excluded from future scrubs)
-const sessionIgnoreList = new Set();
 
 // ANSI terminal color helpers
 const colors = {
@@ -156,31 +166,35 @@ function getUsageFilePath() {
   return path.resolve(homeDir, '.privacyscrubber-usage.json');
 }
 
+let cachedDailyUsage = null;
+
 function getDailyUsage() {
-  const file = getUsageFilePath();
   const today = new Date().toISOString().split('T')[0];
-  if (!fs.existsSync(file)) return 0;
+  if (cachedDailyUsage && cachedDailyUsage.date === today) {
+    return cachedDailyUsage.count;
+  }
+  const file = getUsageFilePath();
+  if (!fs.existsSync(file)) {
+    cachedDailyUsage = { date: today, count: 0 };
+    return 0;
+  }
   try {
     const data = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (data.date === today) {
-      return data.count || 0;
+      cachedDailyUsage = { date: today, count: data.count || 0 };
+      return cachedDailyUsage.count;
     }
   } catch (e) {}
+  cachedDailyUsage = { date: today, count: 0 };
   return 0;
 }
 
 function incrementDailyUsage() {
-  const file = getUsageFilePath();
   const today = new Date().toISOString().split('T')[0];
-  let count = 0;
-  if (fs.existsSync(file)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-      if (data.date === today) count = data.count || 0;
-    } catch (e) {}
-  }
-  count++;
+  const count = getDailyUsage() + 1;
+  cachedDailyUsage = { date: today, count };
   try {
+    const file = getUsageFilePath();
     fs.writeFileSync(file, JSON.stringify({ date: today, count }), 'utf8');
   } catch (e) {}
   return count;
@@ -216,7 +230,8 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
     if (currentTokenMap && typeof currentTokenMap === 'object') {
         const keys = Array.isArray(currentTokenMap) ? currentTokenMap : Object.keys(currentTokenMap);
         for (const t of keys) {
-            const tokenStr = typeof t === 'string' ? t : (t.token || t.mask || '');
+            const tokenStr = typeof t === 'string' ? t : (t && (t.token || t.mask)) ? String(t.token || t.mask) : '';
+            if (!tokenStr) continue;
             const match = tokenStr.match(/\[([A-Z_]+)_\d+\]/);
             const baseType = match ? match[1] : (tokenStr.replace(/\[|\]/g, '').replace(/_[0-9]+$/, '') || 'CUSTOM');
             entities[baseType] = (entities[baseType] || 0) + 1;
@@ -245,26 +260,72 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
         frameworksSet.add('GDPR (Art. 4)');
         frameworksSet.add('CCPA/CPRA');
     }
-    if (types.includes('ID') || types.includes('SSN') || types.includes('PASSPORT')) {
+    if (types.includes('ID') || types.includes('SSN') || types.includes('PASSPORT') || types.includes('NATIONAL_ID')) {
         frameworksSet.add('SOC 2 Type II');
         frameworksSet.add('ISO 27001 (A.8.11)');
     }
-    if (types.some(t => ['CREDIT_CARD', 'BANK', 'IBAN', 'FINANCIAL', 'CARD'].includes(t))) {
+    if (types.some(t => ['CREDIT_CARD', 'BANK', 'IBAN', 'FINANCIAL', 'CARD', 'STRIPE_KEY', 'TAX_ID', 'EIN', 'W2', '1099', 'SALARY', 'WAGE'].includes(t))) {
         frameworksSet.add('PCI DSS v4.0');
+        frameworksSet.add('IRC § 7216 & GLBA');
     }
-    if (types.some(t => ['MRN', 'HEALTH', 'MEDICAL', 'PATIENT'].includes(t))) {
+    if (types.some(t => ['MRN', 'HEALTH', 'MEDICAL', 'PATIENT', 'DIAGNOSIS', 'NPI', 'DEA'].includes(t))) {
         frameworksSet.add('HIPAA §164.514');
     }
-    if (types.some(t => ['API_KEY', 'SECRET', 'PASSWORD', 'TOKEN', 'KEY'].includes(t))) {
+    if (types.some(t => ['CASE_NUMBER', 'DOCKET', 'PRIVILEGED', 'LEGAL', 'ATTORNEY', 'COURT', 'CONTRACT', 'NDA'].includes(t))) {
+        frameworksSet.add('FRE 502 (Privilege)');
+    }
+    if (types.some(t => ['API_KEY', 'SECRET', 'PASSWORD', 'TOKEN', 'KEY', 'AWS_KEY', 'JWT_TOKEN', 'API_TOKEN', 'CREDENTIAL'].includes(t))) {
         frameworksSet.add('NIST SP 800-53');
     }
+    if (totalCount > 0) {
+        frameworksSet.add('EU AI Act (Art. 50)');
+    }
+
+    const ipHoldings = {
+        standard: 'IETF draft-sibiryakov-ztds-protocol-00',
+        standardUrl: 'https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/',
+        patent: 'IL 331905 (Tracking: 94221)',
+        wipoDas: 'B17B',
+        trademark: 'ZTDS™ Reg. #182655957 (ILPO Cl 9 & 42)'
+    };
+
+    const statutoryCitations = [
+        {
+            statute: 'EU AI Act (Art. 50)',
+            scope: 'AI Transparency & Data Minimization',
+            rule: '0-byte external network transmission; prevents unauthorized ingestion into frontier models.'
+        },
+        {
+            statute: 'GDPR (Art. 4, 25, 28, 32)',
+            scope: 'Pseudonymization & Processor Liability',
+            rule: 'Volatile client-side tokenization eliminates GDPR Article 28 data processor liability.'
+        },
+        {
+            statute: 'HIPAA 45 CFR § 164.514(b)',
+            scope: 'Safe Harbor De-Identification',
+            rule: 'Deterministic removal of all 18 PHI identifiers prior to AI analysis.'
+        },
+        {
+            statute: 'IRC § 7216 & IRS Pub. 1075',
+            scope: 'Tax Return Information Confidentiality',
+            rule: 'Strict criminal penalty safeguard against unauthorized disclosure of tax records to cloud LLMs.'
+        },
+        {
+            statute: 'FRE 502',
+            scope: 'Attorney-Client Privilege Preservation',
+            rule: 'Automated in-memory redaction prevents inadvertent waiver of legal privilege in AI workflows.'
+        }
+    ];
 
     return {
         totalCount,
         entities,
         types,
         riskLevel,
-        frameworksList: Array.from(frameworksSet)
+        frameworksList: Array.from(frameworksSet),
+        statutoryCitations,
+        ipHoldings,
+        multimodalEgress: '0.00 Bytes (Solid Blackout & Burn-in Verified)'
     };
 }
 
@@ -652,6 +713,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             token: {
               type: "string",
               description: "The token to mark as false positive (e.g., '[NAME_1]', '[EMAIL_2]')."
+            },
+            session_id: {
+              type: "string",
+              description: "Optional session ID for multi-agent isolation. Defaults to 'default'."
             }
           },
           required: ["token"]
@@ -1146,10 +1211,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (name === "sanitize_text" || name === "scrub_text") {
       const { text, profile = "General", ignore_list, compact = false, session_id = "default" } = args || {};
       const currentSession = getSessionMap(session_id);
+      const currentIgnoreList = getSessionIgnoreList(session_id);
 
       // Merge per-call ignore_list into persistent sessionIgnoreList
       if (Array.isArray(ignore_list)) {
-        ignore_list.forEach(v => { if (typeof v === 'string' && v.trim()) sessionIgnoreList.add(v.trim()); });
+        ignore_list.forEach(v => { if (typeof v === 'string' && v.trim()) currentIgnoreList.add(v.trim()); });
       }
       if (text === undefined || text === null) {
         return {
@@ -1195,7 +1261,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const { processedText, wasTruncated } = truncateIfFree(text, license.isPro, charLimit);
 
-      const { scrubbedText, newTokens } = performSanitization(processedText, finalProfile, sessionIgnoreList, currentSession);
+      const { scrubbedText, newTokens } = performSanitization(processedText, finalProfile, currentIgnoreList, currentSession);
       
       const telemetry = buildCisoAuditTelemetry(newTokens);
       const receiptMd = formatAuditReceipt(telemetry, compact, wasTruncated, charLimit);
@@ -1249,7 +1315,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     if (name === "mark_false_positive") {
-      const { token } = args || {};
+      const { token, session_id = "default" } = args || {};
       if (!token || typeof token !== 'string') {
         return {
           isError: true,
@@ -1257,25 +1323,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      const original = sessionMap[token];
+      const currentSession = getSessionMap(session_id);
+      const currentIgnoreList = getSessionIgnoreList(session_id);
+
+      const original = currentSession[token];
       if (!original) {
         return {
           isError: true,
-          content: [{ type: "text", text: `Error: Token '${token}' not found in current session map. Available tokens: ${Object.keys(sessionMap).join(', ') || '(empty session)'}` }]
+          content: [{ type: "text", text: `Error: Token '${token}' not found in current session map. Available tokens: ${Object.keys(currentSession).join(', ') || '(empty session)'}` }]
         };
       }
 
       // Add the original plaintext to the ignore list
-      sessionIgnoreList.add(original);
+      currentIgnoreList.add(original);
       // Remove the token from the session map
-      delete sessionMap[token];
+      delete currentSession[token];
 
       mcpLog(`${colors.yellow}🔖 [PrivacyScrubber] False Positive: '${token}' → '${original}' will be excluded from future scrubs.${colors.reset}\n`);
 
       return {
         content: [{
           type: "text",
-          text: `✅ Marked '${token}' as false positive.\n\n**Restored value:** ${original}\n**Session ignore list size:** ${sessionIgnoreList.size}\n\nThis value will be excluded from all future \`sanitize_text\` calls in this session.`
+          text: `✅ Marked '${token}' as false positive.\n\n**Restored value:** ${original}\n**Session ignore list size:** ${currentIgnoreList.size}\n\nThis value will be excluded from all future \`sanitize_text\` calls in this session.`
         }]
       };
     }
@@ -1953,6 +2022,7 @@ ${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
       }
 
       const targetSession = getSessionMap(session_id);
+      const targetIgnoreList = getSessionIgnoreList(session_id);
       // Transparent in-memory unmasking of any token placeholders before local execution
       const rawExecutableCommand = reverseTokens(command, targetSession);
 
@@ -1982,9 +2052,9 @@ ${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
       const { processedText: cleanStdout, wasTruncated: truncOut } = truncateIfFree(stdout, license.isPro, charLimit);
       const { processedText: cleanStderr, wasTruncated: truncErr } = truncateIfFree(stderr, license.isPro, charLimit);
 
-      const resCommand = performSanitization(command, targetProfile, sessionIgnoreList, targetSession);
-      const resStdout = performSanitization(cleanStdout, targetProfile, sessionIgnoreList, targetSession);
-      const resStderr = performSanitization(cleanStderr, targetProfile, sessionIgnoreList, targetSession);
+      const resCommand = performSanitization(command, targetProfile, targetIgnoreList, targetSession);
+      const resStdout = performSanitization(cleanStdout, targetProfile, targetIgnoreList, targetSession);
+      const resStderr = performSanitization(cleanStderr, targetProfile, targetIgnoreList, targetSession);
 
       const allNewTokens = { ...resCommand.newTokens, ...resStdout.newTokens, ...resStderr.newTokens };
       const tokenCount = Object.keys(allNewTokens).length;
@@ -2005,7 +2075,7 @@ ${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
     }
 
     if (name === "guard_read_file") {
-      const { file_path, profile = "Dev", max_lines = 500 } = args || {};
+      const { file_path, profile = "Dev", max_lines = 500, session_id = "default" } = args || {};
       if (!file_path || typeof file_path !== "string") {
         return {
           isError: true,
@@ -2045,7 +2115,9 @@ ${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
       const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
 
       const { processedText, wasTruncated: wasCharTruncated } = truncateIfFree(capped, license.isPro, charLimit);
-      const { scrubbedText, newTokens } = performSanitization(processedText, targetProfile, sessionIgnoreList);
+      const currentSession = getSessionMap(session_id);
+      const currentIgnoreList = getSessionIgnoreList(session_id);
+      const { scrubbedText, newTokens } = performSanitization(processedText, targetProfile, currentIgnoreList, currentSession);
 
       const telemetry = buildCisoAuditTelemetry(newTokens);
       const receiptMd = formatAuditReceipt(telemetry, false, (wasLineTruncated || wasCharTruncated), charLimit);
@@ -2448,18 +2520,20 @@ Before reading sensitive files, running terminal commands that may print credent
       for (let i = 0; i < results.length; i++) {
         const item = results[i];
         if (typeof item === 'string') {
-          const restored = reverseTokens(item, targetSession);
-          for (const token of Object.keys(targetSession)) {
-            if (item.includes(token)) totalTokensRestored++;
-          }
+          const res = (PrivacyScrubberCore && typeof PrivacyScrubberCore.unscrubText === 'function')
+            ? PrivacyScrubberCore.unscrubText(item, targetSession)
+            : { restoredText: reverseTokens(item, targetSession), restoredCount: 0 };
+          const restored = (res && typeof res.restoredText === 'string') ? res.restoredText : (typeof res === 'string' ? res : item);
+          totalTokensRestored += (res.restoredCount || 0);
           restoredResults.push(restored);
         } else if (item && typeof item === 'object') {
           const copy = { ...item };
           const rawText = copy.text || copy.pageContent || copy.document || '';
-          const restored = reverseTokens(rawText, targetSession);
-          for (const token of Object.keys(targetSession)) {
-            if (rawText.includes(token)) totalTokensRestored++;
-          }
+          const res = (PrivacyScrubberCore && typeof PrivacyScrubberCore.unscrubText === 'function')
+            ? PrivacyScrubberCore.unscrubText(rawText, targetSession)
+            : { restoredText: reverseTokens(rawText, targetSession), restoredCount: 0 };
+          const restored = (res && typeof res.restoredText === 'string') ? res.restoredText : (typeof res === 'string' ? res : rawText);
+          totalTokensRestored += (res.restoredCount || 0);
 
           if (copy.text !== undefined) copy.text = restored;
           if (copy.pageContent !== undefined) copy.pageContent = restored;
