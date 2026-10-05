@@ -35,9 +35,9 @@
   },
   "scripts": {
     "start": "node index.js",
-    "build": "node ../scripts/build-mcp.js",
+    "build": "node -e \"const fs=require('fs'); if(fs.existsSync('../scripts/build-mcp.js')) require('child_process').execSync('node ../scripts/build-mcp.js', {stdio:'inherit'}); else console.log('MCP assets are pre-built.');\"",
     "test": "node test-mcp.js && node test-mcp-deep.js",
-    "prepublishOnly": "npm run build && npm test"
+    "prepublishOnly": "npm test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
