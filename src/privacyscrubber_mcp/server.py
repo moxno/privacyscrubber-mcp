@@ -264,14 +264,42 @@ def main():
     force_native = "--native" in sys.argv
     args = [a for a in sys.argv[1:] if a != "--native"]
 
+    if force_native:
+        run_native_mcp_loop()
+        return
+
+    # Check for local index.js (e.g. in cloned repository or adjacent root)
+    local_index = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "index.js"))
+    if os.path.exists(local_index):
+        node_bin = shutil.which("node")
+        if node_bin:
+            try:
+                os.execvp(node_bin, [node_bin, local_index] + args)
+            except Exception:
+                pass
+
     npx_bin = shutil.which("npx")
-    if npx_bin and not force_native:
-        cmd = [npx_bin, "-y", "@privacyscrubber/mcp-server"] + args
+    if npx_bin:
         try:
-            if hasattr(os, "execvp"):
-                os.execvp(npx_bin, cmd)
-            else:
-                proc = subprocess.run(cmd)
+            proc = subprocess.Popen(
+                [npx_bin, "-y", "@privacyscrubber/mcp-server"] + args,
+                stdin=sys.stdin,
+                stdout=sys.stdout,
+                stderr=sys.stderr
+            )
+            try:
+                ret = proc.wait(timeout=0.8)
+                if ret != 0:
+                    sys.stderr.write(
+                        f"[PrivacyScrubber MCP] npx exited with code {ret}. "
+                        f"Engaging native zero-dependency Python ZTDS engine.\n"
+                    )
+                    sys.stderr.flush()
+                    run_native_mcp_loop()
+                else:
+                    sys.exit(0)
+            except subprocess.TimeoutExpired:
+                proc.wait()
                 sys.exit(proc.returncode)
         except Exception:
             run_native_mcp_loop()
