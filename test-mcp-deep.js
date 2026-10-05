@@ -607,11 +607,12 @@ async function runMcpSession() {
     await sendRequest2('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
 
     // 2. Call sanitize_text with 'creative' profile and no key
-    console.log("--> Calling 'sanitize_text' with 'creative' profile on invalid key...");
+    // 2. Call sanitize_text with 'creative' profile and no key exceeding 5,000 trial quota
+    console.log("--> Calling 'sanitize_text' with 'creative' profile on invalid key (>5,000 chars)...");
     const bypassResponse = await sendRequest2('tools/call', {
       name: 'sanitize_text',
       arguments: {
-        text: 'This draft is EMBARGOED',
+        text: 'This draft is embargoed. ' + 'A'.repeat(5005),
         profile: 'creative'
       }
     });
@@ -622,17 +623,22 @@ async function runMcpSession() {
     const scrubbedText = content?.[0]?.text || "";
     
     console.log("<-- Server Stderr captured:", stderr2.trim());
-    console.log("<-- Scrubbed output text:", scrubbedText.trim());
+    console.log("<-- Scrubbed output text:", scrubbedText.substring(0, 100).trim());
 
     if (!stderr2.includes("Profile 'creative' active on Free Tier")) {
       throw new Error("Outer layer bypass check failed: did not output key lock warning to stderr.");
     }
-    
-    if (!scrubbedText.includes("EMBARGOED")) {
-      throw new Error("Core hardening failed: EMBARGOED was sanitized using creative rules on an invalid key!");
+    if (!stderr2.includes("Input truncated to 5,000 characters")) {
+      throw new Error("Trial quota truncation warning not found in stderr.");
+    }
+    if (!scrubbedText.includes("[SECRET_1]")) {
+      throw new Error("Expected creative trial quota to sanitize embargoed to [SECRET_1]");
+    }
+    if (!scrubbedText.includes("Input truncated to 5,000 chars")) {
+      throw new Error("Expected 5,000 char trial quota upsell note in audit receipt.");
     }
     
-    console.log("✅ Core hardening verified: advanced rules successfully blocked on invalid key.");
+    console.log("✅ Core trial quota verified: 5,000 char limit and warning enforced on Free Tier.");
 
     // 3. Test character limit truncation (Free tier)
     console.log("--> Calling 'sanitize_text' with 50,005 chars on invalid key...");
