@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "privacyscrubber-mcp"
+version = "2.3.2"
+description = "CISO-Approved Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Windsurf, and Claude Desktop"
+readme = "README.md"
+authors = [
+    { name = "Ilya Sibiryakov", email = "ilya@brandmeweb.com" }
+]
+license = { text = "MIT" }
+requires-python = ">=3.8"
+dependencies = []
+keywords = [
+    "mcp",
+    "model-context-protocol",
+    "pii",
+    "secrets",
+    "sanitizer",
+    "redaction",
+    "zero-trust",
+    "ztds",
+    "cursor",
+    "claude",
+    "windsurf"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence"
+]
+
+[project.urls]
+Homepage = "https://privacyscrubber.com"
+Documentation = "https://privacyscrubber.com/pii-mcp/"
+Repository = "https://github.com/moxno/privacyscrubber-mcp"
+Issues = "https://github.com/moxno/privacyscrubber-mcp/issues"
+
+[project.scripts]
+privacyscrubber-mcp = "privacyscrubber_mcp:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/privacyscrubber_mcp"]

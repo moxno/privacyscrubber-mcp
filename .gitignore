@@ -7,3 +7,8 @@ mcp-publisher
 qa-test-dir/
 temp-*
 privacyscrubber.json
+dist/
+build/
+*.egg-info/
+__pycache__/
+*.pyc

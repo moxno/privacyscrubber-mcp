@@ -64,7 +64,18 @@ Run the server directly without local installation:
 npx -y @privacyscrubber/mcp-server
 ```
 
-### 3. Programmatic Node.js / TypeScript SDK (Lightweight Presidio Alternative)
+### 3. Instant Run with UVX (Python / PyPI)
+Run the server directly inside Python agent workflows (CrewAI, LangChain, AutoGen, LlamaIndex):
+```bash
+uvx privacyscrubber-mcp
+```
+Or via pip:
+```bash
+pip install privacyscrubber-mcp
+privacyscrubber-mcp
+```
+
+### 4. Programmatic Node.js / TypeScript SDK (Lightweight Presidio Alternative)
 Need direct, in-memory zero-trust PII sanitization in your backend microservice, Next.js app, or RAG vector pipeline rather than an MCP server? Use our official zero-dependency SDK:
 
 ```bash
