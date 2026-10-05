@@ -114,9 +114,11 @@ function reverseTokens(text, map) {
 const colors = {
   yellowBold: '\x1b[1;33m',
   yellow: '\x1b[33m',
+  cyanBold: '\x1b[1;36m',
   cyan: '\x1b[36m',
   greenBold: '\x1b[1;32m',
   redBold: '\x1b[1;31m',
+  dim: '\x1b[2m',
   reset: '\x1b[0m'
 };
 
@@ -332,7 +334,7 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
 function formatAuditReceipt(telemetry, compact = false, wasTruncated = false, charLimit = 15000) {
   const isCompact = compact === true || process.env.PRIVACYSCRUBBER_COMPACT_RECEIPT === '1' || process.env.PRIVACYSCRUBBER_COMPACT_RECEIPT === 'true';
   const truncationLine = wasTruncated
-    ? `> * ⚠️ **Free Tier Limit:** Input truncated to ${charLimit.toLocaleString()} chars. Upgrade to PRO ($15/mo or $110 Lifetime) or Developer SDK ($299/mo): [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing)\n`
+    ? `> * **Notice:** Input truncated to ${charLimit.toLocaleString()} chars (Free Tier Limit). Upgrade to PRO ($15/mo or $110 Lifetime), TEAMS ($99/mo) or Developer SDK ($299/mo): [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing)\n`
     : '';
 
   if (isCompact) {
@@ -1256,7 +1258,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const charLimit = (isAdvanced && !isAutoElevated && !license.isPro) ? 5000 : 15000;
       if (isAdvanced && !license.isPro) {
-        mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char limit).${colors.reset}\n`);
+        mcpLog(`${colors.yellowBold}[PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char trial quota).${colors.reset}\n${colors.cyan}[Upgrade] Commercial TEAMS ($99/mo flat) & Developer SDK ($299/mo): https://privacyscrubber.com/pricing${colors.reset}\n`);
       }
 
       const { processedText, wasTruncated } = truncateIfFree(text, license.isPro, charLimit);
@@ -1425,7 +1427,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
           const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
           if (isAdvanced && !license.isPro) {
-            mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char limit).${colors.reset}\n`);
+            mcpLog(`${colors.yellowBold}[PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char trial quota).${colors.reset}\n${colors.cyan}[Upgrade] Commercial TEAMS ($99/mo flat) & Developer SDK ($299/mo): https://privacyscrubber.com/pricing${colors.reset}\n`);
           }
 
           const { processedText: processedContent, wasTruncated } = truncateIfFree(content, license.isPro, charLimit);
@@ -1578,7 +1580,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const charLimit = (isAdvanced && !isAutoElevated && !license.isPro) ? 5000 : 15000;
       if (isAdvanced && !license.isPro) {
-        mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char limit).${colors.reset}\n`);
+        mcpLog(`${colors.yellowBold}[PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char trial quota).${colors.reset}\n${colors.cyan}[Upgrade] Commercial TEAMS ($99/mo flat) & Developer SDK ($299/mo): https://privacyscrubber.com/pricing${colors.reset}\n`);
       }
 
       const { processedText: processedContent2, wasTruncated } = truncateIfFree(content, license.isPro, charLimit);
@@ -2801,7 +2803,7 @@ function performSanitization(text, profile, ignoreList = null, customSessionMap 
 
 function truncateIfFree(text, isPro, charLimit = 15000) {
   if (!isPro && text.length > charLimit) {
-    mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Input truncated to ${charLimit.toLocaleString()} characters (Free Tier Limit).${colors.reset}\n${colors.cyan}👉  Set PRIVACYSCRUBBER_KEY to your PRO license key for unlimited size: https://privacyscrubber.com/pricing${colors.reset}\n`);
+    mcpLog(`${colors.yellowBold}[PrivacyScrubber] Input truncated to ${charLimit.toLocaleString()} characters (Free Tier Limit).${colors.reset}\n${colors.cyan}[Upgrade] Set PRIVACYSCRUBBER_KEY to your PRO/TEAMS/SDK license key for unlimited throughput: https://privacyscrubber.com/pricing${colors.reset}\n`);
     const upsellNotice = `\n\n[PrivacyScrubber Free Tier: Payload truncated to ${charLimit.toLocaleString()} chars. Upgrade to PRO ($15/mo or $110 Lifetime) or Developer SDK ($299/mo) for unlimited payload processing: https://privacyscrubber.com/pricing]`;
     return { processedText: text.substring(0, charLimit), wasTruncated: true, upsellNotice, charLimit };
   }
@@ -2811,10 +2813,20 @@ function truncateIfFree(text, isPro, charLimit = 15000) {
 // Start the server transport
 const transport = new StdioServerTransport();
 server.connect(transport).then(() => {
-  mcpLog(`${colors.greenBold}✅ PrivacyScrubber ZTDS MCP Server v${MCP_VERSION} started successfully.${colors.reset}\n`);
-  mcpLog(`${colors.cyan}📦 Need programmatic in-code redaction? Try: npm install @privacyscrubber/sdk${colors.reset}\n`);
-  mcpLog(`${colors.yellowBold}⭐ Star us on GitHub: https://github.com/moxno/privacyscrubber-mcp${colors.reset}\n`);
-  mcpLog(`${colors.cyan}👉 Developer SDK & Enterprise: https://privacyscrubber.com/sdk/${colors.reset}\n`);
+  const license = checkLicenseStatus();
+  const tierName = (license.type || license.tier || 'PRO').toString().toUpperCase();
+  const licenseNotice = license.isPro
+    ? `${colors.greenBold}[License] ${tierName} Active (Unlimited Nodes & Profiles)${colors.reset}`
+    : `${colors.yellowBold}[Tier] Community Free (15,000 chars universal / 5,000 chars vertical quota)${colors.reset}`;
+
+  mcpLog(`\n${colors.cyanBold}======================================================================${colors.reset}\n`);
+  mcpLog(`${colors.greenBold}[PrivacyScrubber MCP v${MCP_VERSION}] Zero-Trust Data Sanitization Active${colors.reset}\n`);
+  mcpLog(`${colors.cyan}[Architecture] 100% Local In-Memory RAM | 0 Bytes Network Egress${colors.reset}\n`);
+  mcpLog(`${licenseNotice}\n`);
+  mcpLog(`${colors.dim}[Developer SDK] In-code headless redaction: npm install @privacyscrubber/sdk${colors.reset}\n`);
+  mcpLog(`${colors.dim}[TEAMS & Enterprise] Multi-seat governance & Air-gap: https://privacyscrubber.com/pricing${colors.reset}\n`);
+  mcpLog(`${colors.yellow}[GitHub] Public Server Repository: https://github.com/moxno/privacyscrubber-mcp${colors.reset}\n`);
+  mcpLog(`${colors.cyanBold}======================================================================${colors.reset}\n\n`);
 }).catch((error) => {
   console.error("Failed to connect MCP server transport:", error);
   process.exit(1);

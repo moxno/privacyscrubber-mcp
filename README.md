@@ -18,7 +18,7 @@
 [![There's An AI For That](https://img.shields.io/badge/There's_An_AI_For_That-Live-06b6d4.svg)](https://theresanaiforthat.com/ai/privacy-scrubber/)
 [![Security: 100% Local](https://img.shields.io/badge/Security-100%25%20Local-emerald)](https://privacyscrubber.com)
 [![Parity: 100% Core Match](https://img.shields.io/badge/Parity-100%25%20Core%20Match-blueviolet)](https://privacyscrubber.com)
-[![Patent Pending](https://img.shields.io/badge/Patent-Pending%20(ILPO%20331905)-06b6d4.svg)](https://privacyscrubber.com/patents/)
+[![Patent Pending](https://img.shields.io/badge/Patent-Pending%20(US%20%26%20Intl)-06b6d4.svg)](https://privacyscrubber.com/patents/)
 [![GitHub Stars](https://img.shields.io/github/stars/moxno/privacyscrubber-mcp?style=social)](https://github.com/moxno/privacyscrubber-mcp)
 
 **CISO-Approved Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Windsurf, and Claude Desktop.**
@@ -195,7 +195,7 @@ When AI IDEs (Cursor, Claude Desktop, Windsurf) connect to model providers, deve
    - **IETF Specification**: [draft-sibiryakov-ztds-protocol-01](https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/) — Revision 01 · 2026-09-23 · 13 pages
    - **CERN / Zenodo Foundation**: [DOI 10.5281/zenodo.22058770](https://doi.org/10.5281/zenodo.22058770)
    - **Center for Open Science (OSF)**: [DOI 10.17605/OSF.IO/5BYJF](https://doi.org/10.17605/OSF.IO/5BYJF)
-   - **Patent Pending**: Israel Patent Office Application `IL 331905` (WIPO DAS Code: `B17B`)
+   - **Patent Pending**: U.S. & International Patents Pending (Paris Convention / PCT Priority)
 
 ---
 
@@ -552,15 +552,15 @@ MIT © [Ilya Sibiryakov](https://privacyscrubber.com) (BrandMeWeb)
 
 ---
 
-## ⚖️ Intellectual Property & Virtual Patent Marking
+## ⚖️ Intellectual Property & Patent Disclosures
 
 The Zero-Trust Data Sanitization (ZTDS) architecture, in-memory deterministic tokenization, cryptographic session handoff, and stdio execution methods implemented in this package are proprietary technology of Ilya Sibiryakov (BrandMeWeb) and are protected under **Patent Pending** status:
 
-- **Patent Office:** State of Israel Ministry of Justice, Patent Office (ILPO)
-- **Application Number:** `331905` (Tracking ID: `94221`)
-- **Filing / Priority Date:** September 14, 2026 (Paris Convention Art. 4 & 35 U.S.C. § 119 Priority)
+- **Legal Status:** U.S. & International Patents Pending
+- **Priority Framework:** Paris Convention Art. 4 & 35 U.S.C. § 119 Priority (locked through September 14, 2027)
+- **Filing / Priority Date:** September 14, 2026
 - **Official Title:** *SYSTEM AND METHOD FOR CLIENT-SIDE ZERO-TRUST DATA SANITIZATION AND CRYPTOGRAPHIC SESSION HANDOFF IN ARTIFICIAL INTELLIGENCE WORKFLOWS*
-- **Virtual Patent Marking:** [privacyscrubber.com/patents/](https://privacyscrubber.com/patents/) in accordance with 35 U.S.C. § 287(a).
+- **Patent Disclosures Hub:** [privacyscrubber.com/patents/](https://privacyscrubber.com/patents/) (formal verification via counsel NDA).
 
 ### 🌐 Internet Engineering Task Force (IETF) Specification
 - **Specification Title:** *The Zero-Trust Data Sanitization (ZTDS) Protocol for Frontier Artificial Intelligence Ingestion*
