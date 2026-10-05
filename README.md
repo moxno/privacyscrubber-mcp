@@ -19,12 +19,20 @@
 [![Security: 100% Local](https://img.shields.io/badge/Security-100%25%20Local-emerald)](https://privacyscrubber.com)
 [![Parity: 100% Core Match](https://img.shields.io/badge/Parity-100%25%20Core%20Match-blueviolet)](https://privacyscrubber.com)
 [![Patent Pending](https://img.shields.io/badge/Patent-Pending%20(US%20%26%20Intl)-06b6d4.svg)](https://privacyscrubber.com/patents/)
+[![Developer SDK](https://img.shields.io/badge/Developer%20SDK-$299%2Fmo%20Flat-06b6d4.svg)](https://privacyscrubber.com/sdk/?utm_source=mcp_readme)
+[![TEAMS Plan](https://img.shields.io/badge/TEAMS-$99%2Fmo%20Flat-3b82f6.svg)](https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_readme)
 [![GitHub Stars](https://img.shields.io/github/stars/moxno/privacyscrubber-mcp?style=social)](https://github.com/moxno/privacyscrubber-mcp)
 
 **CISO-Approved Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Windsurf, and Claude Desktop.**
 Locally scrubs PII, secrets, credentials, and custom regex rules from files and text contexts before they reach remote LLM providers to prevent API leaks and ensure HIPAA/SOC 2 compliance at the developer endpoint.
 
-> ⭐ **Support Zero-Trust Open Source:** If PrivacyScrubber protects your API keys and code from leaks, please **[Star this repository](https://github.com/moxno/privacyscrubber-mcp)** or run `gh repo star moxno/privacyscrubber-mcp` in your terminal!
+> **Support Zero-Trust Open Source:** If PrivacyScrubber protects your API keys, source code, and developer credentials from model leaks, please **[Star this repository on GitHub](https://github.com/moxno/privacyscrubber-mcp)** or execute `gh repo star moxno/privacyscrubber-mcp`.
+
+> **Direct Commercial Licensing & Production Infrastructure:**  
+> Looking to automate zero-trust PII redaction inside backend microservices, ETL pipelines, or LangChain/LlamaIndex agents?  
+> - **Developer SDK ($299/mo flat or $2,990/yr):** Unlimited internal backend nodes, zero network egress, <1ms in-memory latency. **[Subscribe to Developer SDK](https://privacyscrubber.com/pricing?tier=sdk&utm_source=mcp_readme)** | **[Technical Specs](https://privacyscrubber.com/sdk/?utm_source=mcp_readme)**  
+> - **TEAMS ($99/mo flat):** Unlimited team seats across your entire domain with cryptographic P2P session handoff. **[Deploy TEAMS Plan](https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_readme)**  
+> - **PRO ($15/mo or $110 Lifetime):** Single-seat unlimited throughput across all 30 vertical profiles. **[Get PRO License](https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp_readme)**
 
 ---
 
@@ -176,10 +184,10 @@ const engine = new PrivacyScrubberEngine({ defaultProfile: 'Dev' });
 const guardedTools = createGuardedTools(engine);
 ```
 
-> 🏢 **Enterprise & Production Licensing:**  
-> - **Self-Serve Developer SDK ($299/mo flat or $2,990/yr):** Unlimited internal backend nodes, microservices, and RAG pipelines. [Developer SDK Specs & Pricing](https://privacyscrubber.com/sdk/?utm_source=mcp_readme)  
-> - **PrivacyScrubber TEAMS ($99/mo flat):** Unlimited team seats, centralized policy enforcement, encrypted session handoff. [Deploy TEAMS](https://privacyscrubber.com/teams?utm_source=mcp_readme)  
-> - **Enterprise Air-Gapped License:** On-premise source code distribution, zero-network custom models. [Contact Enterprise](https://privacyscrubber.com/enterprise?utm_source=mcp_readme)
+> **Enterprise & Production Licensing:**  
+> - **Self-Serve Developer SDK ($299/mo flat or $2,990/yr):** Unlimited internal backend nodes, microservices, and RAG pipelines. **[Subscribe to Developer SDK](https://privacyscrubber.com/pricing?tier=sdk&utm_source=mcp_readme)** | **[Developer SDK Specs](https://privacyscrubber.com/sdk/?utm_source=mcp_readme)**  
+> - **PrivacyScrubber TEAMS ($99/mo flat):** Unlimited team seats, centralized policy enforcement, encrypted session handoff. **[Deploy TEAMS Plan](https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_readme)**  
+> - **Enterprise Air-Gapped License:** On-premise source code distribution, zero-network custom models. **[Contact Enterprise](https://privacyscrubber.com/enterprise?utm_source=mcp_readme)**
 
 #### 🛡️ Architecture & Security Deep-Dive (Zero-Trust vs Cloud DLP)
 
@@ -427,19 +435,23 @@ Looking for real-time protection directly inside your web browser?
 
 By default, the server runs under the **Free Tier** (restricted to 15,000 characters per request and the basic `General` PII profile). To unlock 30 specialized engineering, medical, legal, and financial PII profiles, as well as team-wide custom rules, you can purchase a commercial license.
 
-### Feature Comparison
+### Commercial Plan & Feature Comparison
 
-| Feature | Free Tier | PRO Tier | TEAMS Tier |
-| :--- | :--- | :--- | :--- |
-| **Volatile Tokenization** | ✅ Yes | ✅ Yes | ✅ Yes |
-| **Standard PII Masking** | ✅ Yes | ✅ Yes | ✅ Yes |
-| **Max Character Length** | 15,000 chars | ♾️ Unlimited | ♾️ Unlimited |
-| **Industry Profiles** | General Only | 30 Profiles | 30 Profiles |
-| **Custom Regex Rules** | ❌ Locked | ♾️ Unlimited | ♾️ Unlimited |
-| **Team Rules Sync (GPO)** | ❌ No | ❌ No | ✅ Yes (Shared Link) |
-| **Licensing Cost** | $0 | **$110 Lifetime** | **$99/mo Flat Rate** |
+| Feature | Community Free | PRO Tier | TEAMS Tier | Developer SDK |
+| :--- | :--- | :--- | :--- | :--- |
+| **Execution Architecture** | Local Stdio RAM | Local Stdio RAM | Local Stdio RAM | In-Process Node/WASM |
+| **Volatile Tokenization** | Yes (RAM-only) | Yes (RAM-only) | Yes (RAM-only) | Yes (RAM-only) |
+| **Standard PII Masking** | Yes | Yes | Yes | Yes |
+| **Max Character Throughput** | 15,000 chars / call | Unlimited | Unlimited | Unlimited |
+| **30 Industry Profiles** | General Only (5k trial) | All 30 Profiles | All 30 Profiles | All 30 Profiles |
+| **Custom Regex Rules** | Locked | Unlimited | Unlimited | Unlimited |
+| **Team Rules Sync (GPO)** | No | No | Yes (Shared Link) | Yes (Configurable) |
+| **Microservice / RAG Export** | No | No | No | Yes (`@privacyscrubber/sdk`) |
+| **Subprocessor Liability** | 0 (Client-side) | 0 (Client-side) | 0 (Client-side) | 0 (In-Process Node/WASM) |
+| **Licensing Cost** | $0 | **$15/mo or $110 Lifetime** | **$99/mo Flat Rate** | **$299/mo or $2,990/yr** |
+| **Direct Activation** | Default included | [Acquire PRO](https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp_readme) | [Deploy TEAMS](https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_readme) | [Subscribe SDK](https://privacyscrubber.com/pricing?tier=sdk&utm_source=mcp_readme) |
 
-👉 **[Acquire a PRO / TEAMS License Key at privacyscrubber.com/pricing](https://privacyscrubber.com/pricing?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server)**
+👉 **[Acquire a Commercial License Key at privacyscrubber.com/pricing](https://privacyscrubber.com/pricing?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server)**
 
 ---
 
