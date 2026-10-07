@@ -218,7 +218,7 @@ function checkFreeTierLimit(isPro) {
   }
   
   if (count >= FREE_TIER_DAILY_LIMIT) {
-    mcpLog(`${colors.redBold}🚫  [PrivacyScrubber] Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Request BLOCKED.${colors.reset}\n${colors.cyan}👉  Get a PRO key for unlimited use: https://privacyscrubber.com/pricing${colors.reset}\n`);
+    mcpLog(`${colors.redBold}🚫  [PrivacyScrubber] Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Request BLOCKED.${colors.reset}\n${colors.cyan}👉  Get a PRO key for unlimited use: https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp&utm_medium=daily_limit&utm_campaign=pro_upgrade${colors.reset}\n`);
     return { blocked: true, count };
   }
   
@@ -286,8 +286,7 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
     const ipHoldings = {
         standard: 'IETF draft-sibiryakov-ztds-protocol-00',
         standardUrl: 'https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/',
-        patent: 'IL 331905 (Tracking: 94221)',
-        wipoDas: 'B17B',
+        patent: "U.S. & Int'l Patents Pending (Paris Convention Priority)",
         trademark: 'ZTDS™ Reg. #182655957 (ILPO Cl 9 & 42)'
     };
 
@@ -334,24 +333,24 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
 function formatAuditReceipt(telemetry, compact = false, wasTruncated = false, charLimit = 15000) {
   const isCompact = compact === true || process.env.PRIVACYSCRUBBER_COMPACT_RECEIPT === '1' || process.env.PRIVACYSCRUBBER_COMPACT_RECEIPT === 'true';
   const truncationLine = wasTruncated
-    ? `> * **Notice:** Input truncated to ${charLimit.toLocaleString()} chars (Free Tier Limit). Upgrade to PRO ($15/mo or $110 Lifetime), TEAMS ($99/mo) or Developer SDK ($299/mo): [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing)\n`
+    ? `> * **Notice:** Input truncated to ${charLimit.toLocaleString()} chars (Free Tier Limit). Upgrade to PRO ($15/mo or $110 Lifetime), TEAMS ($99/mo) or Developer SDK ($299/mo): [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp&utm_medium=truncation&utm_campaign=teams_upgrade)\n`
     : '';
 
   if (isCompact) {
     if (telemetry.totalCount === 0) {
       return wasTruncated
-        ? `\n\n> [ZTDS: CLEAN (ZERO PII DETECTED) | TRUNCATED (${charLimit.toLocaleString()} chars) | Upgrade: https://privacyscrubber.com/pricing]\n`
+        ? `\n\n> [ZTDS: CLEAN (ZERO PII DETECTED) | TRUNCATED (${charLimit.toLocaleString()} chars) | Upgrade: https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp&utm_medium=truncation_compact&utm_campaign=pro_upgrade]\n`
         : "\n\n> [ZTDS: CLEAN (ZERO PII DETECTED)]\n";
     }
     const entitiesList = Object.entries(telemetry.entities)
       .map(([type, count]) => `${count} ${type}`)
       .join(', ');
-    const truncNotice = wasTruncated ? ` | TRUNCATED (${charLimit.toLocaleString()} chars) | Upgrade: https://privacyscrubber.com/pricing` : '';
+    const truncNotice = wasTruncated ? ` | TRUNCATED (${charLimit.toLocaleString()} chars) | Upgrade: https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp&utm_medium=truncation_compact&utm_campaign=pro_upgrade` : '';
     return `\n\n> [ZTDS: ${telemetry.totalCount} masked (${entitiesList}) | Risk: ${telemetry.riskLevel} | Compliance: ${telemetry.frameworksList.join(', ')}${truncNotice}]\n`;
   }
 
   if (telemetry.totalCount === 0) {
-    return `\n\n> 🛡️ **PrivacyScrubber Audit Receipt**: CLEAN (ZERO PII DETECTED)\n${truncationLine}> * ⭐ **Star on GitHub:** [moxno/privacyscrubber-mcp](https://github.com/moxno/privacyscrubber-mcp) (\`gh repo star moxno/privacyscrubber-mcp\`) | **SDK & Enterprise:** [privacyscrubber.com/sdk](https://privacyscrubber.com/sdk/)\n`;
+    return `\n\n> 🛡️ **PrivacyScrubber Audit Receipt**: CLEAN (ZERO PII DETECTED)\n${truncationLine}> * ⭐ **Star on GitHub:** [moxno/privacyscrubber-mcp](https://github.com/moxno/privacyscrubber-mcp) (\`gh repo star moxno/privacyscrubber-mcp\`) | **SDK & Enterprise:** [privacyscrubber.com/sdk](https://privacyscrubber.com/sdk/?tier=sdk&utm_source=mcp&utm_medium=audit_receipt&utm_campaign=sdk_pipeline)\n`;
   }
   
   const entitiesList = Object.entries(telemetry.entities)
@@ -360,7 +359,7 @@ function formatAuditReceipt(telemetry, compact = false, wasTruncated = false, ch
 
   const icon = telemetry.riskLevel.includes('CRITICAL') ? '🔴' : (telemetry.riskLevel.includes('MODERATE') ? '🟠' : '🟢');
 
-  return `\n\n> 🛡️ **PrivacyScrubber Audit Receipt**\n> * **Risk Level:** ${icon} ${telemetry.riskLevel}\n> * **Compliance Enforced:** ${telemetry.frameworksList.join(', ')}\n> * **Tokens Masked:** ${telemetry.totalCount} (${entitiesList})\n${truncationLine}> * ⭐ **Star on GitHub:** [moxno/privacyscrubber-mcp](https://github.com/moxno/privacyscrubber-mcp) (\`gh repo star moxno/privacyscrubber-mcp\`) | **SDK & Enterprise:** [privacyscrubber.com/sdk](https://privacyscrubber.com/sdk/)\n`;
+  return `\n\n> 🛡️ **PrivacyScrubber Audit Receipt**\n> * **Risk Level:** ${icon} ${telemetry.riskLevel}\n> * **Compliance Enforced:** ${telemetry.frameworksList.join(', ')}\n> * **Tokens Masked:** ${telemetry.totalCount} (${entitiesList})\n${truncationLine}> * ⭐ **Star on GitHub:** [moxno/privacyscrubber-mcp](https://github.com/moxno/privacyscrubber-mcp) (\`gh repo star moxno/privacyscrubber-mcp\`) | **SDK & Enterprise:** [privacyscrubber.com/sdk](https://privacyscrubber.com/sdk/?tier=sdk&utm_source=mcp&utm_medium=audit_receipt&utm_campaign=sdk_pipeline)\n`;
 }
 
 function formatCefEvent(eventData = {}) {
@@ -471,6 +470,325 @@ function formatJsonlEvent(eventData = {}) {
   return JSON.stringify(record);
 }
 
+/**
+ * Generates an executive Procurement & ROI Memorandum for CISOs, DPOs, and Engineering leadership.
+ * Compares Cloud DLP TCO ($1.5k–$4k/mo) vs PrivacyScrubber TEAMS ($99/mo) / Developer SDK ($299/mo).
+ *
+ * @param {Object} [options]
+ * @param {'teams'|'sdk'|'both'} [options.targetTier='teams'] - Target license tier.
+ * @param {string} [options.appName] - Target system or project name.
+ * @param {string} [options.developer] - Requester name or team.
+ * @param {number} [options.teamSize=10] - Size of engineering team.
+ * @param {string} [options.estimatedVolume='50M - 500M characters/month'] - Projected token volume.
+ * @param {'markdown'|'text'} [options.format='markdown'] - Output format.
+ * @returns {string}
+ */
+export function generateProcurementMemo(options = {}) {
+  const {
+    targetTier = 'teams',
+    appName = 'Internal AI IDE Toolchain & Workflows',
+    developer = 'Engineering / AI Platform Team',
+    format = 'markdown',
+    teamSize = 10,
+    estimatedVolume = '50M - 500M characters/month'
+  } = options;
+
+  const normalizedTier = (targetTier || 'teams').toLowerCase();
+  const dateStr = new Date().toISOString().split('T')[0];
+
+  if (normalizedTier === 'sdk') {
+    if (format === 'text') {
+      return `MEMORANDUM: ADOPTION OF PRIVACYSCRUBBER DEVELOPER SDK (ZTDS STANDARD)
+
+TO: Chief Information Security Officer (CISO), Data Protection Officer (DPO), VP Engineering
+FROM: ${developer}
+DATE: ${dateStr}
+SUBJECT: Approval Request: Zero-Trust Data Sanitization (@privacyscrubber/sdk)
+TARGET SYSTEM: ${appName}
+ESTIMATED VOLUME: ${estimatedVolume}
+
+1. EXECUTIVE SUMMARY
+We propose standardizing on the PrivacyScrubber Developer SDK (@privacyscrubber/sdk) for in-memory Zero-Trust Data Sanitization across our AI ingestion pipelines. The SDK intercepts and redacts PII, regulatory identifiers, and cloud secrets locally in RAM before any prompt leaves our infrastructure.
+
+2. ZERO-TRUST ARCHITECTURAL INVARIANTS
+* Zero Network Egress: 100% local in-memory processing. Zero external API calls, zero telemetry egress, zero third-party sub-processors.
+* In-Memory Volatility: All masking maps remain in volatile process RAM and are discarded after request completion.
+* Sub-Millisecond Latency: Executes in <0.1ms per prompt in local RAM, eliminating latency overhead.
+
+3. COMPLIANCE & REGULATORY COVERAGE
+Pre-configured for 30 specialized industry profiles and compliance frameworks:
+* GDPR (Art. 4, 9, 32) & CCPA/CPRA: Ephemeral tokenization.
+* HIPAA (§164.514 Safe Harbor): MRNs, medical record codes, patient identifiers.
+* SOC 2 Type II & ISO 27001 (A.8.11): Zero persistent unencrypted PII.
+* PCI DSS v4.0: PAN, CVV, IBAN, bank ledger sanitization.
+* NIST SP 800-53: Cloud API keys, JWT tokens, AWS/Stripe secret leak protection.
+* EU AI Act (Art. 50): Data minimization and 0-byte external network transmission.
+
+4. TOTAL COST OF OWNERSHIP (TCO) COMPARISON
+* Cloud DLP Proxies (AWS Macie, GCP DLP, Nightfall):
+  - Cost: $1,500 - $4,000 / month (usage-based billing).
+  - Latency: +200ms - 400ms added network roundtrip per AI prompt.
+  - Sub-processor Risk: Requires vendor DPA, external network egress.
+* PrivacyScrubber Developer SDK:
+  - Cost: $299 / month flat (or $2,990 / year) for unlimited nodes, microservices, and prompts.
+  - Latency: <0.1ms (in-process RAM).
+  - Sub-processor Risk: Zero (pure in-memory software library).
+
+5. ACTION REQUESTED
+Approve commercial license upgrade for ${developer} (${teamSize} engineers, unlimited backend nodes):
+* License Tier: Developer SDK ($299/month flat or $2,990/year)
+* Direct Procurement & License Activation: https://privacyscrubber.com/pricing?tier=sdk&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=sdk_procurement
+* Enterprise / Invoicing Contact: enterprise@privacyscrubber.com
+`;
+    }
+
+    return `# Internal Memo: Adoption of PrivacyScrubber Developer SDK (ZTDS Standard)
+
+| **To** | Chief Information Security Officer (CISO), Data Protection Officer (DPO), VP Engineering |
+| :--- | :--- |
+| **From** | ${developer} |
+| **Date** | ${dateStr} |
+| **Subject** | Architectural Approval & License Procurement for Zero-Trust AI Sanitization |
+| **Target System** | ${appName} |
+| **Estimated Scope** | ~${teamSize} engineers / ${estimatedVolume} |
+
+---
+
+### 1. Executive Summary
+We recommend adopting the **PrivacyScrubber Developer SDK** (\`@privacyscrubber/sdk\`) to enforce **Zero-Trust Data Sanitization (ZTDS)** across all internal AI pipelines, LangChain agents, microservices, and developer toolchains.
+
+The SDK redacts PII, regulatory identifiers, and developer secrets **in-process before external API egress to OpenAI, Anthropic, or external LLM providers**, and deterministically restores original values upon response return.
+
+---
+
+### 2. Architectural Invariants (Zero-Trust Data Sanitization)
+* **Zero Remote Network Egress:** 100% of sanitization and token restoration executes in local Node.js process RAM. No prompt data or telemetry ever leaves our VPC/infrastructure.
+* **Ephemeral In-Memory Tokens:** Masking mappings (\`[EMAIL_1]\`, \`[NAME_1]\`, \`[SECRET_1]\`) are volatile and strictly scoped to request execution context.
+* **Ultra-Low Latency:** Micro-benchmarks verify <0.1ms execution overhead per prompt, compared to 200–400ms for network-based cloud DLP proxies.
+* **Full Reversibility:** Bidirectional round-trip reconstruction ensures downstream application logic receives intact responses without exposing sensitive data to model providers.
+
+---
+
+### 3. Compliance Framework Mapping
+The SDK enforces out-of-the-box sanitization matching mandatory compliance controls:
+* **GDPR (Regulation (EU) 2016/679) & CCPA/CPRA:** Eliminates cross-border PII transfer risk to third-party AI models.
+* **HIPAA (§164.514 Safe Harbor):** Automated scrubbing of Medical Record Numbers (MRNs), patient identifiers, and health insurance IDs.
+* **SOC 2 Type II & ISO 27001 (Control A.8.11):** Enforces data masking and prevents unauthorized logging of confidential client data.
+* **PCI DSS v4.0:** Sanitization of payment cards, IBANs, and financial ledger data.
+* **NIST SP 800-53:** DevOps secret interception for AWS keys, JWT tokens, database URIs, and private API keys.
+* **EU AI Act (Art. 50):** Data minimization and audit receipt verification.
+
+---
+
+### 4. Financial & Architectural Comparison (TCO)
+
+| Evaluation Factor | Traditional Cloud DLP (AWS/GCP/Nightfall) | PrivacyScrubber Developer SDK |
+| :--- | :--- | :--- |
+| **Pricing Model** | \$1,500 – \$4,000 / month (metered per GB/token) | **\$299 / month flat** (unlimited nodes & tokens) |
+| **Network Egress** | Requires outbound network calls to DLP vendor | **0 bytes** (100% local Node.js process memory) |
+| **Added Latency** | +200ms – +450ms network round-trip | **<0.1ms** (in-memory regular expressions) |
+| **Vendor Sub-processors** | Third-party cloud vendor added to vendor list | **None** (zero-network software library) |
+| **Deployment** | Complex API gateways and proxy configurations | \`npm install @privacyscrubber/sdk\` in 3 minutes |
+
+---
+
+### 5. Procurement Recommendation
+We request approval to acquire a **Developer SDK License** (\$299/month flat or \$2,990/year) to unlock unlimited throughput across all microservices and CI/CD pipelines.
+
+* **Direct Procurement Portal:** [https://privacyscrubber.com/pricing?tier=sdk&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=sdk_procurement](https://privacyscrubber.com/pricing?tier=sdk&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=sdk_procurement)
+* **Procurement / Invoicing Contact:** \`enterprise@privacyscrubber.com\`
+`;
+  }
+
+  if (normalizedTier === 'both') {
+    if (format === 'text') {
+      return `MEMORANDUM: ENTERPRISE ADOPTION OF PRIVACYSCRUBBER (TEAMS + DEVELOPER SDK)
+
+TO: Chief Information Security Officer (CISO), Data Protection Officer (DPO), VP Engineering
+FROM: ${developer}
+DATE: ${dateStr}
+SUBJECT: Approval Request: Comprehensive Zero-Trust Data Sanitization (TEAMS + SDK)
+TARGET SYSTEMS: AI IDEs (Cursor, Claude Desktop, Windsurf) + Backend AI Pipelines
+ESTIMATED VOLUME: ${estimatedVolume} across ~${teamSize} engineers
+
+1. EXECUTIVE SUMMARY
+We propose standardizing on PrivacyScrubber across our entire AI stack:
+1. PrivacyScrubber TEAMS ($99/mo flat): Secures developer AI IDEs (Cursor, Claude Desktop, Windsurf, Claude Code, Zed).
+2. PrivacyScrubber Developer SDK ($299/mo flat): In-memory sanitization for backend microservices, ETL, and RAG pipelines.
+Combined cost is $398/mo flat, completely replacing $4,000–$8,000/mo in legacy metered cloud DLP proxies with 0 network latency.
+
+2. ZERO-TRUST ARCHITECTURAL INVARIANTS
+* 100% Local In-Memory Processing: 0 bytes network egress, 0 third-party sub-processors.
+* In-Memory Token Mapping: Masking maps remain in volatile RAM.
+* Sub-Millisecond Execution: Eliminates latency overhead on developer IDEs and microservices.
+
+3. COMPLIANCE COVERAGE
+Pre-configured for 30 specialized industry profiles: GDPR, CCPA/CPRA, HIPAA Safe Harbor, SOC 2 Type II, PCI DSS v4.0, NIST SP 800-53, EU AI Act Art. 50.
+
+4. TOTAL COST OF OWNERSHIP (TCO) COMPARISON
+* Traditional Cloud DLP: $4,000 - $8,000 / month (metered usage + per-seat IDE licenses).
+* PrivacyScrubber Bundle (TEAMS + SDK): $398 / month flat (unlimited engineers + unlimited backend nodes).
+
+5. ACTION REQUESTED
+Approve enterprise commercial license activation ($398/month flat):
+* TEAMS Portal ($99/mo): https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=bundle_procurement
+* SDK Portal ($299/mo): https://privacyscrubber.com/pricing?tier=sdk&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=bundle_procurement
+* Enterprise Contact: enterprise@privacyscrubber.com
+`;
+    }
+
+    return `# Internal Memo: Enterprise Adoption of PrivacyScrubber (TEAMS + Developer SDK)
+
+| **To** | Chief Information Security Officer (CISO), Data Protection Officer (DPO), VP Engineering |
+| :--- | :--- |
+| **From** | ${developer} |
+| **Date** | ${dateStr} |
+| **Subject** | Comprehensive Approval: Zero-Trust AI Sanitization (IDE Agents + Backend Pipelines) |
+| **Target Systems** | ${appName} |
+| **Estimated Scope** | ~${teamSize} engineers / ${estimatedVolume} |
+
+---
+
+### 1. Executive Summary
+We recommend standardizing on **PrivacyScrubber** across our full technology stack to enforce **Zero-Trust Data Sanitization (ZTDS)**:
+1. **PrivacyScrubber TEAMS (\$99/month flat):** Secures all developer AI IDEs (Cursor, Claude Desktop, Windsurf, Claude Code, Zed) with unlimited seats.
+2. **PrivacyScrubber Developer SDK (\$299/month flat):** In-memory PII/secret scrubbing for backend microservices, ETL pipelines, and RAG vector databases.
+
+Combined TCO is **\$398/month flat**, replacing **\$4,000–\$8,000/month** in legacy metered cloud DLP tools while reducing latency to <0.1ms.
+
+---
+
+### 2. Architectural Invariants (Zero-Trust Data Sanitization)
+* **Zero Remote Network Egress:** 100% of sanitization executes in local process RAM (IDE developer machines and backend container VPCs).
+* **0 Bytes Third-Party Sub-processor Liability:** Eliminates GDPR Article 28 processor transfer risks.
+* **Deterministic Round-Trip Restoration:** Automatically detokenizes placeholders in response payloads.
+
+---
+
+### 3. Financial & Architectural Comparison (TCO)
+
+| Evaluation Metric | Enterprise Cloud DLP (Nightfall, AWS Macie, GCP DLP) | PrivacyScrubber Enterprise Bundle (TEAMS + SDK) |
+| :--- | :--- | :--- |
+| **Monthly Cost** | \$4,000 – \$8,000 / month (per-seat + usage metered) | **\$398 / month flat** (unlimited seats & nodes) |
+| **Network Egress** | Outbound traffic to third-party vendor clouds | **0 bytes** (100% volatile in-memory RAM) |
+| **Added Latency** | +200ms – +450ms network round-trip per prompt | **<0.1ms** (in-process regular expression engine) |
+| **Vendor Sub-processors** | Added to corporate DPA vendor roster | **None** (zero-network software libraries) |
+
+---
+
+### 4. Procurement Recommendation
+We request approval to activate the enterprise bundle:
+* **TEAMS License (\$99/mo flat):** [https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=bundle_procurement](https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=bundle_procurement)
+* **Developer SDK License (\$299/mo flat):** [https://privacyscrubber.com/pricing?tier=sdk&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=bundle_procurement](https://privacyscrubber.com/pricing?tier=sdk&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=bundle_procurement)
+* **Enterprise / Invoicing Contact:** \`enterprise@privacyscrubber.com\`
+`;
+  }
+
+  // Default: TEAMS ($99/mo flat)
+  if (format === 'text') {
+    return `MEMORANDUM: ADOPTION OF PRIVACYSCRUBBER TEAMS FOR AI IDES (ZTDS STANDARD)
+
+TO: Chief Information Security Officer (CISO), Data Protection Officer (DPO), VP Engineering
+FROM: ${developer}
+DATE: ${dateStr}
+SUBJECT: Approval Request: Zero-Trust AI IDE Protection & Team Governance (@privacyscrubber/mcp-server)
+TARGET SYSTEM: ${appName}
+ESTIMATED SCOPE: ~${teamSize} engineers / ${estimatedVolume}
+
+1. EXECUTIVE SUMMARY
+We propose standardizing on PrivacyScrubber TEAMS across our engineering organization for AI IDEs (Cursor, Claude Desktop, Windsurf, Claude Code, Zed, Copilot). PrivacyScrubber intercepts and scrubs proprietary source code, cloud credentials, database connection strings, and customer PII locally in developer RAM before any prompt leaves the developer's workstation.
+
+2. ZERO-TRUST ARCHITECTURAL INVARIANTS
+* 100% Local In-Memory Processing: 0 bytes network egress. All redaction runs directly in developer RAM via the MCP stdio protocol.
+* Bidirectional Round-Trip Detokenization: Restores authentic secrets locally in memory before showing the AI response to the developer.
+* In-Memory Volatility: All session token mappings remain in volatile process RAM and are discarded upon session close.
+* Zero Sub-Processor Risk: Eliminates third-party DLP data processor liability (GDPR Art. 28).
+
+3. COMPLIANCE & REGULATORY COVERAGE
+Pre-configured for 30 specialized industry profiles and compliance frameworks:
+* GDPR (Art. 4, 9, 32) & CCPA/CPRA: Ephemeral tokenization.
+* HIPAA (§164.514 Safe Harbor): MRNs, medical record codes, patient identifiers.
+* SOC 2 Type II & ISO 27001 (A.8.11): Zero persistent unencrypted PII.
+* PCI DSS v4.0: PAN, CVV, IBAN, bank ledger sanitization.
+* NIST SP 800-53: Cloud API keys, JWT tokens, AWS/Stripe secret leak protection.
+* EU AI Act (Art. 50): Data minimization and 0-byte external network transmission.
+
+4. TOTAL COST OF OWNERSHIP (TCO) COMPARISON
+* Per-Seat Enterprise DLP (Nightfall, Cyberhaven, AWS Macie):
+  - Cost: $30 - $60 / developer / month ($300 - $600/mo for 10 devs; $3,000/mo for 50 devs).
+  - Latency: +200ms - 400ms added network roundtrip per AI interaction.
+  - Sub-processor Risk: Requires vendor DPA, external network egress.
+* PrivacyScrubber TEAMS:
+  - Cost: $99 / month flat for the ENTIRE engineering team (unlimited seats and agents).
+  - Latency: <0.1ms (in-process RAM).
+  - Sub-processor Risk: Zero (pure local stdio MCP server).
+
+5. ACTION REQUESTED
+Approve commercial license upgrade for ${developer} (~${teamSize} engineers, unlimited seats):
+* License Tier: PrivacyScrubber TEAMS ($99/month flat)
+* Direct Procurement & License Activation: https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=teams_procurement
+* Enterprise / Invoicing Contact: enterprise@privacyscrubber.com
+`;
+  }
+
+  return `# Internal Memo: Adoption of PrivacyScrubber TEAMS for AI IDEs (ZTDS Standard)
+
+| **To** | Chief Information Security Officer (CISO), Data Protection Officer (DPO), VP Engineering |
+| :--- | :--- |
+| **From** | ${developer} |
+| **Date** | ${dateStr} |
+| **Subject** | Architectural Approval & License Procurement for Zero-Trust AI IDE Protection |
+| **Target System** | ${appName} |
+| **Estimated Scope** | ~${teamSize} engineers / ${estimatedVolume} |
+
+---
+
+### 1. Executive Summary
+We recommend adopting **PrivacyScrubber TEAMS** (\`@privacyscrubber/mcp-server\`) to enforce **Zero-Trust Data Sanitization (ZTDS)** across all developer AI IDEs (Cursor, Claude Desktop, Windsurf, Claude Code, Zed, Copilot).
+
+PrivacyScrubber intercepts and scrubs proprietary source code, cloud credentials (AWS, JWT, Stripe), database connection strings, and customer PII **locally in developer RAM before external API transmission to OpenAI, Anthropic, or model providers**, and deterministically restores authentic values upon response return.
+
+---
+
+### 2. Architectural Invariants (Zero-Trust Data Sanitization)
+* **Zero Remote Network Egress:** 100% of sanitization and token restoration executes in local developer workstation RAM via the MCP stdio protocol. No code or credentials ever leave our machines.
+* **Ephemeral In-Memory Tokens:** Masking mappings (\`[EMAIL_1]\`, \`[NAME_1]\`, \`[SECRET_1]\`) are volatile and strictly scoped to request execution context.
+* **Sub-Millisecond Execution:** Micro-benchmarks verify <0.1ms execution overhead per prompt, completely eliminating latency impact on developer flow.
+* **Zero Sub-processor Overhead:** Operates with 0 bytes outbound network traffic, eliminating GDPR Article 28 data processor liability.
+
+---
+
+### 3. Compliance Framework Mapping
+PrivacyScrubber enforces out-of-the-box sanitization matching mandatory compliance controls:
+* **GDPR (Regulation (EU) 2016/679) & CCPA/CPRA:** Eliminates cross-border PII transfer risk to third-party AI models.
+* **HIPAA (§164.514 Safe Harbor):** Automated scrubbing of Medical Record Numbers (MRNs), patient identifiers, and health insurance IDs.
+* **SOC 2 Type II & ISO 27001 (Control A.8.11):** Enforces data masking and prevents unauthorized logging of confidential client data.
+* **PCI DSS v4.0:** Sanitization of payment cards, IBANs, and financial ledger data.
+* **NIST SP 800-53:** DevOps secret interception for AWS keys, JWT tokens, database URIs, and private API keys.
+* **EU AI Act (Art. 50):** Data minimization and audit receipt verification.
+
+---
+
+### 4. Financial & Architectural Comparison (TCO)
+
+| Evaluation Factor | Traditional Per-Seat DLP (Nightfall, Cyberhaven) | PrivacyScrubber TEAMS |
+| :--- | :--- | :--- |
+| **Pricing Model** | \$30 – \$60 / user / month (\$300–\$600/mo for 10 devs) | **\$99 / month flat** (unlimited seats & agents) |
+| **Network Egress** | Outbound network calls to vendor cloud inspection proxy | **0 bytes** (100% local workstation RAM) |
+| **Added Latency** | +200ms – +450ms network round-trip | **<0.1ms** (in-memory regular expressions) |
+| **Vendor Sub-processors** | Third-party cloud vendor added to vendor list | **None** (100% local stdio software) |
+| **Deployment** | Complex enterprise proxy configuration | \`npx @privacyscrubber/mcp-server init\` in 30 seconds |
+
+---
+
+### 5. Procurement Recommendation
+We request approval to acquire a **PrivacyScrubber TEAMS License** (\$99/month flat) to unlock centralized governance and unlimited protection for our engineering team.
+
+* **Direct Procurement Portal:** [https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=teams_procurement](https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=teams_procurement)
+* **Procurement / Invoicing Contact:** \`enterprise@privacyscrubber.com\`
+`;
+}
+
 // Create the MCP server
 const server = new Server(
   {
@@ -536,6 +854,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: "array",
               items: { type: "string" },
               description: "Optional list of plaintext values to skip during detection (false positives from previous scrubs). These values will also be persisted in the session ignore list for all future calls."
+            },
+            session_id: {
+              type: "string",
+              description: "Optional session ID for multi-agent isolation (e.g. Cursor task vs Claude Desktop). Defaults to 'default'."
             }
           },
           required: ["text"]
@@ -558,6 +880,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             compact: {
               type: "boolean",
               description: "Optional. Compact 1-line audit summary."
+            },
+            ignore_list: {
+              type: "array",
+              items: { type: "string" },
+              description: "Optional list of plaintext values to skip during detection."
+            },
+            session_id: {
+              type: "string",
+              description: "Optional session ID for multi-agent isolation. Defaults to 'default'."
             }
           },
           required: ["text"]
@@ -572,6 +903,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             text: {
               type: "string",
               description: "The AI generated response containing placeholders to restore."
+            },
+            session_id: {
+              type: "string",
+              description: "Optional session ID matching the sanitize_text call for multi-agent isolation. Defaults to 'default'."
             }
           },
           required: ["text"]
@@ -594,6 +929,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             compact: {
               type: "boolean",
               description: "Optional. Compact 1-line audit summary."
+            },
+            session_id: {
+              type: "string",
+              description: "Optional session ID for multi-agent isolation. Defaults to 'default'."
             }
           },
           required: ["file_path"]
@@ -616,6 +955,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             compact: {
               type: "boolean",
               description: "Optional. Compact 1-line audit summary."
+            },
+            session_id: {
+              type: "string",
+              description: "Optional session ID for multi-agent isolation. Defaults to 'default'."
             }
           },
           required: ["file_path"]
@@ -798,6 +1141,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             profile: {
               type: "string",
               description: "Detection profile. Defaults to 'Dev'."
+            },
+            session_id: {
+              type: "string",
+              description: "Optional session ID for multi-agent isolation. Defaults to 'default'."
             }
           },
           required: []
@@ -997,6 +1344,42 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               description: "Optional raw text to sanitize and include in the exported audit log event."
             }
           }
+        }
+      },
+      {
+        name: "generate_procurement_memo",
+        description: "Zero-Trust Enterprise Procurement: Generates an executive-ready Procurement & ROI Memorandum for Chief Information Security Officers (CISO), Data Protection Officers (DPO), and VP of Engineering. Compares TCO of traditional Cloud DLP ($1.5k–$4k/mo) vs PrivacyScrubber TEAMS ($99/mo flat) or Developer SDK ($299/mo flat), citing statutory frameworks (GDPR Art. 4/28, HIPAA §164.514, SOC 2 Type II, PCI DSS v4.0, NIST SP 800-53, EU AI Act Art. 50).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            target_tier: {
+              type: "string",
+              enum: ["teams", "sdk", "both"],
+              description: "Target license tier: 'teams' ($99/mo flat, for Cursor/Claude/Windsurf/IDE agents), 'sdk' ($299/mo flat, for backend microservices/RAG pipelines), or 'both'. Defaults to 'teams'."
+            },
+            app_name: {
+              type: "string",
+              description: "Target project, repository, or system name (e.g. 'Engineering AI Toolchain & Autonomous Agents'). Defaults to 'Internal AI IDE Toolchain & Workflows'."
+            },
+            developer: {
+              type: "string",
+              description: "Requester name, role, or team (e.g. 'Engineering Platform Team'). Defaults to 'Engineering / AI Platform Team'."
+            },
+            team_size: {
+              type: "number",
+              description: "Size of engineering team / seats. Defaults to 10."
+            },
+            estimated_volume: {
+              type: "string",
+              description: "Projected prompt or token volume. Defaults to '50M - 500M characters/month'."
+            },
+            format: {
+              type: "string",
+              enum: ["markdown", "text"],
+              description: "Output format: 'markdown' (default) or 'text'."
+            }
+          },
+          required: []
         }
       }
     ]
@@ -1252,13 +1635,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (limitStatus.blocked) {
         return {
           isError: true,
-          content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Please set your PRO license key to continue. Get a key at: https://privacyscrubber.com/pricing` }]
+          content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Please set your PRO license key to continue. Get a key at: https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp&utm_medium=daily_limit&utm_campaign=pro_upgrade` }]
         };
       }
 
       const charLimit = (isAdvanced && !isAutoElevated && !license.isPro) ? 5000 : 15000;
       if (isAdvanced && !license.isPro) {
-        mcpLog(`${colors.yellowBold}[PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char trial quota).${colors.reset}\n${colors.cyan}[Upgrade] Commercial TEAMS ($99/mo flat) & Developer SDK ($299/mo): https://privacyscrubber.com/pricing${colors.reset}\n`);
+        mcpLog(`${colors.yellowBold}[PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char trial quota).${colors.reset}\n${colors.cyan}[Upgrade] Commercial TEAMS ($99/mo flat) & Developer SDK ($299/mo): https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp&utm_medium=profile_quota&utm_campaign=teams_upgrade${colors.reset}\n`);
       }
 
       const { processedText, wasTruncated } = truncateIfFree(text, license.isPro, charLimit);
@@ -1364,7 +1747,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           ]
         };
       }
-      const { profile = "General", compact = false } = args;
+      const { profile = "General", compact = false, session_id = "default" } = args || {};
+      const targetSession = getSessionMap(session_id);
+      const targetIgnoreList = getSessionIgnoreList(session_id);
       const filePath = rawPath;
       
       const resolvedPath = path.resolve(filePath);
@@ -1421,18 +1806,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           if (limitStatus.blocked) {
             return {
               isError: true,
-              content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Please set your PRO license key to continue. Get a key at: https://privacyscrubber.com/pricing` }]
+              content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Please set your PRO license key to continue. Get a key at: https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp&utm_medium=daily_limit&utm_campaign=pro_upgrade` }]
             };
           }
 
           const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
           if (isAdvanced && !license.isPro) {
-            mcpLog(`${colors.yellowBold}[PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char trial quota).${colors.reset}\n${colors.cyan}[Upgrade] Commercial TEAMS ($99/mo flat) & Developer SDK ($299/mo): https://privacyscrubber.com/pricing${colors.reset}\n`);
+            mcpLog(`${colors.yellowBold}[PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char trial quota).${colors.reset}\n${colors.cyan}[Upgrade] Commercial TEAMS ($99/mo flat) & Developer SDK ($299/mo): https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp&utm_medium=profile_quota&utm_campaign=teams_upgrade${colors.reset}\n`);
           }
 
           const { processedText: processedContent, wasTruncated } = truncateIfFree(content, license.isPro, charLimit);
 
-          const sanitized = performSanitization(processedContent, finalProfile, sessionIgnoreList);
+          const sanitized = performSanitization(processedContent, finalProfile, targetIgnoreList, targetSession);
           const { scrubbedText, newTokens } = sanitized;
           const telemetry = buildCisoAuditTelemetry(newTokens);
           const receiptMarkdown = formatAuditReceipt(telemetry, compact, wasTruncated, charLimit);
@@ -1464,7 +1849,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             content: [
               {
                 type: "text",
-                text: `🔒 [PrivacyScrubber PRO] Sanitizing ${isPdf ? 'PDF' : 'Excel/XLSX'} files is a PRO feature.\n\n👉 Set your PRIVACYSCRUBBER_KEY environment variable to a valid PRO license key.\n👉 Upgrade at: https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal\n👉 Alternatively, sanitize plain text, code, CSV, and DOCX files for free.`
+                text: `🔒 [PrivacyScrubber PRO] Sanitizing ${isPdf ? 'PDF' : 'Excel/XLSX'} files is a PRO feature.\n\n👉 Set your PRIVACYSCRUBBER_KEY environment variable to a valid PRO license key.\n👉 Upgrade at: https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp_cli&utm_medium=file_type&utm_campaign=pro_upgrade\n👉 Alternatively, sanitize plain text, code, CSV, and DOCX files for free.`
               }
             ]
           };
@@ -1478,7 +1863,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const targetProfile = profile.trim();
             let finalProfile = targetProfile;
 
-            const sanitized = performSanitization(content, finalProfile, sessionIgnoreList);
+            const sanitized = performSanitization(content, finalProfile, targetIgnoreList, targetSession);
             const { scrubbedText, newTokens } = sanitized;
             const telemetry = buildCisoAuditTelemetry(newTokens);
             const receiptMarkdown = formatAuditReceipt(telemetry, compact);
@@ -1511,7 +1896,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const targetProfile = profile.trim();
             let finalProfile = targetProfile;
 
-            const sanitized = performSanitization(content, finalProfile, sessionIgnoreList);
+            const sanitized = performSanitization(content, finalProfile, targetIgnoreList, targetSession);
             const { scrubbedText, newTokens } = sanitized;
             const telemetry = buildCisoAuditTelemetry(newTokens);
             const receiptMarkdown = formatAuditReceipt(telemetry, compact);
@@ -1574,18 +1959,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (limitStatus.blocked) {
         return {
           isError: true,
-          content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Please set your PRO license key to continue. Get a key at: https://privacyscrubber.com/pricing` }]
+          content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Please set your PRO license key to continue. Get a key at: https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp&utm_medium=daily_limit&utm_campaign=pro_upgrade` }]
         };
       }
 
       const charLimit = (isAdvanced && !isAutoElevated && !license.isPro) ? 5000 : 15000;
       if (isAdvanced && !license.isPro) {
-        mcpLog(`${colors.yellowBold}[PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char trial quota).${colors.reset}\n${colors.cyan}[Upgrade] Commercial TEAMS ($99/mo flat) & Developer SDK ($299/mo): https://privacyscrubber.com/pricing${colors.reset}\n`);
+        mcpLog(`${colors.yellowBold}[PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char trial quota).${colors.reset}\n${colors.cyan}[Upgrade] Commercial TEAMS ($99/mo flat) & Developer SDK ($299/mo): https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp&utm_medium=profile_quota&utm_campaign=teams_upgrade${colors.reset}\n`);
       }
 
       const { processedText: processedContent2, wasTruncated } = truncateIfFree(content, license.isPro, charLimit);
 
-      const { scrubbedText, newTokens } = performSanitization(processedContent2, finalProfile, sessionIgnoreList);
+      const { scrubbedText, newTokens } = performSanitization(processedContent2, finalProfile, targetIgnoreList, targetSession);
       const telemetry = buildCisoAuditTelemetry(newTokens);
       const receiptMd = formatAuditReceipt(telemetry, compact, wasTruncated, charLimit);
 
@@ -1622,7 +2007,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (limitStatus.blocked) {
           return {
             isError: true,
-            content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Please set your PRO license key to continue. Get a key at: https://privacyscrubber.com/pricing` }]
+            content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Please set your PRO license key to continue. Get a key at: https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp&utm_medium=daily_limit&utm_campaign=pro_upgrade` }]
           };
         }
         const localSessionMap = {};
@@ -1661,7 +2046,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
 
         if (isSecretLeak) {
-          return { isError: true, content: [{ type: "text", text: `Error: API Key or Secret detected. Sanitization of raw secrets requires PRO Profile. Upgrade at https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal` }] };
+          return { isError: true, content: [{ type: "text", text: `Error: API Key or Secret detected. Sanitization of raw secrets requires PRO Profile. Upgrade at https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp_cli&utm_medium=secrets_detected&utm_campaign=pro_upgrade` }] };
         }
 
         if (!no_backup) {
@@ -1794,12 +2179,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         lines.push(
           '║  ✅ PRO is active. All features unlocked.         ║',
           '║     To regenerate your key or manage billing:     ║',
-          '║     https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal           ║'
+          '║     https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp_status&utm_medium=terminal║'
         );
       } else {
         lines.push(
           '║  💳 Upgrade to PRO — $110 Lifetime                ║',
-          '║     https://privacyscrubber.com/pricing?utm_source=mcp_cli&utm_medium=terminal           ║',
+          '║     https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp_status&utm_medium=terminal║',
           '╠══════════════════════════════════════════════════╣',
           '║  After purchase, add your key to MCP config:     ║',
           '║                                                  ║',
@@ -1861,7 +2246,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (limitStatus.blocked) {
         return {
           isError: true,
-          content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Please set your PRO license key to continue. Get a key at: https://privacyscrubber.com/pricing` }]
+          content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Please set your PRO license key to continue. Get a key at: https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp&utm_medium=daily_limit&utm_campaign=pro_upgrade` }]
         };
       }
 
@@ -2019,7 +2404,7 @@ ${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
       if (limitStatus.blocked) {
         return {
           isError: true,
-          content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Get a PRO key at https://privacyscrubber.com/pricing` }]
+          content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Get a PRO key at https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp&utm_medium=daily_limit&utm_campaign=pro_upgrade` }]
         };
       }
 
@@ -2103,7 +2488,7 @@ ${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
       if (limitStatus.blocked) {
         return {
           isError: true,
-          content: [{ type: "text", text: `Error: Free tier daily limit exhausted. Get a PRO key at https://privacyscrubber.com/pricing` }]
+          content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Get a PRO key at https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp&utm_medium=daily_limit&utm_campaign=pro_upgrade` }]
         };
       }
 
@@ -2138,14 +2523,16 @@ ${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
     }
 
     if (name === "guard_git_diff") {
-      const { staged = false, cwd, profile = "Dev" } = args || {};
+      const { staged = false, cwd, profile = "Dev", session_id = "default" } = args || {};
+      const targetSession = getSessionMap(session_id);
+      const targetIgnoreList = getSessionIgnoreList(session_id);
       const repoCwd = cwd ? path.resolve(cwd) : process.cwd();
       const license = checkLicenseStatus();
       const limitStatus = checkFreeTierLimit(license.isPro);
       if (limitStatus.blocked) {
         return {
           isError: true,
-          content: [{ type: "text", text: `Error: Free tier daily limit exhausted. Get a PRO key at https://privacyscrubber.com/pricing` }]
+          content: [{ type: "text", text: `Error: Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Get a PRO key at https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp&utm_medium=daily_limit&utm_campaign=pro_upgrade` }]
         };
       }
 
@@ -2175,7 +2562,7 @@ ${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
       const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
 
       const { processedText, wasTruncated } = truncateIfFree(diffOutput, license.isPro, charLimit);
-      const { scrubbedText, newTokens } = performSanitization(processedText, targetProfile, sessionIgnoreList);
+      const { scrubbedText, newTokens } = performSanitization(processedText, targetProfile, targetIgnoreList, targetSession);
 
       const telemetry = buildCisoAuditTelemetry(newTokens);
       const receiptMd = formatAuditReceipt(telemetry, false, wasTruncated, charLimit);
@@ -2454,19 +2841,20 @@ Before reading sensitive files, running terminal commands that may print credent
       }
 
       const targetSession = getSessionMap(session_id);
+      const targetIgnoreList = getSessionIgnoreList(session_id);
       let totalTokensRedacted = 0;
       const sanitizedChunks = [];
 
       for (let i = 0; i < chunks.length; i++) {
         const item = chunks[i];
         if (typeof item === 'string') {
-          const res = performSanitization(item, profile, null, targetSession);
+          const res = performSanitization(item, profile, targetIgnoreList, targetSession);
           totalTokensRedacted += Object.keys(res.newTokens || {}).length;
           sanitizedChunks.push(res.scrubbedText);
         } else if (item && typeof item === 'object') {
           const copy = { ...item };
           const rawText = copy.text || copy.pageContent || copy.document || '';
-          const res = performSanitization(rawText, profile, null, targetSession);
+          const res = performSanitization(rawText, profile, targetIgnoreList, targetSession);
           totalTokensRedacted += Object.keys(res.newTokens || {}).length;
 
           if (copy.text !== undefined) copy.text = res.scrubbedText;
@@ -2624,8 +3012,8 @@ Before reading sensitive files, running terminal commands that may print credent
           zero_egress_verified: true,
           verification_url: `https://privacyscrubber.com/features/audit-receipt/#verify?hash=${sessionHash.substring(0, 16)}`,
           licensing_and_governance: {
-            teams_governance_url: "https://privacyscrubber.com/teams?src=mcp_audit_json",
-            sdk_pipeline_url: "https://privacyscrubber.com/sdk/?src=mcp_audit_json"
+            teams_governance_url: "https://privacyscrubber.com/teams?tier=teams&utm_source=mcp_audit_export&utm_medium=json&utm_campaign=teams_upgrade",
+            sdk_pipeline_url: "https://privacyscrubber.com/sdk/?tier=sdk&utm_source=mcp_audit_export&utm_medium=json&utm_campaign=sdk_pipeline"
           }
         }, null, 2);
       } else if (format === "markdown") {
@@ -2656,8 +3044,8 @@ ${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
 3. **Cryptographic Verification:** Tamper-evident session verification hash: \`${sessionHash}\`
 
 ### 🏢 Enterprise & Team Governance
-* **Team Governance & Encrypted Handoff:** Centrally deploy redaction rules, audit logs, and zero-knowledge session handoff with **PrivacyScrubber TEAMS** ($99/mo flat): [privacyscrubber.com/teams](https://privacyscrubber.com/teams?src=mcp_audit_export)
-* **Backend Microservices & RAG Pipelines:** Integrate in-memory sanitization (<1ms) into your Node.js/Python infrastructure with **Developer SDK** ($299/mo): [privacyscrubber.com/sdk](https://privacyscrubber.com/sdk/?src=mcp_audit_export)
+* **Team Governance & Encrypted Handoff:** Centrally deploy redaction rules, audit logs, and zero-knowledge session handoff with **PrivacyScrubber TEAMS** ($99/mo flat): [privacyscrubber.com/teams](https://privacyscrubber.com/teams?tier=teams&utm_source=mcp_audit_export&utm_medium=markdown&utm_campaign=teams_upgrade)
+* **Backend Microservices & RAG Pipelines:** Integrate in-memory sanitization (<1ms) into your Node.js/Python infrastructure with **Developer SDK** ($299/mo): [privacyscrubber.com/sdk](https://privacyscrubber.com/sdk/?tier=sdk&utm_source=mcp_audit_export&utm_medium=markdown&utm_campaign=sdk_pipeline)
 
 *Certified Offline by PrivacyScrubber Engine v${MCP_VERSION}*  
 *Verify at: https://privacyscrubber.com/features/audit-receipt/* | ⭐ *Star on GitHub: https://github.com/moxno/privacyscrubber-mcp*`;
@@ -2685,6 +3073,33 @@ ${telemetry.frameworksList.map(f => `- **${f}**`).join('\n')}
         content: [{
           type: "text",
           text: outputText
+        }]
+      };
+    }
+
+    if (name === "generate_procurement_memo") {
+      const {
+        target_tier = "teams",
+        app_name = "Internal AI IDE Toolchain & Workflows",
+        developer = "Engineering / AI Platform Team",
+        team_size = 10,
+        estimated_volume = "50M - 500M characters/month",
+        format = "markdown"
+      } = args || {};
+
+      const memo = generateProcurementMemo({
+        targetTier: target_tier,
+        appName: app_name,
+        developer,
+        teamSize: team_size,
+        estimatedVolume: estimated_volume,
+        format
+      });
+
+      return {
+        content: [{
+          type: "text",
+          text: memo
         }]
       };
     }
@@ -2803,8 +3218,8 @@ function performSanitization(text, profile, ignoreList = null, customSessionMap 
 
 function truncateIfFree(text, isPro, charLimit = 15000) {
   if (!isPro && text.length > charLimit) {
-    mcpLog(`${colors.yellowBold}[PrivacyScrubber] Input truncated to ${charLimit.toLocaleString()} characters (Free Tier Limit).${colors.reset}\n${colors.cyan}[Upgrade] Set PRIVACYSCRUBBER_KEY to your PRO/TEAMS/SDK license key for unlimited throughput: https://privacyscrubber.com/pricing${colors.reset}\n`);
-    const upsellNotice = `\n\n[PrivacyScrubber Free Tier: Payload truncated to ${charLimit.toLocaleString()} chars. Upgrade to PRO ($15/mo or $110 Lifetime) or Developer SDK ($299/mo) for unlimited payload processing: https://privacyscrubber.com/pricing]`;
+    mcpLog(`${colors.yellowBold}[PrivacyScrubber] Input truncated to ${charLimit.toLocaleString()} characters (Free Tier Limit).${colors.reset}\n${colors.cyan}[Upgrade] Set PRIVACYSCRUBBER_KEY to your PRO/TEAMS/SDK license key for unlimited throughput: https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp&utm_medium=truncation&utm_campaign=teams_upgrade${colors.reset}\n`);
+    const upsellNotice = `\n\n[PrivacyScrubber Free Tier: Payload truncated to ${charLimit.toLocaleString()} chars. Upgrade to PRO ($15/mo or $110 Lifetime) or Developer SDK ($299/mo) for unlimited payload processing: https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp&utm_medium=truncation&utm_campaign=teams_upgrade]`;
     return { processedText: text.substring(0, charLimit), wasTruncated: true, upsellNotice, charLimit };
   }
   return { processedText: text, wasTruncated: false, upsellNotice: "", charLimit };
@@ -2824,7 +3239,7 @@ server.connect(transport).then(() => {
   mcpLog(`${colors.cyan}[Architecture] 100% Local In-Memory RAM | 0 Bytes Network Egress${colors.reset}\n`);
   mcpLog(`${licenseNotice}\n`);
   mcpLog(`${colors.dim}[Developer SDK] In-code headless redaction: npm install @privacyscrubber/sdk${colors.reset}\n`);
-  mcpLog(`${colors.dim}[TEAMS & Enterprise] Multi-seat governance & Air-gap: https://privacyscrubber.com/pricing${colors.reset}\n`);
+  mcpLog(`${colors.dim}[TEAMS & Enterprise] Multi-seat governance & Air-gap: https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_banner&utm_medium=terminal&utm_campaign=teams_upgrade${colors.reset}\n`);
   mcpLog(`${colors.yellow}[GitHub] Public Server Repository: https://github.com/moxno/privacyscrubber-mcp${colors.reset}\n`);
   mcpLog(`${colors.cyanBold}======================================================================${colors.reset}\n\n`);
 }).catch((error) => {

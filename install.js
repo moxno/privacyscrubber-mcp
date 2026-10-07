@@ -100,6 +100,8 @@ export function getSupportedTargets(customWorkspaceDir = null) {
     id: 'cline',
     name: 'Cline (VS Code)',
     path: clinePath,
+    serverKey: 'mcpServers',
+    snippet: MCP_CONFIG_SNIPPET,
     autoCreate: false
   });
 
@@ -116,6 +118,64 @@ export function getSupportedTargets(customWorkspaceDir = null) {
     id: 'roo',
     name: 'Roo-Code (VS Code)',
     path: rooPath,
+    serverKey: 'mcpServers',
+    snippet: MCP_CONFIG_SNIPPET,
+    autoCreate: false
+  });
+
+  // 8. Claude Code CLI (~/.claude.json)
+  const claudeCodeHome = path.join(home, '.claude.json');
+  targets.push({
+    id: 'claude-code',
+    name: 'Claude Code CLI (~/.claude.json)',
+    path: claudeCodeHome,
+    serverKey: 'mcpServers',
+    snippet: MCP_CONFIG_SNIPPET,
+    autoCreate: false
+  });
+
+  // 9. Claude Code Project (.mcp.json in workspace)
+  const claudeCodeProject = path.join(cwd, '.mcp.json');
+  targets.push({
+    id: 'claude-code-project',
+    name: `Claude Code Project (${path.basename(cwd)}/.mcp.json)`,
+    path: claudeCodeProject,
+    serverKey: 'mcpServers',
+    snippet: MCP_CONFIG_SNIPPET,
+    autoCreate: fs.existsSync(claudeCodeProject)
+  });
+
+  // 10. VS Code Official Native MCP (.vscode/mcp.json)
+  const vscodeNativePath = path.join(cwd, '.vscode', 'mcp.json');
+  targets.push({
+    id: 'vscode',
+    name: `VS Code Native MCP (${path.basename(cwd)}/.vscode/mcp.json)`,
+    path: vscodeNativePath,
+    serverKey: 'servers',
+    snippet: {
+      type: "stdio",
+      command: "npx",
+      args: ["-y", "@privacyscrubber/mcp-server"]
+    },
+    autoCreate: fs.existsSync(path.join(cwd, '.vscode'))
+  });
+
+  // 11. Zed IDE (settings.json)
+  let zedPath = '';
+  if (platform === 'win32') {
+    zedPath = path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Zed', 'settings.json');
+  } else {
+    zedPath = path.join(home, '.config', 'zed', 'settings.json');
+  }
+  targets.push({
+    id: 'zed',
+    name: 'Zed IDE (settings.json)',
+    path: zedPath,
+    serverKey: 'context_servers',
+    snippet: {
+      command: "npx",
+      args: ["-y", "@privacyscrubber/mcp-server"]
+    },
     autoCreate: false
   });
 
@@ -136,17 +196,20 @@ export function parseArgs(rawArgs = process.argv.slice(2)) {
     else if (arg === '--remove' || arg === '--uninstall') options.remove = true;
     else if (arg === '--all') options.all = true;
     else if (arg === '--claude') options.targets.push('claude');
+    else if (arg === '--claude-code') options.targets.push('claude-code', 'claude-code-project');
     else if (arg === '--cursor') options.targets.push('cursor', 'cursor-storage', 'cursor-workspace');
+    else if (arg === '--vscode') options.targets.push('vscode');
+    else if (arg === '--zed') options.targets.push('zed');
     else if (arg === '--windsurf') options.targets.push('windsurf');
     else if (arg === '--cline') options.targets.push('cline', 'roo');
-    else if (arg === '--workspace') options.targets.push('cursor-workspace');
+    else if (arg === '--workspace') options.targets.push('cursor-workspace', 'claude-code-project', 'vscode');
     else if (arg === '--help' || arg === '-h') options.help = true;
   }
 
   return options;
 }
 
-export function safeMergeMcpConfig(filePath, snippet = MCP_CONFIG_SNIPPET, remove = false) {
+export function safeMergeMcpConfig(filePath, snippet = MCP_CONFIG_SNIPPET, remove = false, serverKey = 'mcpServers') {
   let existingContent = '';
   let configObj = {};
   const fileExisted = fs.existsSync(filePath);
@@ -172,18 +235,20 @@ export function safeMergeMcpConfig(filePath, snippet = MCP_CONFIG_SNIPPET, remov
     configObj = {};
   }
 
-  if (!configObj.mcpServers || typeof configObj.mcpServers !== 'object' || Array.isArray(configObj.mcpServers)) {
-    configObj.mcpServers = {};
+  const key = serverKey || 'mcpServers';
+
+  if (!configObj[key] || typeof configObj[key] !== 'object' || Array.isArray(configObj[key])) {
+    configObj[key] = {};
   }
 
   if (remove) {
-    if (configObj.mcpServers['privacyscrubber']) {
-      delete configObj.mcpServers['privacyscrubber'];
+    if (configObj[key]['privacyscrubber']) {
+      delete configObj[key]['privacyscrubber'];
     } else {
       return { success: true, modified: false, message: 'privacyscrubber was not present' };
     }
   } else {
-    configObj.mcpServers['privacyscrubber'] = snippet;
+    configObj[key]['privacyscrubber'] = snippet;
   }
 
   const updatedJson = JSON.stringify(configObj, null, 2) + '\n';
@@ -192,7 +257,7 @@ export function safeMergeMcpConfig(filePath, snippet = MCP_CONFIG_SNIPPET, remov
     modified: true,
     fileExisted,
     updatedJson,
-    serverCount: Object.keys(configObj.mcpServers).length
+    serverCount: Object.keys(configObj[key]).length
   };
 }
 
@@ -210,9 +275,12 @@ Options:
   --all           Configure all detected and standard client paths
   --cursor        Configure Cursor only (~/.cursor/mcp.json)
   --claude        Configure Claude Desktop only
+  --claude-code   Configure Claude Code CLI (~/.claude.json / .mcp.json)
+  --vscode        Configure VS Code Native MCP (.vscode/mcp.json)
+  --zed           Configure Zed IDE (~/.config/zed/settings.json)
   --windsurf      Configure Windsurf only
   --cline         Configure Cline / Roo-Code only
-  --workspace     Configure current project .cursor/mcp.json
+  --workspace     Configure workspace paths (.cursor, .mcp.json, .vscode)
   --dry-run       Preview configuration changes without writing files
   --remove        Remove PrivacyScrubber from all target client configurations
   -h, --help      Display this help guide
@@ -252,7 +320,9 @@ Options:
     console.log(`[TARGET] ${target.name}`);
     console.log(`         Path: ${target.path}`);
 
-    const result = safeMergeMcpConfig(target.path, MCP_CONFIG_SNIPPET, options.remove);
+    const targetSnippet = target.snippet || MCP_CONFIG_SNIPPET;
+    const targetKey = target.serverKey || 'mcpServers';
+    const result = safeMergeMcpConfig(target.path, targetSnippet, options.remove, targetKey);
 
     if (!result.success) {
       console.log(`         [ERROR]: ${result.error}\n`);

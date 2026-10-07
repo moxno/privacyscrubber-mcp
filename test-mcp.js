@@ -108,6 +108,29 @@ try {
   }
   console.log("✅ Test 6 passed: Compliance report hash & telemetry verified.");
 
+  // Test Case 7: Procurement & ROI Memorandum Generation (TEAMS & SDK)
+  console.log("\n[Test 7] Testing generate_procurement_memo output...");
+  if (typeof indexModule.generateProcurementMemo !== 'function') {
+    console.error("❌ Test 7 failed: generateProcurementMemo function not exported.");
+    process.exit(1);
+  }
+  const memoTeams = indexModule.generateProcurementMemo({ targetTier: 'teams' });
+  if (!memoTeams.includes('PrivacyScrubber TEAMS') || !memoTeams.includes('$99/month flat') || !memoTeams.includes('tier=teams')) {
+    console.error("❌ Test 7 failed: TEAMS memo missing critical terms or tier link.");
+    process.exit(1);
+  }
+  const memoSdk = indexModule.generateProcurementMemo({ targetTier: 'sdk' });
+  if (!memoSdk.includes('@privacyscrubber/sdk') || !memoSdk.includes('$299 / month flat') || !memoSdk.includes('tier=sdk')) {
+    console.error("❌ Test 7 failed: SDK memo missing critical terms or tier link.");
+    process.exit(1);
+  }
+  const memoText = indexModule.generateProcurementMemo({ targetTier: 'teams', format: 'text' });
+  if (!memoText.includes('MEMORANDUM: ADOPTION OF PRIVACYSCRUBBER TEAMS')) {
+    console.error("❌ Test 7 failed: plain text memo missing expected header.");
+    process.exit(1);
+  }
+  console.log("✅ Test 7 passed: CISO/DPO procurement memos (TEAMS, SDK, text/md) verified.");
+
   console.log("\n🎉 All local cryptographic and MCP Quality Assurance tests passed!");
   process.exit(0);
 

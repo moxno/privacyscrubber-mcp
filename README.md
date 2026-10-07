@@ -52,19 +52,34 @@ All sensitive parameters, identifiers, and variables are intercepted locally ins
 
 ## 🚀 Installation
 
-### 1. Install via Smithery
+### 1. 1-Click Universal Auto-Installer (Recommended)
+Automatically detects installed AI IDEs on your machine and safely configures PrivacyScrubber without corrupting existing tools:
+
+```bash
+# Auto-detect and configure all installed clients (Cursor, Claude Desktop, Claude Code, Windsurf, VS Code, Cline, Zed):
+npx -y @privacyscrubber/mcp-server install --all
+
+# Or target specific environments directly:
+npx -y @privacyscrubber/mcp-server install --claude-code
+npx -y @privacyscrubber/mcp-server install --vscode
+npx -y @privacyscrubber/mcp-server install --zed
+npx -y @privacyscrubber/mcp-server install --cursor
+npx -y @privacyscrubber/mcp-server install --claude
+```
+
+### 2. Install via Smithery
 To automatically configure and run with your preferred client, install using Smithery:
 ```bash
 npx -y @smithery/cli install @privacyscrubber/mcp-server --write-to-clients
 ```
 
-### 2. Instant Run with NPX
+### 3. Instant Run with NPX
 Run the server directly without local installation:
 ```bash
 npx -y @privacyscrubber/mcp-server
 ```
 
-### 3. Instant Run with UVX (Python / PyPI)
+### 4. Instant Run with UVX (Python / PyPI)
 Run the server directly inside Python agent workflows (CrewAI, LangChain, AutoGen, LlamaIndex):
 ```bash
 uvx privacyscrubber-mcp
@@ -75,7 +90,7 @@ pip install privacyscrubber-mcp
 privacyscrubber-mcp
 ```
 
-### 4. Programmatic Node.js / TypeScript SDK (Lightweight Presidio Alternative)
+### 5. Programmatic Node.js / TypeScript SDK (Lightweight Presidio Alternative)
 Need direct, in-memory zero-trust PII sanitization in your backend microservice, Next.js app, or RAG vector pipeline rather than an MCP server? Use our official zero-dependency SDK:
 
 ```bash
@@ -269,6 +284,39 @@ Add directly from your terminal:
 claude mcp add privacyscrubber -- npx -y @privacyscrubber/mcp-server
 ```
 
+### VS Code Native MCP (`.vscode/mcp.json`)
+For official VS Code Native MCP support, configure your project's `.vscode/mcp.json`:
+```json
+{
+  "servers": {
+    "privacyscrubber": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@privacyscrubber/mcp-server"],
+      "env": {
+        "PRIVACYSCRUBBER_KEY": "YOUR_OPTIONAL_PRO_LICENSE_KEY"
+      }
+    }
+  }
+}
+```
+
+### Zed IDE (`settings.json`)
+Add to your Zed configuration (`~/.config/zed/settings.json` or `%APPDATA%\Zed\settings.json`):
+```json
+{
+  "context_servers": {
+    "privacyscrubber": {
+      "command": "npx",
+      "args": ["-y", "@privacyscrubber/mcp-server"],
+      "env": {
+        "PRIVACYSCRUBBER_KEY": "YOUR_OPTIONAL_PRO_LICENSE_KEY"
+      }
+    }
+  }
+}
+```
+
 ---
 
 ## 🛠️ Provided Tools & JSON-RPC Specifications
@@ -395,13 +443,13 @@ Returns a visual dashboard showing your current tier, session request count, act
 *   **Response Example (Free Tier):**
     ```
     ╔══════════════════════════════════════════════════╗
-    ║       PrivacyScrubber MCP Server v2.2.8          ║
+    ║       PrivacyScrubber MCP Server v2.3.7          ║
     ╠══════════════════════════════════════════════════╣
     ║  🔓 Tier: FREE                                   ║
     ║  📊 Session requests: 5                          ║
     ║  📁 Input size limit: 15,000 characters/request  ║
     ╠══════════════════════════════════════════════════╣
-    ║  🏷️  Profiles: General only — PRO unlocks 25 more ║
+    ║  🏷️  Profiles: General only — PRO unlocks 30 more ║
     ║  📋 Custom rules: 🔒 Locked — requires PRO       ║
     ╠══════════════════════════════════════════════════╣
     ║  💳 Upgrade to PRO — $110 Lifetime               ║
@@ -413,6 +461,30 @@ Returns a visual dashboard showing your current tier, session request count, act
     ║  https://privacyscrubber.com/pii-mcp/?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server          ║
     ╚══════════════════════════════════════════════════╝
     ```
+
+### 10. `generate_procurement_memo` (CISO & DPO Procurement Hub)
+
+Generates an institutional business case, regulatory risk breakdown, and procurement memo for CISO, DPO, and Legal sign-off. Computes deterministic ROI versus breach penalties and cloud DLP egress fees.
+
+*   **Arguments:**
+    *   `targetTier` (string, optional): Target plan (`"teams"` at $99/mo or `"sdk"` at $299/mo). Defaults to `"teams"`.
+    *   `teamSize` (number, optional): Estimated developer / analyst seat count (defaults to `10`).
+    *   `primaryFramework` (string, optional): Core compliance framework (`"gdpr"`, `"hipaa"`, `"soc2"`, or `"pci_dss"`). Defaults to `"gdpr"`.
+*   **JSON-RPC Call Example:**
+    ```json
+    {
+      "method": "tools/call",
+      "params": {
+        "name": "generate_procurement_memo",
+        "arguments": {
+          "targetTier": "teams",
+          "teamSize": 15,
+          "primaryFramework": "gdpr"
+        }
+      }
+    }
+    ```
+*   **Output:** Formatted Markdown enterprise procurement memorandum ready for immediate insertion into internal RFCs, Confluence wikis, or enterprise purchase requisitions.
 
 ---
 

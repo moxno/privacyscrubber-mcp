@@ -3,7 +3,7 @@
   "name": "@privacyscrubber/mcp-server",
   "displayName": "PrivacyScrubber PII Masking MCP",
   "description": "Zero-Trust Data Sanitization (ZTDS) MCP Server for Claude Desktop, Cursor, and Windsurf. Locally intercepts and redacts PII and secrets in RAM with 0 bytes egress.",
-  "version": "2.3.2",
+  "version": "2.3.7",
   "build": {
     "dockerfile": "Dockerfile",
     "dockerBuildPath": "."

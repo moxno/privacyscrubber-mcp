@@ -94,15 +94,15 @@ async function runMcpSession() {
     console.log(`<-- Tools list received. Total tools: ${tools.length}`);
     tools.forEach(t => console.log(`  - Tool: ${t.name} (${t.description.substring(0, 60)}...)`));
 
-    if (tools.length !== 23) {
-      throw new Error(`Expected 23 tools, got ${tools.length}`);
+    if (tools.length !== 24) {
+      throw new Error(`Expected 24 tools, got ${tools.length}`);
     }
     const expectedToolNames = [
       'audit_context', 'sanitize_text', 'scrub_text', 'reveal_text', 'sanitize_file', 'scrub_file',
       'check_status', 'create_default_config', 'mark_false_positive',
       'guard_exec', 'guard_read_file', 'guard_git_diff', 'guard_apply_patch', 'create_agent_rules',
       'guard_unmask_args', 'guard_session_info', 'guard_session_reset',
-      'guard_rag_chunk', 'guard_rag_restore', 'export_audit_log'
+      'guard_rag_chunk', 'guard_rag_restore', 'export_audit_log', 'generate_procurement_memo'
     ];
     for (const toolName of expectedToolNames) {
       if (!tools.find(t => t.name === toolName)) {
@@ -540,6 +540,21 @@ async function runMcpSession() {
     fs.rmSync(tempWsDir, { recursive: true, force: true });
     console.log("✅ create_agent_rules verified.");
 
+    // 8.6.5.1. Test generate_procurement_memo
+    console.log("--> Calling 'generate_procurement_memo'...");
+    const memoResponse = await sendRequest('tools/call', {
+      name: 'generate_procurement_memo',
+      arguments: {
+        target_tier: 'teams',
+        format: 'markdown'
+      }
+    });
+    const memoText = memoResponse.result?.content?.[0]?.text || '';
+    if (!memoText.includes('PrivacyScrubber TEAMS') || !memoText.includes('tier=teams')) {
+      throw new Error(`generate_procurement_memo failed. Got: ${memoText.substring(0, 100)}...`);
+    }
+    console.log("✅ generate_procurement_memo verified.");
+
     // 8.6.6. Test Prompts API
     console.log("--> Testing MCP prompts/list and prompts/get...");
     const promptsListResponse = await sendRequest('prompts/list', {});
@@ -652,8 +667,8 @@ async function runMcpSession() {
     });
     const truncatedResult = truncateResponse.result?.content?.[0]?.text || "";
     console.log("<-- Truncated text length:", truncatedResult.length);
-    if (truncatedResult.length < 15000 || truncatedResult.length > 15600) {
-      throw new Error(`Expected text length of ~15000-15500 after truncation, but got ${truncatedResult.length}`);
+    if (truncatedResult.length < 15000 || truncatedResult.length > 15800) {
+      throw new Error(`Expected text length of ~15000-15800 after truncation, but got ${truncatedResult.length}`);
     }
     if (!truncatedResult.includes("https://privacyscrubber.com/pricing")) {
       throw new Error("Upsell pricing link missing in truncated result.");

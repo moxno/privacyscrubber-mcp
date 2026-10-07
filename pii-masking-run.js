@@ -302,8 +302,7 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
   const ipHoldings = {
     standard: 'IETF draft-sibiryakov-ztds-protocol-00',
     standardUrl: 'https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/',
-    patent: 'IL 331905 (Tracking: 94221)',
-    wipoDas: 'B17B',
+    patent: "U.S. & Int'l Patents Pending (Paris Convention Priority)",
     trademark: 'ZTDS™ Reg. #182655957 (ILPO Cl 9 & 42)'
   };
 
