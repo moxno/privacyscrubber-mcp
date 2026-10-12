@@ -66,6 +66,7 @@ PrivacyScrubberCore.init();
 // Volatile in-memory token map per session (multi-task agent isolation)
 const agentSessions = new Map();
 const MAX_CONCURRENT_SESSIONS = 200;
+const MAX_SESSION_TOKENS = parseInt(process.env.PRIVACYSCRUBBER_MAX_SESSION_TOKENS || '5000', 10);
 
 function getSession(sessionId = 'default') {
   const sid = (sessionId || 'default').toString().trim() || 'default';
@@ -3211,6 +3212,15 @@ function performSanitization(text, profile, ignoreList = null, customSessionMap 
       targetMap[token] = original;
       newTokens[token] = original;
     });
+
+    // Bounded in-memory FIFO pruning to prevent OOM during massive continuous RAG ingestion
+    const keys = Object.keys(targetMap);
+    if (keys.length > MAX_SESSION_TOKENS) {
+      const pruneCount = keys.length - MAX_SESSION_TOKENS;
+      for (let i = 0; i < pruneCount; i++) {
+        delete targetMap[keys[i]];
+      }
+    }
   }
 
   return { scrubbedText: result.scrubbedText, newTokens };

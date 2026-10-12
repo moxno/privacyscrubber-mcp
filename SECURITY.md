@@ -27,7 +27,7 @@ You can verify the zero-network posture at any time:
 If you discover a potential security vulnerability (e.g. regex engine backtracking denial of service, memory leaks, or local file access overflows), please do not report it in the public GitHub Issues tracker. 
 
 Instead, report it privately through our coordinated disclosure channel:
-- **Email:** `security@privacyscrubber.com`
+- **Email:** `support@privacyscrubber.com` (or `security@privacyscrubber.com`)
 - **Response SLA:** Our team reviews all reports within **24 hours** and will provide a status update and remediation timeline.
 
 Thank you for helping keep the developer ecosystem secure!

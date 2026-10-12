@@ -443,7 +443,7 @@ Returns a visual dashboard showing your current tier, session request count, act
 *   **Response Example (Free Tier):**
     ```
     ╔══════════════════════════════════════════════════╗
-    ║       PrivacyScrubber MCP Server v2.3.7          ║
+    ║       PrivacyScrubber MCP Server v2.3.8          ║
     ╠══════════════════════════════════════════════════╣
     ║  🔓 Tier: FREE                                   ║
     ║  📊 Session requests: 5                          ║
@@ -493,17 +493,23 @@ Generates an institutional business case, regulatory risk breakdown, and procure
 PrivacyScrubber bundles `ps-guard` for Unix pipe, pre-commit, and agentic workflows:
 
 ```bash
+# Run on-demand via scoped npx (zero external lookup):
+cat .env | npx -y -p @privacyscrubber/mcp-server ps-guard --profile dev
+
+# Or install globally for direct command access:
+npm install -g @privacyscrubber/mcp-server
+
 # Pipe any output through RAM redaction
-cat .env | npx ps-guard --profile dev
+cat .env | ps-guard --profile dev
 
 # Execute commands through the ZTDS safety wrapper
-npx ps-guard -- npm test
+ps-guard -- npm test
 
 # Review git diff with secrets redacted
-npx ps-guard --diff --staged
+ps-guard --diff --staged
 
 # Generate rules for all AI IDEs (.cursorrules, .windsurfrules, CLAUDE.md, copilot, cline)
-npx ps-guard --rules
+ps-guard --rules
 ```
 
 ---
