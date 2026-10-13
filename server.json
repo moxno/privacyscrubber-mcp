@@ -1,7 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.moxno/privacyscrubber-mcp",
+  "title": "PrivacyScrubber PII Masking MCP",
   "description": "Zero-Trust PII and secrets sanitizer for Cursor, Claude, and AI agents. 100% in-memory.",
+  "websiteUrl": "https://privacyscrubber.com/pii-mcp/?utm_source=mcp_registry&utm_medium=server_json&utm_campaign=mcp_docs",
   "repository": {
     "url": "https://github.com/moxno/privacyscrubber-mcp",
     "source": "github"
@@ -12,16 +14,37 @@
       "registryType": "npm",
       "identifier": "@privacyscrubber/mcp-server",
       "version": "2.3.8",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
       },
       "environmentVariables": [
         {
+          "name": "PRIVACYSCRUBBER_KEY",
           "description": "Optional PRO or TEAMS license key to unlock specialized detection profiles.",
           "isRequired": false,
           "format": "string",
-          "isSecret": true,
-          "name": "PRIVACYSCRUBBER_KEY"
+          "isSecret": true
+        }
+      ]
+    },
+    {
+      "registryType": "pypi",
+      "identifier": "privacyscrubber-mcp",
+      "version": "2.3.8.post1",
+      "registryBaseUrl": "https://pypi.org",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "PRIVACYSCRUBBER_KEY",
+          "description": "Optional PRO or TEAMS license key to unlock specialized detection profiles.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
         }
       ]
     }
