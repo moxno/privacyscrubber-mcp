@@ -2,6 +2,8 @@
 
 [![NPM Version](https://img.shields.io/npm/v/@privacyscrubber/mcp-server?color=blue)](https://www.npmjs.com/package/@privacyscrubber/mcp-server)
 [![NPM Downloads](https://img.shields.io/npm/dm/@privacyscrubber/mcp-server?color=3b82f6)](https://www.npmjs.com/package/@privacyscrubber/mcp-server)
+[![PyPI Version](https://img.shields.io/pypi/v/privacyscrubber-mcp.svg?color=blue)](https://pypi.org/project/privacyscrubber-mcp/)
+[![PyPI Downloads](https://img.shields.io/pypi/dm/privacyscrubber-mcp.svg?color=3b82f6)](https://pypi.org/project/privacyscrubber-mcp/)
 [![NPM SDK](https://img.shields.io/npm/v/@privacyscrubber/sdk?label=%40privacyscrubber%2Fsdk&color=10b981)](https://www.npmjs.com/package/@privacyscrubber/sdk)
 [![Presidio Alternative](https://img.shields.io/badge/Presidio%20Alternative-Node.js%20%26%20TS-0078D4.svg)](https://www.npmjs.com/package/@privacyscrubber/sdk)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](https://www.npmjs.com/package/@privacyscrubber/sdk)

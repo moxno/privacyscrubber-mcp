@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "privacyscrubber-mcp"
-version = "2.3.8"
+version = "2.3.8.post1"
 description = "CISO-Approved Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Windsurf, and Claude Desktop"
 readme = "README.md"
 authors = [
@@ -43,10 +43,14 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://privacyscrubber.com"
-Documentation = "https://privacyscrubber.com/pii-mcp/"
+Homepage = "https://privacyscrubber.com/?utm_source=pypi&utm_medium=sidebar&utm_campaign=pypi_home"
+Documentation = "https://privacyscrubber.com/pii-mcp/?utm_source=pypi&utm_medium=sidebar&utm_campaign=mcp_docs"
+"Commercial SDK" = "https://privacyscrubber.com/sdk/?utm_source=pypi&utm_medium=sidebar&utm_campaign=developer_sdk"
+"TEAMS Governance" = "https://privacyscrubber.com/pricing?tier=teams&utm_source=pypi&utm_medium=sidebar&utm_campaign=teams_upgrade"
+"ZTDS Open Standard" = "https://ztds.ai"
 Repository = "https://github.com/moxno/privacyscrubber-mcp"
 Issues = "https://github.com/moxno/privacyscrubber-mcp/issues"
+Changelog = "https://github.com/moxno/privacyscrubber-mcp/releases"
 
 [project.scripts]
 privacyscrubber-mcp = "privacyscrubber_mcp:main"
