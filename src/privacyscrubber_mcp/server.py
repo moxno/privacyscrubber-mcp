@@ -10,7 +10,7 @@ import subprocess
 import json
 import re
 
-VERSION = "2.3.2"
+VERSION = "2.3.8"
 
 PATTERNS = {
     "SECRET": re.compile(
@@ -53,6 +53,13 @@ class NativeZtdsEngine:
         scrubbed = text
         for entity_type, pat in PATTERNS.items():
             scrubbed = pat.sub(lambda m, et=entity_type: replacer(m, et), scrubbed)
+
+        max_tokens = int(os.environ.get("PRIVACYSCRUBBER_MAX_SESSION_TOKENS", "5000"))
+        if len(self.session_map) > max_tokens:
+            prune_count = len(self.session_map) - max_tokens
+            keys_to_remove = list(self.session_map.keys())[:prune_count]
+            for k in keys_to_remove:
+                del self.session_map[k]
 
         return scrubbed, tokens_created
 
