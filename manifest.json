@@ -23,35 +23,111 @@
   "tools": [
     {
       "name": "sanitize_text",
-      "description": "Locally scrubs PII, secrets, and credentials (like API keys, passwords, emails, phones, names) from code, logs, or text. Replaces them with safe placeholders (e.g., [EMAIL_1], [API_KEY_1]). Keep your data secure before passing it to any LLM."
+      "description": "STEP 1: Call this first. Locally scrubs PII, secrets, and credentials from code, logs, or text. Replaces them with safe placeholders (e.g., [EMAIL_1], [API_KEY_1]). Keep your data secure before passing it to any LLM."
     },
     {
       "name": "reveal_text",
-      "description": "Replaces masked tokens (e.g., [EMAIL_1], [API_KEY_1]) in the LLM's response back with the original private data from the local volatile RAM-only session map."
+      "description": "STEP 3: Call this last. Restores masked tokens back with original private data from the local volatile RAM-only session map."
+    },
+    {
+      "name": "audit_context",
+      "description": "STEP 0 (Pre-Flight): Non-destructive security inspection of raw prompts or document chunks before sending to LLMs. Evaluates PII, secrets, risk severity, and triggered regulatory frameworks."
+    },
+    {
+      "name": "scrub_text",
+      "description": "Alias for sanitize_text."
     },
     {
       "name": "sanitize_file",
       "description": "Reads a local file, sanitizes its contents using the selected profile, and outputs the safe version for AI analysis. Securely keeps original identifiers in memory."
     },
     {
+      "name": "scrub_file",
+      "description": "Alias for sanitize_file."
+    },
+    {
       "name": "audit_directory_for_pii",
-      "description": "Audits a local directory or project tree for PII, secrets, and compliance vulnerabilities without sending data to any external server."
+      "description": "Scans a local directory for leaks of secrets, keys, and PII. Returns a structured security summary report."
+    },
+    {
+      "name": "redact_file",
+      "description": "In-place redaction of a local file. Replaces PII and secrets with tokens and saves the file with an optional safety backup."
+    },
+    {
+      "name": "create_default_config",
+      "description": "Creates a default privacyscrubber.json configuration file in current working directory."
     },
     {
       "name": "generate_compliance_report",
-      "description": "Generates a structured compliance report (GDPR, HIPAA, SOC 2, PCI DSS) and enterprise CISO audit receipt for the current session or workspace."
+      "description": "Generates an official Zero-Trust Compliance Audit Certificate (GDPR, HIPAA, EU AI Act, SOC 2) for the current MCP session."
     },
     {
       "name": "export_audit_log",
-      "description": "Exports a zero-knowledge immutable audit receipt verifying zero-egress data sanitization for compliance documentation."
+      "description": "Exports an immutable, tamper-evident audit log in SIEM standard formats (CEF, Syslog, JSONL) with zero plaintext PII leakage."
+    },
+    {
+      "name": "mark_false_positive",
+      "description": "Marks a previously detected token as a false positive, excluding it from future masking in the active session."
+    },
+    {
+      "name": "check_status",
+      "description": "Returns current PrivacyScrubber MCP tier, session usage, available profiles, and PRO upgrade instructions."
     },
     {
       "name": "guard_exec",
-      "description": "Sanitizes command line execution strings and arguments for autonomous AI agents prior to tool dispatch."
+      "description": "Zero-Trust Agentic Guard: Safely executes a shell/terminal command locally in isolated process, sanitizing stdout/stderr in volatile RAM before sending to LLM."
+    },
+    {
+      "name": "guard_read_file",
+      "description": "Zero-Trust Agentic Guard: Reads a sensitive local file (.env, config, source code) and sanitizes credentials and PII in volatile RAM."
+    },
+    {
+      "name": "guard_git_diff",
+      "description": "Zero-Trust Agentic Guard: Inspects unstaged or staged git diffs locally, sanitizing credentials and PII in RAM for safe AI commit generation or review."
+    },
+    {
+      "name": "guard_apply_patch",
+      "description": "Zero-Trust Agentic Guard: Reverses token placeholders in AI code, restoring authentic values from RAM directly to the target file on disk."
+    },
+    {
+      "name": "guard_unmask_args",
+      "description": "Zero-Trust Agentic Guard: Detokenizes parameters, JSON objects, or arguments in local RAM before dispatching to local tools or APIs."
+    },
+    {
+      "name": "guard_session_info",
+      "description": "Zero-Trust Agentic Guard: Returns diagnostic metrics on active in-memory sessions and memory footprint with zero plaintext leakage."
+    },
+    {
+      "name": "guard_session_reset",
+      "description": "Zero-Trust Agentic Guard: Explicitly purges the in-memory token map for a specific session_id or all sessions upon task completion."
+    },
+    {
+      "name": "guard_rag_chunk",
+      "description": "Zero-Trust Agentic Guard: Sanitizes document chunks before sending to embedding models or vector databases (Chroma, Pinecone, Qdrant)."
+    },
+    {
+      "name": "guard_rag_restore",
+      "description": "Zero-Trust Agentic Guard: Re-hydrates retrieved vector search results by restoring token placeholders with authentic data from RAM."
+    },
+    {
+      "name": "create_agent_rules",
+      "description": "Zero-Trust Agentic Guard: Scaffolds CISO-grade AI Agent Rules in workspace (.cursorrules, .windsurfrules, CLAUDE.md, copilot-instructions.md)."
     },
     {
       "name": "generate_procurement_memo",
-      "description": "Generates a comprehensive CISO/DPO enterprise procurement memo and ROI business case for PrivacyScrubber TEAMS/SDK licensing."
+      "description": "Zero-Trust Enterprise Procurement: Generates an executive-ready Procurement & ROI Memorandum for CISOs, DPOs, and VP of Engineering."
+    },
+    {
+      "name": "secure_ai_workflow",
+      "description": "Zero-Trust Data Sanitization workflow instruction to automatically scrub PII before processing data."
+    },
+    {
+      "name": "safe_redaction_workflow",
+      "description": "Instructions for using the redact_file tool safely with QA checks."
+    },
+    {
+      "name": "agentic_guard_instructions",
+      "description": "Zero-Trust Agentic Guard instructions for autonomous AI agents (Cursor, Windsurf, Claude Code)."
     }
   ],
   "user_config": {

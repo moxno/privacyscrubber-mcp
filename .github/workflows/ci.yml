@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
+  test-node:
     name: Node ${{ matrix.node-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -31,3 +31,33 @@ jobs:
 
       - name: Run test suite
         run: npm test
+
+  test-python:
+    name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Build package distributions
+        run: uv build
+
+      - name: Verify build artifacts with twine
+        run: uvx twine check dist/*
+
+      - name: Test package import and version
+        run: uv run --python ${{ matrix.python-version }} python -c "import sys; sys.path.insert(0, 'src'); import privacyscrubber_mcp; print('Loaded version:', privacyscrubber_mcp.__version__)"
