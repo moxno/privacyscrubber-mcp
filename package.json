@@ -1,6 +1,6 @@
 {
   "name": "@privacyscrubber/mcp-server",
-  "version": "2.3.8",
+  "version": "2.3.9",
   "mcpName": "io.github.moxno/privacyscrubber-mcp",
   "description": "CISO-Approved Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Windsurf, and Claude Desktop. Prevent API leaks and comply with HIPAA/SOC 2 locally.",
   "main": "index.js",
@@ -21,7 +21,6 @@
     "smithery.yaml",
     "server.json",
     "manifest.json",
-    "bundle.mcpb",
     ".well-known"
   ],
   "bin": {
@@ -36,7 +35,8 @@
   "scripts": {
     "start": "node index.js",
     "build": "node -e \"const fs=require('fs'); if(fs.existsSync('../scripts/build-mcp.js')) require('child_process').execSync('node ../scripts/build-mcp.js', {stdio:'inherit'}); else console.log('MCP assets are pre-built.');\"",
-    "test": "node test-mcp.js && node test-mcp-deep.js",
+    "test": "node test-mcp.js && node test-mcp-deep.js && node test-mcp-streaming.js",
+    "test:stream": "node test-mcp-streaming.js",
     "prepublishOnly": "npm test"
   },
   "dependencies": {

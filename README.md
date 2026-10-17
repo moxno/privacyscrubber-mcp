@@ -225,7 +225,7 @@ When AI IDEs (Cursor, Claude Desktop, Windsurf) connect to model providers, deve
    The MCP server communicates exclusively over local standard input/output (`stdio`) child processes spawned by your IDE. It opens **zero external listening ports** and initiates **zero remote network requests**.
 2. **Volatile RAM-Only Token Map**:
    The mapping table between synthetic tokens (`[AWS_KEY_1]`, `[EMAIL_1]`) and raw cleartext is maintained exclusively in ephemeral node memory and is wiped the moment your IDE session closes.
-3. **Deterministic AST Lookarounds vs Cloud Proxy Overhead**:
+3. **Local ZTDS™ In-Memory Engine vs Cloud Proxy Overhead**:
    Unlike cloud DLP gateways (Nightfall, Skyflow) that add 200–400ms latency and transmit unencrypted code to third parties, `@privacyscrubber/mcp-server` runs locally in <2ms with zero data egress.
 4. **Permanent Standards & Academic Validation**:
    - **IETF Specification**: [draft-sibiryakov-ztds-protocol-01](https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/) — Revision 01 · 2026-09-23 · 13 pages
@@ -256,13 +256,50 @@ Add this to your Claude Desktop config file:
 }
 ```
 
-### Cursor / Windsurf
-1. Navigate to Settings -> Features -> MCP.
-2. Add new MCP server:
-    *   **Name:** `privacyscrubber`
-    *   **Type:** `command`
-    *   **Command:** `npx -y @privacyscrubber/mcp-server`
-3. Optional: Set `PRIVACYSCRUBBER_KEY` as an environment variable in your system shell.
+### Cursor
+
+Add to your project's `.cursor/mcp.json` (workspace) or `~/.cursor/mcp.json` (global):
+
+```json
+{
+  "mcpServers": {
+    "privacyscrubber": {
+      "command": "npx",
+      "args": ["-y", "@privacyscrubber/mcp-server"],
+      "env": {
+        "PRIVACYSCRUBBER_KEY": "YOUR_PRO_OR_TEAMS_LICENSE_KEY"
+      }
+    }
+  }
+}
+```
+
+*Or via Cursor GUI:* Open **Settings** (<kbd>Cmd/Ctrl + ,</kbd>) &rarr; **Features** &rarr; **MCP** &rarr; **+ Add New MCP Tool**:
+- **Name:** `privacyscrubber`
+- **Type:** `command`
+- **Command:** `npx -y @privacyscrubber/mcp-server`
+
+### Windsurf (Codeium)
+
+Add to `~/.codeium/windsurf/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "privacyscrubber": {
+      "command": "npx",
+      "args": ["-y", "@privacyscrubber/mcp-server"],
+      "env": {
+        "PRIVACYSCRUBBER_KEY": "YOUR_PRO_OR_TEAMS_LICENSE_KEY"
+      }
+    }
+  }
+}
+```
+
+*Or via Windsurf GUI:* Open **Settings** &rarr; **MCP Settings** &rarr; add new command server `npx -y @privacyscrubber/mcp-server`.
+
+> Ready-to-copy JSON templates for all supported clients are available in [`examples/configs/`](examples/configs/).
 
 ### Cline / Roo Code
 Add to `cline_mcp_settings.json`:
@@ -445,7 +482,7 @@ Returns a visual dashboard showing your current tier, session request count, act
 *   **Response Example (Free Tier):**
     ```
     ╔══════════════════════════════════════════════════╗
-    ║       PrivacyScrubber MCP Server v2.3.8          ║
+    ║       PrivacyScrubber MCP Server v2.3.9          ║
     ╠══════════════════════════════════════════════════╣
     ║  🔓 Tier: FREE                                   ║
     ║  📊 Session requests: 5                          ║
@@ -660,8 +697,8 @@ MIT © [Ilya Sibiryakov](https://privacyscrubber.com) (BrandMeWeb)
 The Zero-Trust Data Sanitization (ZTDS) architecture, in-memory deterministic tokenization, cryptographic session handoff, and stdio execution methods implemented in this package are proprietary technology of Ilya Sibiryakov (BrandMeWeb) and are protected under **Patent Pending** status:
 
 - **Legal Status:** U.S. & International Patents Pending
-- **Priority Framework:** Paris Convention Art. 4 & 35 U.S.C. § 119 Priority (locked through September 14, 2027)
-- **Filing / Priority Date:** September 14, 2026
+- **Priority Framework:** Paris Convention Art. 4 & 35 U.S.C. § 119 Priority (Active 12-Month Window)
+- **Patent Status:** U.S. & International Patents Pending (Priority Locked)
 - **Official Title:** *SYSTEM AND METHOD FOR CLIENT-SIDE ZERO-TRUST DATA SANITIZATION AND CRYPTOGRAPHIC SESSION HANDOFF IN ARTIFICIAL INTELLIGENCE WORKFLOWS*
 - **Patent Disclosures Hub:** [privacyscrubber.com/patents/](https://privacyscrubber.com/patents/) (formal verification via counsel NDA).
 

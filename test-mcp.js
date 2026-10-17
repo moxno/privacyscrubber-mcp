@@ -131,6 +131,131 @@ try {
   }
   console.log("✅ Test 7 passed: CISO/DPO procurement memos (TEAMS, SDK, text/md) verified.");
 
+  // Test Case 8: Resolution of 30 industry profiles and sector aliases
+  console.log("\n[Test 8] Testing resolveRequestedProfile with 30 canonical industry profiles & sector aliases...");
+  const { resolveRequestedProfile, CANONICAL_INDUSTRY_PROFILES, performSanitization } = indexModule;
+  if (typeof resolveRequestedProfile !== 'function') {
+    console.error("❌ Test 8 failed: resolveRequestedProfile not exported from index.js.");
+    process.exit(1);
+  }
+  if (!Array.isArray(CANONICAL_INDUSTRY_PROFILES) || CANONICAL_INDUSTRY_PROFILES.length < 30) {
+    console.error("❌ Test 8 failed: CANONICAL_INDUSTRY_PROFILES must contain at least 30 profiles, found:", CANONICAL_INDUSTRY_PROFILES?.length);
+    process.exit(1);
+  }
+
+  // Check direct profile resolution
+  if (resolveRequestedProfile({ profile: 'Medical' }) !== 'Medical') {
+    console.error("❌ Test 8 failed: direct profile 'Medical' failed to resolve.");
+    process.exit(1);
+  }
+  // Check sector alias resolution
+  const testAliases = [
+    { input: { sector: 'medical' }, expected: 'Medical' },
+    { input: { sector: 'healthcare' }, expected: 'Medical' },
+    { input: { sector: 'doctor' }, expected: 'Medical' },
+    { input: { sector: 'fintech' }, expected: 'Finance' },
+    { input: { sector: 'banking' }, expected: 'Finance' },
+    { input: { sector: 'payments' }, expected: 'Finance' },
+    { input: { sector: 'law' }, expected: 'Legal' },
+    { input: { sector: 'attorney' }, expected: 'Legal' },
+    { input: { sector: 'dev' }, expected: 'Dev' },
+    { input: { sector: 'software' }, expected: 'Dev' },
+    { input: { sector: 'code' }, expected: 'Dev' },
+    { input: { sector: 'hr' }, expected: 'Hr' },
+    { input: { sector: 'accounting' }, expected: 'Accounting' },
+    { input: { sector: 'taxes' }, expected: 'Accounting' },
+    { input: { sector: 'mortgage' }, expected: 'Underwriting' },
+    { input: { sector: 'telecom' }, expected: 'Telecom' },
+    { input: { sector: 'scada' }, expected: 'Energy' },
+    { input: { sector: 'travel' }, expected: 'Hospitality' }
+  ];
+  for (const { input, expected } of testAliases) {
+    const res = resolveRequestedProfile(input);
+    if (res.toLowerCase() !== expected.toLowerCase()) {
+      console.error(`❌ Test 8 failed: alias '${input.sector}' resolved to '${res}', expected '${expected}'.`);
+      process.exit(1);
+    }
+  }
+
+  // Check precedence when client auto-fills default 'General'
+  const precedenceTest = resolveRequestedProfile({ profile: 'General', sector: 'medical' });
+  if (precedenceTest.toLowerCase() !== 'medical') {
+    console.error("❌ Test 8 failed: sector 'medical' should take precedence over default profile 'General', got:", precedenceTest);
+    process.exit(1);
+  }
+  console.log("✅ Test 8 passed: 30 profiles and sector alias resolution verified.");
+
+  // Test Case 9: Specialized PII Scrubbing via sector/profile without manual config
+  console.log("\n[Test 9] Testing specialized PII scrubbing via sector/profile parameter...");
+  const medicalText = "Patient clinic notes: MRN-982341, NPI: 1234567890. Needs immediate follow-up.";
+  
+  // Under General profile: MRN should NOT be masked (preserving anti-cannibalization guard)
+  const sessionGeneral = {};
+  const resGeneral = performSanitization(medicalText, "General", null, sessionGeneral);
+  if (resGeneral.scrubbedText.includes("[PHI_") || Object.keys(sessionGeneral).some(k => k.startsWith("[PHI_"))) {
+    console.error("❌ Test 9 failed: General profile should NOT mask specialized MRN (anti-cannibalization violated).");
+    process.exit(1);
+  }
+
+  // Under sector 'medical' / profile 'Medical': MRN MUST be masked as [PHI_N] and NPI as [ID_N]
+  const sessionMedical = {};
+  const resMedical = performSanitization(medicalText, "Medical", null, sessionMedical);
+  if (!resMedical.scrubbedText.includes("[PHI_1]") && !resMedical.scrubbedText.includes("[ID_1]")) {
+    console.error("❌ Test 9 failed: Medical profile failed to mask specialized medical entities:", resMedical.scrubbedText);
+    process.exit(1);
+  }
+  if (resMedical.scrubbedText.includes("MRN-982341")) {
+    console.error("❌ Test 9 failed: Medical profile leaked raw MRN.");
+    process.exit(1);
+  }
+
+  // Legal profile test: CASE-2026-9812
+  const legalText = "Litigation notice regarding CASE-2026-9812 before court.";
+  const sessionLegal = {};
+  const resLegal = performSanitization(legalText, "Legal", null, sessionLegal);
+  if (!resLegal.scrubbedText.includes("[LEGAL_1]") || resLegal.scrubbedText.includes("CASE-2026-9812")) {
+    console.error("❌ Test 9 failed: Legal profile failed to mask case identifier:", resLegal.scrubbedText);
+    process.exit(1);
+  }
+
+  // Finance profile test: PORTFOLIO-991823
+  const financeText = "Settlement for PORTFOLIO-991823 finalized today.";
+  const sessionFinance = {};
+  const resFinance = performSanitization(financeText, "Finance", null, sessionFinance);
+  if (!resFinance.scrubbedText.includes("[FINANCIAL_1]") || resFinance.scrubbedText.includes("PORTFOLIO-991823")) {
+    console.error("❌ Test 9 failed: Finance profile failed to mask portfolio identifier:", resFinance.scrubbedText);
+    process.exit(1);
+  }
+  console.log("✅ Test 9 passed: Specialized PII scrubbing without manual config verified across profiles.");
+
+  // Test Case 10: Quota Enforcement (Free 15k General vs 5k Specialized vs PRO Unlimited)
+  console.log("\n[Test 10] Testing Free Tier quota limits vs PRO throughput...");
+  const { truncateIfFree } = indexModule;
+  const sample6k = "A".repeat(6000);
+  const sample20k = "B".repeat(20000);
+
+  // Free Tier - Industry profile (5,000 char quota)
+  const freeIndustry = truncateIfFree(sample6k, false, 5000);
+  if (!freeIndustry.wasTruncated || freeIndustry.processedText.length !== 5000) {
+    console.error("❌ Test 10 failed: Free tier specialized profile must truncate at 5,000 chars.");
+    process.exit(1);
+  }
+
+  // Free Tier - General profile (15,000 char quota)
+  const freeGeneral = truncateIfFree(sample6k, false, 15000);
+  if (freeGeneral.wasTruncated || freeGeneral.processedText.length !== 6000) {
+    console.error("❌ Test 10 failed: Free tier General profile must not truncate 6,000 chars (limit is 15,000).");
+    process.exit(1);
+  }
+
+  // PRO Tier - Unlimited
+  const proUnlimited = truncateIfFree(sample20k, true, 5000);
+  if (proUnlimited.wasTruncated || proUnlimited.processedText.length !== 20000) {
+    console.error("❌ Test 10 failed: PRO tier must not truncate payloads regardless of character limit.");
+    process.exit(1);
+  }
+  console.log("✅ Test 10 passed: Quota enforcement (5k vertical trial, 15k universal, unlimited PRO) verified.");
+
   console.log("\n🎉 All local cryptographic and MCP Quality Assurance tests passed!");
   process.exit(0);
 

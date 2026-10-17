@@ -279,8 +279,8 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
     frameworksSet.add('CCPA/CPRA');
   }
   if (types.includes('ID') || types.includes('SSN') || types.includes('PASSPORT') || types.includes('NATIONAL_ID')) {
-    frameworksSet.add('SOC 2 Type II');
-    frameworksSet.add('ISO 27001 (A.8.11)');
+    frameworksSet.add('SOC 2 controls');
+    frameworksSet.add('ISO 27001 A.8.11 controls');
   }
   if (types.some(t => ['CREDIT_CARD', 'BANK', 'IBAN', 'FINANCIAL', 'CARD', 'STRIPE_KEY', 'TAX_ID', 'EIN', 'W2', '1099', 'SALARY', 'WAGE'].includes(t))) {
     frameworksSet.add('PCI DSS v4.0');
