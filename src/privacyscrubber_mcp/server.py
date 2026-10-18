@@ -10,7 +10,7 @@ import subprocess
 import json
 import re
 
-VERSION = "2.3.8"
+VERSION = "2.3.9"
 
 PATTERNS = {
     "SECRET": re.compile(
