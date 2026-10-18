@@ -33,6 +33,9 @@ jobs:
         run: uvx twine check dist/*
 
       - name: Publish to PyPI
+        if: env.PYPI_TOKEN != ''
+        env:
+          PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           skip-existing: true
