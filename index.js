@@ -171,13 +171,14 @@ export function buildStreamReplacer(tokenMap = {}, options = {}) {
 
   for (const k of sortedKeys) {
     const val = tokenMap[k];
-    const inner = k.replace(/^\[|<|\{\{|__|\]|>|\}\}|__/g, '');
+    const inner = k.replace(/^(?:\[|<|\{\{?|__|【|［|〔|「|『)|(?:\]|>|\}\}?|__|】|］|〕|」|』)$/g, '');
     const match = inner.match(/^([A-Za-z_0-9]+?)[-_ ]?(\d+)$/);
 
     if (match) {
       const label = escapeRegex(match[1]);
       const idx = match[2];
-      const patternStr = '(?:\\[\\s*' + label + '[-_\\s]*0*' + idx + '\\s*\\]|<\\s*' + label + '[-_\\s]*0*' + idx + '\\s*>|\\{\\{\\s*' + label + '[-_\\s]*0*' + idx + '\\s*\\}\\}|__\\s*' + label + '[-_\\s]*0*' + idx + '\\s*__|\\b' + label + '[-_\\s]+0*' + idx + '\\b)';
+      const corePat = '[*`_~\\s]*' + label + '[*`_~]*[-_\\s]*0*' + idx + '[*`_~.,;:!?\\s]*';
+      const patternStr = '(?:\\[' + corePat + '\\]|<' + corePat + '>|\\{\\{' + corePat + '\\}\\}|\\{' + corePat + '\\}|__' + corePat + '__|[【［〔「『]' + corePat + '[】］〕」』]|%5B' + corePat + '%5D|&#(?:91|091|x5[bB]);' + corePat + '&#(?:93|093|x5[dD]);|&(?:lbrack|lsqb);' + corePat + '&(?:rbrack|rsqb);|\\\\u005[bB]' + corePat + '\\\\u005[dD]|\\b' + label + '[-_\\s]+0*' + idx + '\\b)';
       patterns.push(patternStr);
       const normKey = (match[1] + '_' + parseInt(idx, 10)).toUpperCase();
       lookup.set(normKey, val);
@@ -206,7 +207,11 @@ export function buildStreamReplacer(tokenMap = {}, options = {}) {
       } else if (lookup.has(coreMatch.toUpperCase())) {
         restored = lookup.get(coreMatch.toUpperCase());
       } else {
-        const inner = coreMatch.replace(/^\[|<|\{\{|__|\]|>|\}\}|__/g, '').trim();
+        const inner = coreMatch
+          .replace(/^(?:%5B|&#(?:91|091|x5[bB]);|&(?:lbrack|lsqb);|\\u005[bB]|\[|<|\{\{?|__|【|［|〔|「|『)/i, '')
+          .replace(/(?:%5D|&#(?:93|093|x5[dD]);|&(?:rbrack|rsqb);|\\u005[dD]|\]|>|\}\}?|__|】|］|〕|」|』)$/i, '')
+          .replace(/[*`_~.,;:!?\s]+/g, ' ')
+          .trim();
         const m = inner.match(/^([A-Za-z_0-9]+?)[-_ ]?(\d+)$/);
         if (m) {
           const normKey = (m[1] + '_' + parseInt(m[2], 10)).toUpperCase();
@@ -300,12 +305,12 @@ export class StreamingDetokenizer {
     const tailLen = 160;
     const tail = this.pendingBuffer.length > tailLen ? this.pendingBuffer.slice(-tailLen) : this.pendingBuffer;
     const offset = this.pendingBuffer.length > tailLen ? this.pendingBuffer.length - tailLen : 0;
-    const m = tail.match(/(?:\[|<|\{\{?|__?)[A-Za-z0-9_\-А-Яа-яЁё ]{0,128}$/);
+    const m = tail.match(/(?:(?:\[|【|［|〔|「|『|<|\{\{?|__?|%5[Bb]|\\u005[Bb]|&(?:amp;)?(?:#0*91;|#[xX]0*5[Bb];|lbrack;))[A-Za-z0-9_\-А-Яа-яЁё *`~.\\]{0,128}(?:%5?|&(?:a(?:m(?:p(?:;)?)?)?)?(?:#(?:0*9?3?|[xX]0*5?[Dd]?)?|r(?:b(?:r(?:a(?:c(?:k)?)?)?)?)?)?)?|%[0-9A-Fa-f]?|\\(?:u(?:0(?:0(?:5)?)?)?)?|&(?:a(?:m(?:p(?:;)?)?)?)?(?:#(?:0*9?1?|[xX]0*5?)?|l(?:b(?:r(?:a(?:c(?:k)?)?)?)?)?)?)$/);
 
     if (m) {
       const candidate = m[0];
-      const isClosedUnderscoreToken = candidate.length >= 4 && candidate.startsWith('__') && candidate.endsWith('__');
-      if (isClosedUnderscoreToken && this.replacer(candidate) !== candidate) {
+      const isClosedUnderscoreOrUnicode = (candidate.length >= 4 && candidate.startsWith('__') && candidate.endsWith('__')) || /\\u005[Dd]/.test(candidate);
+      if (isClosedUnderscoreOrUnicode && this.replacer(candidate) !== candidate) {
         const toEmit = this.pendingBuffer;
         this.pendingBuffer = '';
         return this.replacer(toEmit);
@@ -454,16 +459,33 @@ function mcpLog(msg) {
 
 // Secrets detection patterns — defined once here, shared by detectSecrets() and performSanitization()
 const DEVOPS_SECRETS_DETECTOR = [
-  { name: 'AWS Credentials', regex: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA)[A-Z0-9]{16}\b/g },
+  { name: 'AWS Credentials', regex: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA)[A-Z0-9]{12,28}\b/g },
+  { name: 'Google Cloud / Gemini API Key', regex: /\bAIza[0-9A-Za-z_-]{35}\b/g },
+  { name: 'Anthropic API Key', regex: /\bsk-ant-(?:api\d{2}|admin\d{2}|sid\d{2})-[a-zA-Z0-9_-]{16,128}\b/g },
+  { name: 'HuggingFace / Perplexity API Key', regex: /\b(?:hf_[a-zA-Z0-9]{20,64}|pplx-[a-zA-Z0-9]{24,64})\b/g },
+  { name: 'SendGrid API Key', regex: /\bSG\.[a-zA-Z0-9_-]{16,32}\.[a-zA-Z0-9_-]{32,64}\b/g },
+  { name: 'Postman API Key', regex: /\bPMAK-[a-fA-F0-9]{24}-[a-fA-F0-9]{34}\b/g },
+  { name: 'GitHub Fine-Grained PAT', regex: /\bgithub_pat_[a-zA-Z0-9]{20,30}_[a-zA-Z0-9]{40,80}\b/g },
+  { name: 'Slack Enterprise / Refresh Token', regex: /\bxoxe\.xox[baprs]-\d-[a-zA-Z0-9-]{10,}\b|\bxox[eapbrs]-[a-zA-Z0-9-]{10,}\b/g },
+  { name: 'Telegram Bot API Token', regex: /\b\d{8,10}:AA[A-Za-z0-9_-]{33}\b/g },
+  { name: 'Age Encryption Secret Key', regex: /\bAGE-SECRET-KEY-1[A-Z0-9]{58}\b/g },
+  { name: 'Modern Cloud & AI Platform Key', regex: /\b(?:sbp_[a-fA-F0-9]{40}|dop_v1_[a-fA-F0-9]{64}|doo_v1_[a-fA-F0-9]{64}|dp\.(?:st|pt|ct|sa)\.[a-zA-Z0-9_-]{20,}|lin_api_[a-zA-Z0-9]{32,64}|ntn_[a-zA-Z0-9]{32,64}|secret_[a-zA-Z0-9]{32,64}|gsk_[a-zA-Z0-9]{32,64}|r8_[a-zA-Z0-9]{24,64}|tvly-[a-zA-Z0-9_-]{20,64}|fc-[a-fA-F0-9]{32}|dapi[a-fA-F0-9]{32}(?:-\d)?|re_[a-zA-Z0-9_]{20,64}|napi_[a-zA-Z0-9]{32,64}|[a-zA-Z0-9]{14}\.atlasv1\.[a-zA-Z0-9]{50,80}|pypi-[A-Za-z0-9_-]{16,128}|whsec_[A-Za-z0-9+/=_-]{24,128}|shpat_[a-fA-F0-9]{32}|shpss_[a-fA-F0-9]{32}|shpca_[a-fA-F0-9]{32}|shppa_[a-fA-F0-9]{32}|hvs\.[A-Za-z0-9_-]{24,128}|hvb\.[A-Za-z0-9_-]{24,128}|glsa_[A-Za-z0-9]{32}_[A-Fa-f0-9]{8}|glc_[A-Za-z0-9+/=_-]{20,128}|pscale_tkn_[A-Za-z0-9_.-]{20,64}|pscale_pw_[A-Za-z0-9_.-]{20,64}|pat[A-Za-z0-9]{14}\.[a-fA-F0-9]{64}|pat-(?:na1|eu1)-[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}|sq0atp-[A-Za-z0-9_-]{22,64}|sq0csp-[A-Za-z0-9_-]{32,64}|NRAK-[A-Z0-9]{27}|v1\.0-[a-fA-F0-9]{24}-[a-fA-F0-9]{16,160}|ATATT3xFfGF0[A-Za-z0-9+/=_-]{24,128}|tskey-(?:auth|api|client)-[A-Za-z0-9_-]{20,96}|sntry[su]_[A-Za-z0-9+/=_-]{32,160}|(?:pk|sk)\.eyJ1[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{16,}|key-[a-f0-9]{32}|[a-f0-9]{32}-us\d{1,2})\b/g },
+  { name: 'Twilio Account SID / API Key', regex: /\b(?:AC|SK)[a-fA-F0-9]{32}\b/g },
+  { name: 'Bcrypt / Argon2 Password Hash', regex: /(?<![A-Za-z0-9])(?:\$2[aby]\$\d{2}\$[./A-Za-z0-9=]{20,60}|\$argon2(?:id|i|d)\$[^\s"']{15,120})/g },
   { name: 'JSON Web Token (JWT)', regex: /\beyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b/g },
-  { name: 'API Token/Key (GitHub/Slack/NPM)', regex: /\b(?:ghp|gho|ghu|ghs|ghr|glpat|npm|xox[baprs])[-_][A-Za-z0-9_]{10,}\b/g },
-  { name: 'Stripe API Key', regex: /\b(?:[rs]k)_(?:test|live)_[a-zA-Z0-9]{24,}\b/g },
+  { name: 'API Token/Key (GitHub/Slack/NPM)', regex: /\b(?:ghp|gho|ghu|ghs|ghr|glpat|npm|xox[baprs])[-_][A-Za-z0-9_-]{10,}\b/g },
+  { name: 'Stripe API Key', regex: /\b(?:[rs]k)_(?:test|live)_[a-zA-Z0-9]{10,}\b/g },
   { name: 'OpenAI Project API Key', regex: /\b(?:sk|pk)-(?:proj-)?[a-zA-Z0-9_-]{16,}\b/gi },
+  { name: 'Slack / Discord Incoming Webhook URL', regex: /\bhttps:\/\/(?:hooks\.slack\.com\/services\/T[A-Z0-9_]+\/B[A-Z0-9_]+\/[A-Za-z0-9_-]+|(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d{17,20}\/[A-Za-z0-9_-]{60,70})\b/gi },
+  { name: 'Azure Connection String / SAS Token', regex: /(?:DefaultEndpointsProtocol=https?;AccountName=[^;\s"']+;AccountKey=[A-Za-z0-9+/=]{20,}(?:;EndpointSuffix=[^;\s"']+)?|Endpoint=sb:\/\/[^;\s"']+;SharedAccessKeyName=[^;\s"']+;SharedAccessKey=[A-Za-z0-9+/=]{16,}|\bSharedAccessSignature=sr=[^\s"']+&sig=[A-Za-z0-9%/+=]{16,}|\bAccountKey=[A-Za-z0-9+/=]{40,88}==)/gi },
   { name: 'Database Connection URI', regex: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql):\/\/[^\s"']+/gi },
-  { name: 'Embedded Credentials URI', regex: /\b(?:https?|s?ftp):\/\/[a-zA-Z0-9_.%+-]+:[^\s/@:"']+@[a-zA-Z0-9_.-]+(?::\d+)?(?:\/[^\s"']*)?/gi },
+  { name: 'Embedded Credentials URI', regex: /\b(?:https?|hxxps?|s?ftp|fxp|wss?):\/\/[a-zA-Z0-9_.%+-]+:[^\s/@:"']+@[a-zA-Z0-9_.-]+(?:\[\.\][a-zA-Z0-9_.-]+|\(\.\)[a-zA-Z0-9_.-]+)*(?::\d+)?(?:\/[^\s"']*)?/gi },
   { name: 'URL Query Parameter Secret', regex: /(?<=[?&](?:api_key|apikey|access_token|client_secret|auth_token|token|secret|password|private_key)=)[^\s"'\x26#)>]{8,}/gi },
+  { name: 'CLI Credential Flag / Curl User Auth', regex: /(?:\bcurl\b[^\r\n]*?\s(?:-u|--user)\s+["']?[A-Za-z0-9_.+-]+:[^\s"']+|\b(?:--password|--api-key|--apikey|--access-token|--auth-token|--client-secret|--secret-key|--private-key)(?:=|\s+)["']?[^\s"']{6,}["']?)/gi },
+  { name: 'HTTP API Key Header', regex: /\b(?:X-API-Key|X-Amz-Security-Token|X-Functions-Key|X-Shopify-Access-Token|X-Auth-Token|Api-Key)\s*:\s*["']?[A-Za-z0-9_.\-~+/=]{12,}["']?/gi },
+  { name: 'Docker Registry Auth / K8s Secret Base64', regex: /(?<=["']?(?:auth|identitytoken|registrytoken|\.dockerconfigjson)["']?\s*:\s*["'])[A-Za-z0-9+/=]{16,}(?=["'])/gi },
   { name: 'Bearer / Auth Header Token', regex: /(?<=\b(?:Bearer|Token)\s+)[a-zA-Z0-9_\-\.~+/=]{16,}\b/gi },
-  { name: 'Database/API Secret', regex: /\b(DB|POSTGRES|REDIS|MYSQL|AWS|SECRET|PASSWORD|TOKEN|API|KEY)[A-Z0-9_]*\s*[:=]\s*[^ \t\r\n"']{8,}\b/gi },
+  { name: 'Database/API Secret', regex: /\b(DB|POSTGRES|REDIS|MYSQL|AWS|SECRET|PASSWORD|TOKEN|API|KEY)[A-Z0-9_]*\s*[:=]\s*[^ \t\r\n"']{8,}/gi },
   { name: 'Private Cryptographic Key (PEM Block)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----[\s\S]{10,8192}?-----END (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g },
   { name: 'Private Cryptographic Key (Header)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g }
 ];
@@ -2385,8 +2407,111 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (resolvedPath.toLowerCase().endsWith(".docx")) {
         try {
           const mammoth = require('mammoth');
-          const result = await mammoth.extractRawText({ path: resolvedPath });
-          const content = result.value;
+          const zlib = require('zlib');
+          const docxBuf = fs.readFileSync(resolvedPath);
+          const result = await mammoth.extractRawText({ buffer: docxBuf });
+          let extraXmlText = "";
+          try {
+            const zipEntries = {};
+            let eocdOffset = -1;
+            for (let i = docxBuf.length - 22; i >= Math.max(0, docxBuf.length - 65557); i--) {
+              if (docxBuf.readUInt32LE(i) === 0x06054b50) {
+                eocdOffset = i;
+                break;
+              }
+            }
+            if (eocdOffset !== -1) {
+              const cdEntries = docxBuf.readUInt16LE(eocdOffset + 10);
+              let pos = docxBuf.readUInt32LE(eocdOffset + 16);
+              for (let e = 0; e < cdEntries && pos + 46 <= docxBuf.length; e++) {
+                if (docxBuf.readUInt32LE(pos) !== 0x02014b50) break;
+                const method = docxBuf.readUInt16LE(pos + 10);
+                const compSize = docxBuf.readUInt32LE(pos + 20);
+                const nameLen = docxBuf.readUInt16LE(pos + 28);
+                const extraLen = docxBuf.readUInt16LE(pos + 30);
+                const commentLen = docxBuf.readUInt16LE(pos + 32);
+                const localOffset = docxBuf.readUInt32LE(pos + 42);
+                const entryName = docxBuf.toString('utf8', pos + 46, pos + 46 + nameLen);
+                if (localOffset + 30 <= docxBuf.length && docxBuf.readUInt32LE(localOffset) === 0x04034b50) {
+                  const lNameLen = docxBuf.readUInt16LE(localOffset + 26);
+                  const lExtraLen = docxBuf.readUInt16LE(localOffset + 28);
+                  const dataStart = localOffset + 30 + lNameLen + lExtraLen;
+                  const compData = docxBuf.subarray(dataStart, dataStart + compSize);
+                  if (method === 0) {
+                    zipEntries[entryName] = compData.toString('utf8');
+                  } else if (method === 8) {
+                    zipEntries[entryName] = zlib.inflateRawSync(compData).toString('utf8');
+                  }
+                }
+                pos += 46 + nameLen + extraLen + commentLen;
+              }
+            }
+            const xmlTargets = Object.keys(zipEntries).filter((n) =>
+              /^(?:word\/(?:header\d*|footer\d*|footnotes|endnotes|comments|commentsExtended|people)\.xml|docProps\/(?:core|app|custom)\.xml)$/i.test(n)
+            );
+            const docAuthors = new Set();
+            for (const xmlPath of xmlTargets) {
+              const rawXml = zipEntries[xmlPath];
+              const authorRx = /\b(?:w:author|w15:author|w15:userId)="([^"]+)"/gi;
+              let am;
+              while ((am = authorRx.exec(rawXml)) !== null) {
+                if (am[1] && am[1].trim()) docAuthors.add(am[1].trim());
+              }
+              const stripped = rawXml
+                .replace(/<\/w:p>/gi, "\n")
+                .replace(/<w:tab\b[^>]*\/?>/gi, "\t")
+                .replace(/<[^>]+>/g, " ")
+                .replace(/&amp;/g, "&")
+                .replace(/&lt;/g, "<")
+                .replace(/&gt;/g, ">")
+                .replace(/&quot;/g, '"')
+                .replace(/&apos;/g, "'")
+                .replace(/[ \t]+/g, " ")
+                .trim();
+              if (stripped) extraXmlText += `\n${stripped}\n`;
+            }
+            if (zipEntries["word/document.xml"]) {
+              const docXml = zipEntries["word/document.xml"];
+              const authorRx = /\bw:author="([^"]+)"/gi;
+              let am;
+              while ((am = authorRx.exec(docXml)) !== null) {
+                if (am[1] && am[1].trim()) docAuthors.add(am[1].trim());
+              }
+              const delAndInstrRx = /<w:(?:delText|instrText)\b[^>]*>([\s\S]*?)<\/w:(?:delText|instrText)>/gi;
+              let dm;
+              const hiddenChunks = [];
+              while ((dm = delAndInstrRx.exec(docXml)) !== null) {
+                const val = dm[1]
+                  .replace(/<[^>]+>/g, " ")
+                  .replace(/&amp;/g, "&")
+                  .replace(/&lt;/g, "<")
+                  .replace(/&gt;/g, ">")
+                  .replace(/&quot;/g, '"')
+                  .replace(/&apos;/g, "'")
+                  .trim();
+                if (val) hiddenChunks.push(val);
+              }
+              if (hiddenChunks.length > 0) {
+                extraXmlText += `\n[Tracked Changes / Field Text]: ${hiddenChunks.join(" | ")}\n`;
+              }
+            }
+            if (docAuthors.size > 0) {
+              extraXmlText += `\n[Document Reviewers]: ${Array.from(docAuthors).join(", ")}\n`;
+            }
+            const relsTargets = Object.keys(zipEntries).filter((n) => /^word\/_rels\/.*\.rels$/i.test(n));
+            for (const relPath of relsTargets) {
+              const relXml = zipEntries[relPath];
+              const targetRegex = /Target="([^"]+)"/gi;
+              let tm;
+              while ((tm = targetRegex.exec(relXml)) !== null) {
+                const val = tm[1];
+                if (/^(?:mailto:|tel:|https?:\/\/)/i.test(val) && !/schemas\.openxmlformats\.org|schemas\.microsoft\.com|w3\.org/i.test(val)) {
+                  extraXmlText += `\n[Document Link]: ${val}\n`;
+                }
+              }
+            }
+          } catch (_) {}
+          const content = (result.value || '') + (extraXmlText ? '\n' + extraXmlText : '');
           const isAdvanced = targetProfile.toLowerCase() !== "general";
           const license = checkLicenseStatus();
           let finalProfile = targetProfile;
@@ -2475,10 +2600,44 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const XLSX = require('xlsx');
             const workbook = XLSX.read(buffer, { type: 'buffer' });
             let content = '';
+            if (workbook.Props && typeof workbook.Props === 'object') {
+              const propFields = ['Author', 'LastAuthor', 'Company', 'Manager', 'Title', 'Subject', 'Comments'];
+              for (const pf of propFields) {
+                if (workbook.Props[pf] && String(workbook.Props[pf]).trim()) {
+                  content += `[Workbook ${pf}]: ${String(workbook.Props[pf]).trim()}\n`;
+                }
+              }
+            }
+            if (workbook.CustProps && typeof workbook.CustProps === 'object') {
+              for (const [ck, cv] of Object.entries(workbook.CustProps)) {
+                if (cv !== undefined && cv !== null && String(cv).trim()) {
+                  content += `[Custom Property ${ck}]: ${String(cv).trim()}\n`;
+                }
+              }
+            }
             workbook.SheetNames.forEach(sheetName => {
               const worksheet = workbook.Sheets[sheetName];
               content += `--- Sheet: ${sheetName} ---\n`;
               content += XLSX.utils.sheet_to_csv(worksheet) + '\n';
+              if (worksheet && typeof worksheet === 'object') {
+                for (const cellKey of Object.keys(worksheet)) {
+                  if (cellKey.startsWith('!')) continue;
+                  const cell = worksheet[cellKey];
+                  if (!cell || typeof cell !== 'object') continue;
+                  if (cell.l && cell.l.Target) {
+                    content += `[Hyperlink ${cellKey}]: ${cell.l.Target}\n`;
+                  }
+                  if (Array.isArray(cell.c)) {
+                    for (const comm of cell.c) {
+                      const author = comm.a ? `${comm.a}: ` : '';
+                      const cText = (comm.t || '').trim();
+                      if (cText) {
+                        content += `[Comment ${cellKey}] ${author}${cText}\n`;
+                      }
+                    }
+                  }
+                }
+              }
             });
 
             let finalProfile = targetProfile;
@@ -2525,13 +2684,63 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      const content = buffer.toString("utf8");
+      let content = buffer.toString("utf8");
+      const ext = path.extname(resolvedPath).toLowerCase();
+      if (ext === ".eml") {
+        const decodeQpUtf8 = (str) =>
+          str
+            .replace(/=\r?\n/g, "")
+            .replace(/(?:=[0-9A-Fa-f]{2})+/g, (seq) => {
+              try {
+                const bytes = Buffer.alloc(seq.length / 3);
+                for (let i = 0; i < bytes.length; i++) {
+                  bytes[i] = parseInt(seq.slice(i * 3 + 1, i * 3 + 3), 16);
+                }
+                return bytes.toString("utf8");
+              } catch (_) {
+                return seq;
+              }
+            });
+        content = content.replace(/=\?([^?]+)\?([BQbq])\?([^?]+)\?=/g, (full, charset, enc, payload) => {
+          try {
+            if (enc.toUpperCase() === "B") {
+              return Buffer.from(payload.replace(/\s+/g, ""), "base64").toString("utf8");
+            }
+            return decodeQpUtf8(payload.replace(/_/g, " "));
+          } catch (_) {
+            return full;
+          }
+        });
+        content = content.replace(
+          /(Content-Transfer-Encoding\s*:\s*base64\b[\s\S]*?\r?\n\r?\n)([A-Za-z0-9+/=\r\n]+)(?=\r?\n--|\s*$)/gi,
+          (full, hdr, b64Block) => {
+            try {
+              const cleanB64 = b64Block.replace(/[\r\n\s]+/g, "");
+              if (cleanB64.length < 8) return full;
+              return hdr + Buffer.from(cleanB64, "base64").toString("utf8");
+            } catch (_) {
+              return full;
+            }
+          }
+        );
+        content = decodeQpUtf8(content);
+      } else if (ext === ".rtf") {
+        content = content
+          .replace(/\\par\b|\\line\b/gi, "\n")
+          .replace(/\\'([0-9a-fA-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+          .replace(/\\u(-?\d+)\??/g, (_, code) => {
+            const n = parseInt(code, 10);
+            return String.fromCharCode(n < 0 ? n + 65536 : n);
+          })
+          .replace(/\\[a-zA-Z]+(?:-?\d+)?[ ]?/g, " ")
+          .replace(/[{}]/g, " ")
+          .replace(/[ \t]+/g, " ");
+      }
       const isAdvanced = targetProfile.toLowerCase() !== "general";
       const license = checkLicenseStatus();
       let finalProfile = targetProfile;
       let isAutoElevated = false;
 
-      const ext = path.extname(resolvedPath).toLowerCase();
       const CODE_EXTENSIONS = new Set(['.js', '.ts', '.jsx', '.tsx', '.py', '.go', '.rs', '.java', '.rb', '.php', '.cs', '.sh', '.bash', '.zsh', '.env', '.yaml', '.yml', '.toml', '.sql']);
       const DEV_HEURISTIC_REGEX = /(?:AKIA[0-9A-Z]{16}|ghp_[a-zA-Z0-9]{36}|sk-[a-zA-Z0-9]{20,}|-----BEGIN (?:RSA )?PRIVATE KEY-----|Bearer\s+eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+|(?:postgres|postgresql|mysql|mongodb|redis):\/\/[^\s"'>]+|export\s+(?:AWS_|DATABASE_|API_KEY|SECRET)|const\s+\w+\s*=\s*require\(|import\s+.*\s+from\s+['"])/i;
 
@@ -2583,9 +2792,54 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (buffer.indexOf(0) !== -1) {
           return { isError: true, content: [{ type: "text", text: `Error: Cannot redact binary file.` }] };
         }
-        const content = buffer.toString('utf8');
+        let content = buffer.toString('utf8');
+        const ext = path.extname(file_path).toLowerCase();
+        if (ext === ".eml") {
+          const decodeQpUtf8 = (str) =>
+            str.replace(/=\r?\n/g, "").replace(/(?:=[0-9A-Fa-f]{2})+/g, (seq) => {
+              try {
+                const bytes = Buffer.alloc(seq.length / 3);
+                for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(seq.slice(i * 3 + 1, i * 3 + 3), 16);
+                return bytes.toString("utf8");
+              } catch (_) { return seq; }
+            });
+          content = content.replace(/=\?([^?]+)\?([BQbq])\?([^?]+)\?=/g, (full, charset, enc, payload) => {
+            try {
+              if (enc.toUpperCase() === "B") return Buffer.from(payload.replace(/\s+/g, ""), "base64").toString("utf8");
+              return decodeQpUtf8(payload.replace(/_/g, " "));
+            } catch (_) { return full; }
+          });
+          content = content.replace(/(Content-Transfer-Encoding\s*:\s*base64\b[\s\S]*?\r?\n\r?\n)([A-Za-z0-9+/=\r\n]+)(?=\r?\n--|\s*$)/gi, (full, hdr, b64Block) => {
+            try {
+              const cleanB64 = b64Block.replace(/[\r\n\s]+/g, "");
+              if (cleanB64.length < 8) return full;
+              return hdr + Buffer.from(cleanB64, "base64").toString("utf8");
+            } catch (_) { return full; }
+          });
+          content = decodeQpUtf8(content);
+        } else if (ext === ".rtf") {
+          content = content
+            .replace(/\\par\b|\\line\b/gi, "\n")
+            .replace(/\\'([0-9a-fA-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+            .replace(/\\u(-?\d+)\??/g, (_, code) => {
+              const n = parseInt(code, 10);
+              return String.fromCharCode(n < 0 ? n + 65536 : n);
+            })
+            .replace(/\\[a-zA-Z]+(?:-?\d+)?[ ]?/g, " ")
+            .replace(/[{}]/g, " ")
+            .replace(/[ \t]+/g, " ");
+        }
 
         const customRules = loadCustomRules();
+        const activeRules = [...customRules];
+        DEVOPS_SECRETS_DETECTOR.forEach(rule => {
+          activeRules.push({
+            name: rule.name,
+            pattern: rule.regex.source,
+            regex: new RegExp(rule.regex.source, rule.regex.flags),
+            label: rule.label || 'SECRET'
+          });
+        });
         const normalizedProfile = resolveRequestedProfile(args, "general").toLowerCase();
         const license = checkLicenseStatus();
         
@@ -2598,7 +2852,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         const localSessionMap = {};
         
-        const result = PrivacyScrubberCore.scrubText(content, customRules, {}, normalizedProfile, localSessionMap, license.isPro);
+        const result = PrivacyScrubberCore.scrubText(content, activeRules, {}, normalizedProfile, localSessionMap, license.isPro);
         
         let isSecretLeak = false;
         if (!license.isPro && result.tokenMap) {
@@ -2825,6 +3079,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       let reportLines = [`## Security Audit Report: ${directory_path}`];
       let filesWithIssues = 0;
       const customRules = loadCustomRules();
+      const activeRules = [...customRules];
+      DEVOPS_SECRETS_DETECTOR.forEach(rule => {
+        activeRules.push({
+          name: rule.name,
+          pattern: rule.regex.source,
+          regex: new RegExp(rule.regex.source, rule.regex.flags),
+          label: rule.label || 'SECRET'
+        });
+      });
       const normalizedProfile = resolveRequestedProfile(args, "general").toLowerCase();
       const license = checkLicenseStatus();
       
@@ -2847,7 +3110,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const content = buffer.toString('utf8');
 
           const localSessionMap = {};
-          const result = PrivacyScrubberCore.scrubText(content, customRules, {}, normalizedProfile, localSessionMap, license.isPro);
+          const result = PrivacyScrubberCore.scrubText(content, activeRules, {}, normalizedProfile, localSessionMap, license.isPro);
           
           Object.assign(totalTokensForDirectory, localSessionMap);
           
@@ -2997,6 +3260,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [{ type: "text", text: `Error: Path is a directory. Use audit_directory_for_pii to scan directories.` }]
         };
       }
+      if (stat.size > 10 * 1024 * 1024) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Error: File is too large (${(stat.size / 1024 / 1024).toFixed(2)}MB). Maximum allowed size is 10MB.` }]
+        };
+      }
+      const rawBuffer = fs.readFileSync(resolvedPath);
+      const checkLen = Math.min(rawBuffer.length, 8000);
+      for (let i = 0; i < checkLen; i++) {
+        if (rawBuffer[i] === 0) {
+          return {
+            isError: true,
+            content: [{ type: "text", text: `Error: Binary file format detected. Use sanitize_file for DOCX/PDF/XLSX documents.` }]
+          };
+        }
+      }
       const license = checkLicenseStatus();
       const limitStatus = checkFreeTierLimit(license.isPro);
       if (limitStatus.blocked) {
@@ -3006,7 +3285,43 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      let rawContent = fs.readFileSync(resolvedPath, 'utf8');
+      let rawContent = rawBuffer.toString('utf8');
+      const ext = path.extname(resolvedPath).toLowerCase();
+      if (ext === '.eml') {
+        const decodeQpUtf8 = (str) =>
+          str.replace(/=\r?\n/g, '').replace(/(?:=[0-9A-Fa-f]{2})+/g, (seq) => {
+            try {
+              const bytes = Buffer.alloc(seq.length / 3);
+              for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(seq.slice(i * 3 + 1, i * 3 + 3), 16);
+              return bytes.toString('utf8');
+            } catch (_) { return seq; }
+          });
+        rawContent = rawContent.replace(/=\?([^?]+)\?([BQbq])\?([^?]+)\?=/g, (full, charset, enc, payload) => {
+          try {
+            if (enc.toUpperCase() === 'B') return Buffer.from(payload.replace(/\s+/g, ''), 'base64').toString('utf8');
+            return decodeQpUtf8(payload.replace(/_/g, ' '));
+          } catch (_) { return full; }
+        });
+        rawContent = rawContent.replace(/(Content-Transfer-Encoding\s*:\s*base64\b[\s\S]*?\r?\n\r?\n)([A-Za-z0-9+/=\r\n]+)(?=\r?\n--|\s*$)/gi, (full, hdr, b64Block) => {
+          try {
+            const cleanB64 = b64Block.replace(/[\r\n\s]+/g, '');
+            if (cleanB64.length < 8) return full;
+            return hdr + Buffer.from(cleanB64, 'base64').toString('utf8');
+          } catch (_) { return full; }
+        });
+        rawContent = decodeQpUtf8(rawContent);
+      } else if (ext === '.rtf') {
+        rawContent = rawContent
+          .replace(/\\par\b|\\line\b/gi, '\n')
+          .replace(/\\'([0-9a-fA-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+          .replace(/\\u(-?\d+)\??/g, (_, code) => {
+            const n = parseInt(code, 10);
+            return String.fromCharCode(n < 0 ? n + 65536 : n);
+          })
+          .replace(/\\[a-zA-Z]+(?:-?\d+)?[ ]?/g, ' ')
+          .replace(/[{}]/g, ' ')
+          .replace(/[ \t]+/g, ' ');
+      }
       const lines = rawContent.split(/\r?\n/);
       const capped = lines.slice(0, max_lines).join('\n');
       const wasLineTruncated = lines.length > max_lines;

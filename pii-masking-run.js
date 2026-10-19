@@ -89,18 +89,35 @@ const colors = {
 };
 
 const DEVOPS_SECRETS_DETECTOR = [
-  { name: 'AWS Credentials', regex: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA)[A-Z0-9]{16}\b/g },
-  { name: 'JSON Web Token (JWT)', regex: /\beyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b/g },
-  { name: 'API Token/Key (GitHub/Slack/NPM)', regex: /\b(?:ghp|gho|ghu|ghs|ghr|glpat|npm|xox[baprs])[-_][A-Za-z0-9_]{10,}\b/g },
-  { name: 'Stripe API Key', regex: /\b(?:[rs]k)_(?:test|live)_[a-zA-Z0-9]{24,}\b/g },
-  { name: 'OpenAI Project API Key', regex: /\b(?:sk|pk)-(?:proj-)?[a-zA-Z0-9_-]{16,}\b/gi },
-  { name: 'Database Connection URI', regex: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql):\/\/[^\s"']+/gi },
-  { name: 'Embedded Credentials URI', regex: /\b(?:https?|s?ftp):\/\/[a-zA-Z0-9_.%+-]+:[^\s/@:"']+@[a-zA-Z0-9_.-]+(?::\d+)?(?:\/[^\s"']*)?/gi },
-  { name: 'URL Query Parameter Secret', regex: /(?<=[?&](?:api_key|apikey|access_token|client_secret|auth_token|token|secret|password|private_key)=)[^\s"'\x26#)>]{8,}/gi },
-  { name: 'Bearer / Auth Header Token', regex: /(?<=\b(?:Bearer|Token)\s+)[a-zA-Z0-9_\-\.~+/=]{16,}\b/gi },
-  { name: 'Database/API Secret', regex: /\b(DB|POSTGRES|REDIS|MYSQL|AWS|SECRET|PASSWORD|TOKEN|API|KEY)[A-Z0-9_]*\s*[:=]\s*[^ \t\r\n"']{8,}\b/gi },
-  { name: 'Private Cryptographic Key (PEM Block)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----[\s\S]{10,8192}?-----END (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g },
-  { name: 'Private Cryptographic Key (Header)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g }
+  { name: 'AWS Credentials', regex: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA)[A-Z0-9]{12,28}\b/g, label: 'AWS_KEY' },
+  { name: 'Google Cloud / Gemini API Key', regex: /\bAIza[0-9A-Za-z_-]{35}\b/g, label: 'API_TOKEN' },
+  { name: 'Anthropic API Key', regex: /\bsk-ant-(?:api\d{2}|admin\d{2}|sid\d{2})-[a-zA-Z0-9_-]{16,128}\b/g, label: 'API_TOKEN' },
+  { name: 'HuggingFace / Perplexity API Key', regex: /\b(?:hf_[a-zA-Z0-9]{20,64}|pplx-[a-zA-Z0-9]{24,64})\b/g, label: 'API_TOKEN' },
+  { name: 'SendGrid API Key', regex: /\bSG\.[a-zA-Z0-9_-]{16,32}\.[a-zA-Z0-9_-]{32,64}\b/g, label: 'API_TOKEN' },
+  { name: 'Postman API Key', regex: /\bPMAK-[a-fA-F0-9]{24}-[a-fA-F0-9]{34}\b/g, label: 'API_TOKEN' },
+  { name: 'GitHub Fine-Grained PAT', regex: /\bgithub_pat_[a-zA-Z0-9]{20,30}_[a-zA-Z0-9]{40,80}\b/g, label: 'API_TOKEN' },
+  { name: 'Slack Enterprise / Refresh Token', regex: /\bxoxe\.xox[baprs]-\d-[a-zA-Z0-9-]{10,}\b|\bxox[eapbrs]-[a-zA-Z0-9-]{10,}\b/g, label: 'API_TOKEN' },
+  { name: 'Telegram Bot API Token', regex: /\b\d{8,10}:AA[A-Za-z0-9_-]{33}\b/g, label: 'API_TOKEN' },
+  { name: 'Age Encryption Secret Key', regex: /\bAGE-SECRET-KEY-1[A-Z0-9]{58}\b/g, label: 'SECRET' },
+  { name: 'Modern Cloud & AI Platform Key', regex: /\b(?:sbp_[a-fA-F0-9]{40}|dop_v1_[a-fA-F0-9]{64}|doo_v1_[a-fA-F0-9]{64}|dp\.(?:st|pt|ct|sa)\.[a-zA-Z0-9_-]{20,}|lin_api_[a-zA-Z0-9]{32,64}|ntn_[a-zA-Z0-9]{32,64}|secret_[a-zA-Z0-9]{32,64}|gsk_[a-zA-Z0-9]{32,64}|r8_[a-zA-Z0-9]{24,64}|tvly-[a-zA-Z0-9_-]{20,64}|fc-[a-fA-F0-9]{32}|dapi[a-fA-F0-9]{32}(?:-\d)?|re_[a-zA-Z0-9_]{20,64}|napi_[a-zA-Z0-9]{32,64}|[a-zA-Z0-9]{14}\.atlasv1\.[a-zA-Z0-9]{50,80}|pypi-[A-Za-z0-9_-]{16,128}|whsec_[A-Za-z0-9+/=_-]{24,128}|shpat_[a-fA-F0-9]{32}|shpss_[a-fA-F0-9]{32}|shpca_[a-fA-F0-9]{32}|shppa_[a-fA-F0-9]{32}|hvs\.[A-Za-z0-9_-]{24,128}|hvb\.[A-Za-z0-9_-]{24,128}|glsa_[A-Za-z0-9]{32}_[A-Fa-f0-9]{8}|glc_[A-Za-z0-9+/=_-]{20,128}|pscale_tkn_[A-Za-z0-9_.-]{20,64}|pscale_pw_[A-Za-z0-9_.-]{20,64}|pat[A-Za-z0-9]{14}\.[a-fA-F0-9]{64}|pat-(?:na1|eu1)-[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}|sq0atp-[A-Za-z0-9_-]{22,64}|sq0csp-[A-Za-z0-9_-]{32,64}|NRAK-[A-Z0-9]{27}|v1\.0-[a-fA-F0-9]{24}-[a-fA-F0-9]{16,160}|ATATT3xFfGF0[A-Za-z0-9+/=_-]{24,128}|tskey-(?:auth|api|client)-[A-Za-z0-9_-]{20,96}|sntry[su]_[A-Za-z0-9+/=_-]{32,160}|(?:pk|sk)\.eyJ1[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{16,}|key-[a-f0-9]{32}|[a-f0-9]{32}-us\d{1,2})\b/g, label: 'API_TOKEN' },
+  { name: 'Twilio Account SID / API Key', regex: /\b(?:AC|SK)[a-fA-F0-9]{32}\b/g, label: 'API_TOKEN' },
+  { name: 'Bcrypt / Argon2 Password Hash', regex: /(?<![A-Za-z0-9])(?:\$2[aby]\$\d{2}\$[./A-Za-z0-9=]{20,60}|\$argon2(?:id|i|d)\$[^\s"']{15,120})/g, label: 'SECRET' },
+  { name: 'JSON Web Token (JWT)', regex: /\beyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b/g, label: 'JWT_TOKEN' },
+  { name: 'API Token/Key (GitHub/Slack/NPM)', regex: /\b(?:ghp|gho|ghu|ghs|ghr|glpat|npm|xox[baprs])[-_][A-Za-z0-9_-]{10,}\b/g, label: 'API_TOKEN' },
+  { name: 'Stripe API Key', regex: /\b(?:[rs]k)_(?:test|live)_[a-zA-Z0-9]{10,}\b/g, label: 'STRIPE_KEY' },
+  { name: 'OpenAI Project API Key', regex: /\b(?:sk|pk)-(?:proj-)?[a-zA-Z0-9_-]{16,}\b/gi, label: 'OPENAI_KEY' },
+  { name: 'Slack / Discord Incoming Webhook URL', regex: /\bhttps:\/\/(?:hooks\.slack\.com\/services\/T[A-Z0-9_]+\/B[A-Z0-9_]+\/[A-Za-z0-9_-]+|(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d{17,20}\/[A-Za-z0-9_-]{60,70})\b/gi, label: 'SECRET' },
+  { name: 'Azure Connection String / SAS Token', regex: /(?:DefaultEndpointsProtocol=https?;AccountName=[^;\s"']+;AccountKey=[A-Za-z0-9+/=]{20,}(?:;EndpointSuffix=[^;\s"']+)?|Endpoint=sb:\/\/[^;\s"']+;SharedAccessKeyName=[^;\s"']+;SharedAccessKey=[A-Za-z0-9+/=]{16,}|\bSharedAccessSignature=sr=[^\s"']+&sig=[A-Za-z0-9%/+=]{16,}|\bAccountKey=[A-Za-z0-9+/=]{40,88}==)/gi, label: 'SECRET' },
+  { name: 'Database Connection URI', regex: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql):\/\/[^\s"']+/gi, label: 'DB_URI' },
+  { name: 'Embedded Credentials URI', regex: /\b(?:https?|hxxps?|s?ftp|fxp|wss?):\/\/[a-zA-Z0-9_.%+-]+:[^\s/@:"']+@[a-zA-Z0-9_.-]+(?:\[\.\][a-zA-Z0-9_.-]+|\(\.\)[a-zA-Z0-9_.-]+)*(?::\d+)?(?:\/[^\s"']*)?/gi, label: 'SECRET' },
+  { name: 'URL Query Parameter Secret', regex: /(?<=[?&](?:api_key|apikey|access_token|client_secret|auth_token|token|secret|password|private_key)=)[^\s"'\x26#)>]{8,}/gi, label: 'SECRET' },
+  { name: 'CLI Credential Flag / Curl User Auth', regex: /(?:\bcurl\b[^\r\n]*?\s(?:-u|--user)\s+["']?[A-Za-z0-9_.+-]+:[^\s"']+|\b(?:--password|--api-key|--apikey|--access-token|--auth-token|--client-secret|--secret-key|--private-key)(?:=|\s+)["']?[^\s"']{6,}["']?)/gi, label: 'SECRET' },
+  { name: 'HTTP API Key Header', regex: /\b(?:X-API-Key|X-Amz-Security-Token|X-Functions-Key|X-Shopify-Access-Token|X-Auth-Token|Api-Key)\s*:\s*["']?[A-Za-z0-9_.\-~+/=]{12,}["']?/gi, label: 'SECRET' },
+  { name: 'Docker Registry Auth / K8s Secret Base64', regex: /(?<=["']?(?:auth|identitytoken|registrytoken|\.dockerconfigjson)["']?\s*:\s*["'])[A-Za-z0-9+/=]{16,}(?=["'])/gi, label: 'SECRET' },
+  { name: 'Bearer / Auth Header Token', regex: /(?<=\b(?:Bearer|Token)\s+)[a-zA-Z0-9_\-\.~+/=]{16,}\b/gi, label: 'SECRET' },
+  { name: 'Database/API Secret', regex: /\b(DB|POSTGRES|REDIS|MYSQL|AWS|SECRET|PASSWORD|TOKEN|API|KEY)[A-Z0-9_]*\s*[:=]\s*[^ \t\r\n"']{8,}/gi, label: 'SECRET' },
+  { name: 'Private Cryptographic Key (PEM Block)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----[\s\S]{10,8192}?-----END (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g, label: 'SECRET' },
+  { name: 'Private Cryptographic Key (Header)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g, label: 'SECRET' }
 ];
 
 let LicenseManager;
@@ -209,9 +226,19 @@ function performSanitization(text) {
     sessionTruncatedLimit = limit;
   }
 
+  const activeRules = [...customRules];
+  DEVOPS_SECRETS_DETECTOR.forEach(rule => {
+    activeRules.push({
+      name: rule.name,
+      pattern: rule.regex.source,
+      regex: new RegExp(rule.regex.source, rule.regex.flags),
+      label: rule.label || 'SECRET'
+    });
+  });
+
   let result;
   try {
-    result = PrivacyScrubberCore.scrubText(textToScrub, customRules, {}, normalizedProfile, localSessionMap, license.isPro);
+    result = PrivacyScrubberCore.scrubText(textToScrub, activeRules, {}, normalizedProfile, localSessionMap, license.isPro);
   } catch (err) {
     return text;
   }
@@ -234,7 +261,7 @@ function performSanitization(text) {
       }
       if (isSecret) {
         hasSecrets = true;
-        result.scrubbedText = result.scrubbedText.replace(token, '[SECRET_BLOCKED_UPGRADE_TO_PRO]');
+        result.scrubbedText = result.scrubbedText.replaceAll(token, '[SECRET_BLOCKED_UPGRADE_TO_PRO]');
       }
     });
 
