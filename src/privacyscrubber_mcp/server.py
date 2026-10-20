@@ -10,7 +10,7 @@ import subprocess
 import json
 import re
 
-VERSION = "2.4.0"
+VERSION = "2.4.1"
 
 PATTERNS = {
     "SECRET": re.compile(
@@ -23,6 +23,11 @@ PATTERNS = {
     "FINANCIAL": re.compile(r'\b(?:\d{4}[-\s]?){3}\d{4}\b|\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b'),
     "IP": re.compile(r'\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b')
 }
+
+
+TOKEN_RE = re.compile(r'\[[A-Z0-9_]+_\d+\]')
+FORBIDDEN_PATH_SEGMENTS = ('/etc/shadow', '/etc/passwd', '/.ssh/', '/.aws/', '/.gnupg/', 'id_rsa', 'id_ed25519')
+MAX_FILE_BYTES = 10 * 1024 * 1024
 
 
 class NativeZtdsEngine:
@@ -52,6 +57,8 @@ class NativeZtdsEngine:
 
         scrubbed = text
         for entity_type, pat in PATTERNS.items():
+            if entity_type == "EMAIL" and "@" not in scrubbed:
+                continue
             scrubbed = pat.sub(lambda m, et=entity_type: replacer(m, et), scrubbed)
 
         max_tokens = int(os.environ.get("PRIVACYSCRUBBER_MAX_SESSION_TOKENS", "5000"))
@@ -69,10 +76,11 @@ class NativeZtdsEngine:
         active_map = custom_map if custom_map is not None else self.session_map
         if not active_map:
             return text
-        result = text
-        for tok, original in sorted(active_map.items(), key=lambda x: len(x[0]), reverse=True):
-            result = result.replace(tok, original)
-        return result
+        return TOKEN_RE.sub(lambda m: active_map.get(m.group(0), m.group(0)), text)
+
+    def zeroize_session(self) -> None:
+        self.session_map.clear()
+        self.counters.clear()
 
 
 def run_native_mcp_loop():
@@ -207,7 +215,13 @@ def run_native_mcp_loop():
             elif tool_name == "sanitize_file":
                 file_path = tool_args.get("path", "")
                 try:
-                    with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                    resolved_path = os.path.abspath(os.path.expanduser(str(file_path)))
+                    normalized_check = resolved_path.replace("\\", "/").lower()
+                    if any(seg in normalized_check for seg in FORBIDDEN_PATH_SEGMENTS):
+                        raise PermissionError("Access to system credential path is restricted by ZTDS policy.")
+                    if os.path.getsize(resolved_path) > MAX_FILE_BYTES:
+                        raise ValueError("File exceeds 10MB in-memory sanitization limit.")
+                    with open(resolved_path, "r", encoding="utf-8", errors="replace") as f:
                         raw_content = f.read()
                     scrubbed, _ = engine.sanitize(raw_content)
                     res = {
@@ -275,7 +289,7 @@ def main():
         run_native_mcp_loop()
         return
 
-    # Check for local index.js (e.g. in cloned repository or adjacent root)
+    # 1. Check for local index.js (e.g. in cloned repository or adjacent root)
     local_index = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "index.js"))
     if os.path.exists(local_index):
         node_bin = shutil.which("node")
@@ -285,34 +299,18 @@ def main():
             except Exception:
                 pass
 
-    npx_bin = shutil.which("npx")
-    if npx_bin:
+    # 2. Check for locally installed privacyscrubber-mcp binary in PATH (0 network egress)
+    mcp_bin = shutil.which("privacyscrubber-mcp")
+    if mcp_bin:
         try:
-            proc = subprocess.Popen(
-                [npx_bin, "-y", "@privacyscrubber/mcp-server"] + args,
-                stdin=sys.stdin,
-                stdout=sys.stdout,
-                stderr=sys.stderr
-            )
-            try:
-                ret = proc.wait(timeout=0.8)
-                if ret != 0:
-                    sys.stderr.write(
-                        f"[PrivacyScrubber MCP] npx exited with code {ret}. "
-                        f"Engaging native zero-dependency Python ZTDS engine.\n"
-                    )
-                    sys.stderr.flush()
-                    run_native_mcp_loop()
-                else:
-                    sys.exit(0)
-            except subprocess.TimeoutExpired:
-                proc.wait()
-                sys.exit(proc.returncode)
+            os.execvp(mcp_bin, [mcp_bin] + args)
         except Exception:
-            run_native_mcp_loop()
-    else:
-        run_native_mcp_loop()
+            pass
+
+    # 3. Fallback to zero-dependency Python ZTDS engine (strictly air-gapped, no remote npx fetch)
+    run_native_mcp_loop()
 
 
 if __name__ == "__main__":
     main()
+

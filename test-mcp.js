@@ -87,6 +87,8 @@ try {
     console.error("❌ Test 5 failed: redact_file did not insert tokens properly.");
     process.exit(1);
   }
+  if (fs.existsSync(testDir)) fs.rmSync(testDir, { recursive: true, force: true });
+  console.log("✅ Test 5 passed: redact_file verified and temporary qa-test-dir cleaned.");
   
   // Test Case 6: Compliance Report Generation
   console.log("\n[Test 6] Testing generate_compliance_report output (JSON & Markdown)...");

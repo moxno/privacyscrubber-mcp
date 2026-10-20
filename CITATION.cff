@@ -1,8 +1,8 @@
 cff-version: 1.2.0
 message: "If you use PrivacyScrubber or the ZTDS engine in your research or enterprise compliance audit, please cite our foundation treatises."
 title: "PrivacyScrubber: Zero-Trust Data Sanitization (ZTDS) Engine & MCP Server"
-version: 2.4.0
-date-released: 2026-10-12
+version: 2.4.1
+date-released: 2026-10-20
 license: MIT
 repository-code: "https://github.com/moxno/privacyscrubber-mcp"
 url: "https://privacyscrubber.com"

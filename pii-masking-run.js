@@ -27,7 +27,7 @@ const cmdIndex = args.indexOf("--");
 
 if (args.includes("--version") || args.includes("-v")) {
   const pkgPath = path.resolve(__dirname, './package.json');
-  let version = '2.2.10';
+  let version = '2.4.1';
   try { version = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version; } catch (_) {}
   console.log(`ps-guard / pii-masking-run v${version} (PrivacyScrubber MCP)`);
   process.exit(0);
@@ -89,35 +89,35 @@ const colors = {
 };
 
 const DEVOPS_SECRETS_DETECTOR = [
-  { name: 'AWS Credentials', regex: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA)[A-Z0-9]{12,28}\b/g, label: 'AWS_KEY' },
-  { name: 'Google Cloud / Gemini API Key', regex: /\bAIza[0-9A-Za-z_-]{35}\b/g, label: 'API_TOKEN' },
-  { name: 'Anthropic API Key', regex: /\bsk-ant-(?:api\d{2}|admin\d{2}|sid\d{2})-[a-zA-Z0-9_-]{16,128}\b/g, label: 'API_TOKEN' },
-  { name: 'HuggingFace / Perplexity API Key', regex: /\b(?:hf_[a-zA-Z0-9]{20,64}|pplx-[a-zA-Z0-9]{24,64})\b/g, label: 'API_TOKEN' },
-  { name: 'SendGrid API Key', regex: /\bSG\.[a-zA-Z0-9_-]{16,32}\.[a-zA-Z0-9_-]{32,64}\b/g, label: 'API_TOKEN' },
-  { name: 'Postman API Key', regex: /\bPMAK-[a-fA-F0-9]{24}-[a-fA-F0-9]{34}\b/g, label: 'API_TOKEN' },
-  { name: 'GitHub Fine-Grained PAT', regex: /\bgithub_pat_[a-zA-Z0-9]{20,30}_[a-zA-Z0-9]{40,80}\b/g, label: 'API_TOKEN' },
-  { name: 'Slack Enterprise / Refresh Token', regex: /\bxoxe\.xox[baprs]-\d-[a-zA-Z0-9-]{10,}\b|\bxox[eapbrs]-[a-zA-Z0-9-]{10,}\b/g, label: 'API_TOKEN' },
-  { name: 'Telegram Bot API Token', regex: /\b\d{8,10}:AA[A-Za-z0-9_-]{33}\b/g, label: 'API_TOKEN' },
-  { name: 'Age Encryption Secret Key', regex: /\bAGE-SECRET-KEY-1[A-Z0-9]{58}\b/g, label: 'SECRET' },
-  { name: 'Modern Cloud & AI Platform Key', regex: /\b(?:sbp_[a-fA-F0-9]{40}|dop_v1_[a-fA-F0-9]{64}|doo_v1_[a-fA-F0-9]{64}|dp\.(?:st|pt|ct|sa)\.[a-zA-Z0-9_-]{20,}|lin_api_[a-zA-Z0-9]{32,64}|ntn_[a-zA-Z0-9]{32,64}|secret_[a-zA-Z0-9]{32,64}|gsk_[a-zA-Z0-9]{32,64}|r8_[a-zA-Z0-9]{24,64}|tvly-[a-zA-Z0-9_-]{20,64}|fc-[a-fA-F0-9]{32}|dapi[a-fA-F0-9]{32}(?:-\d)?|re_[a-zA-Z0-9_]{20,64}|napi_[a-zA-Z0-9]{32,64}|[a-zA-Z0-9]{14}\.atlasv1\.[a-zA-Z0-9]{50,80}|pypi-[A-Za-z0-9_-]{16,128}|whsec_[A-Za-z0-9+/=_-]{24,128}|shpat_[a-fA-F0-9]{32}|shpss_[a-fA-F0-9]{32}|shpca_[a-fA-F0-9]{32}|shppa_[a-fA-F0-9]{32}|hvs\.[A-Za-z0-9_-]{24,128}|hvb\.[A-Za-z0-9_-]{24,128}|glsa_[A-Za-z0-9]{32}_[A-Fa-f0-9]{8}|glc_[A-Za-z0-9+/=_-]{20,128}|pscale_tkn_[A-Za-z0-9_.-]{20,64}|pscale_pw_[A-Za-z0-9_.-]{20,64}|pat[A-Za-z0-9]{14}\.[a-fA-F0-9]{64}|pat-(?:na1|eu1)-[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}|sq0atp-[A-Za-z0-9_-]{22,64}|sq0csp-[A-Za-z0-9_-]{32,64}|NRAK-[A-Z0-9]{27}|v1\.0-[a-fA-F0-9]{24}-[a-fA-F0-9]{16,160}|ATATT3xFfGF0[A-Za-z0-9+/=_-]{24,128}|tskey-(?:auth|api|client)-[A-Za-z0-9_-]{20,96}|sntry[su]_[A-Za-z0-9+/=_-]{32,160}|(?:pk|sk)\.eyJ1[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{16,}|key-[a-f0-9]{32}|[a-f0-9]{32}-us\d{1,2})\b/g, label: 'API_TOKEN' },
-  { name: 'Twilio Account SID / API Key', regex: /\b(?:AC|SK)[a-fA-F0-9]{32}\b/g, label: 'API_TOKEN' },
-  { name: 'Bcrypt / Argon2 Password Hash', regex: /(?<![A-Za-z0-9])(?:\$2[aby]\$\d{2}\$[./A-Za-z0-9=]{20,60}|\$argon2(?:id|i|d)\$[^\s"']{15,120})/g, label: 'SECRET' },
-  { name: 'JSON Web Token (JWT)', regex: /\beyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b/g, label: 'JWT_TOKEN' },
-  { name: 'API Token/Key (GitHub/Slack/NPM)', regex: /\b(?:ghp|gho|ghu|ghs|ghr|glpat|npm|xox[baprs])[-_][A-Za-z0-9_-]{10,}\b/g, label: 'API_TOKEN' },
-  { name: 'Stripe API Key', regex: /\b(?:[rs]k)_(?:test|live)_[a-zA-Z0-9]{10,}\b/g, label: 'STRIPE_KEY' },
-  { name: 'OpenAI Project API Key', regex: /\b(?:sk|pk)-(?:proj-)?[a-zA-Z0-9_-]{16,}\b/gi, label: 'OPENAI_KEY' },
-  { name: 'Slack / Discord Incoming Webhook URL', regex: /\bhttps:\/\/(?:hooks\.slack\.com\/services\/T[A-Z0-9_]+\/B[A-Z0-9_]+\/[A-Za-z0-9_-]+|(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d{17,20}\/[A-Za-z0-9_-]{60,70})\b/gi, label: 'SECRET' },
-  { name: 'Azure Connection String / SAS Token', regex: /(?:DefaultEndpointsProtocol=https?;AccountName=[^;\s"']+;AccountKey=[A-Za-z0-9+/=]{20,}(?:;EndpointSuffix=[^;\s"']+)?|Endpoint=sb:\/\/[^;\s"']+;SharedAccessKeyName=[^;\s"']+;SharedAccessKey=[A-Za-z0-9+/=]{16,}|\bSharedAccessSignature=sr=[^\s"']+&sig=[A-Za-z0-9%/+=]{16,}|\bAccountKey=[A-Za-z0-9+/=]{40,88}==)/gi, label: 'SECRET' },
-  { name: 'Database Connection URI', regex: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql):\/\/[^\s"']+/gi, label: 'DB_URI' },
-  { name: 'Embedded Credentials URI', regex: /\b(?:https?|hxxps?|s?ftp|fxp|wss?):\/\/[a-zA-Z0-9_.%+-]+:[^\s/@:"']+@[a-zA-Z0-9_.-]+(?:\[\.\][a-zA-Z0-9_.-]+|\(\.\)[a-zA-Z0-9_.-]+)*(?::\d+)?(?:\/[^\s"']*)?/gi, label: 'SECRET' },
-  { name: 'URL Query Parameter Secret', regex: /(?<=[?&](?:api_key|apikey|access_token|client_secret|auth_token|token|secret|password|private_key)=)[^\s"'\x26#)>]{8,}/gi, label: 'SECRET' },
-  { name: 'CLI Credential Flag / Curl User Auth', regex: /(?:\bcurl\b[^\r\n]*?\s(?:-u|--user)\s+["']?[A-Za-z0-9_.+-]+:[^\s"']+|\b(?:--password|--api-key|--apikey|--access-token|--auth-token|--client-secret|--secret-key|--private-key)(?:=|\s+)["']?[^\s"']{6,}["']?)/gi, label: 'SECRET' },
-  { name: 'HTTP API Key Header', regex: /\b(?:X-API-Key|X-Amz-Security-Token|X-Functions-Key|X-Shopify-Access-Token|X-Auth-Token|Api-Key)\s*:\s*["']?[A-Za-z0-9_.\-~+/=]{12,}["']?/gi, label: 'SECRET' },
-  { name: 'Docker Registry Auth / K8s Secret Base64', regex: /(?<=["']?(?:auth|identitytoken|registrytoken|\.dockerconfigjson)["']?\s*:\s*["'])[A-Za-z0-9+/=]{16,}(?=["'])/gi, label: 'SECRET' },
-  { name: 'Bearer / Auth Header Token', regex: /(?<=\b(?:Bearer|Token)\s+)[a-zA-Z0-9_\-\.~+/=]{16,}\b/gi, label: 'SECRET' },
-  { name: 'Database/API Secret', regex: /\b(DB|POSTGRES|REDIS|MYSQL|AWS|SECRET|PASSWORD|TOKEN|API|KEY)[A-Z0-9_]*\s*[:=]\s*[^ \t\r\n"']{8,}/gi, label: 'SECRET' },
-  { name: 'Private Cryptographic Key (PEM Block)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----[\s\S]{10,8192}?-----END (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g, label: 'SECRET' },
-  { name: 'Private Cryptographic Key (Header)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g, label: 'SECRET' }
+    { name: 'AWS Credentials', regex: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA)[A-Z0-9]{12,28}\b/g, label: 'AWS_KEY' },
+    { name: 'Google Cloud / Gemini API Key', regex: /\bAIza[0-9A-Za-z_-]{35}\b/g, label: 'API_TOKEN' },
+    { name: 'Anthropic API Key', regex: /\bsk-ant-(?:api\d{2}|admin\d{2}|sid\d{2})-[a-zA-Z0-9_-]{16,128}\b/g, label: 'API_TOKEN' },
+    { name: 'HuggingFace / Perplexity API Key', regex: /\b(?:hf_[a-zA-Z0-9]{20,64}|pplx-[a-zA-Z0-9]{24,64})\b/g, label: 'API_TOKEN' },
+    { name: 'SendGrid API Key', regex: /\bSG\.[a-zA-Z0-9_-]{16,32}\.[a-zA-Z0-9_-]{32,64}\b/g, label: 'API_TOKEN' },
+    { name: 'Postman API Key', regex: /\bPMAK-[a-fA-F0-9]{24}-[a-fA-F0-9]{34}\b/g, label: 'API_TOKEN' },
+    { name: 'GitHub Fine-Grained PAT', regex: /\bgithub_pat_[a-zA-Z0-9]{20,30}_[a-zA-Z0-9]{40,80}\b/g, label: 'API_TOKEN' },
+    { name: 'Slack Enterprise / Refresh Token', regex: /\bxoxe\.xox[baprs]-\d-[a-zA-Z0-9-]{10,}\b|\bxox[eapbrs]-[a-zA-Z0-9-]{10,}\b/g, label: 'API_TOKEN' },
+    { name: 'Telegram Bot API Token', regex: /\b\d{8,10}:AA[A-Za-z0-9_-]{33}\b/g, label: 'API_TOKEN' },
+    { name: 'Age Encryption Secret Key', regex: /\bAGE-SECRET-KEY-1[A-Z0-9]{58}\b/g, label: 'SECRET' },
+    { name: 'Modern Cloud & AI Platform Key', regex: /\b(?:sbp_[a-fA-F0-9]{40}|dop_v1_[a-fA-F0-9]{64}|doo_v1_[a-fA-F0-9]{64}|dp\.(?:st|pt|ct|sa)\.[a-zA-Z0-9_-]{20,}|lin_api_[a-zA-Z0-9]{32,64}|ntn_[a-zA-Z0-9]{32,64}|secret_[a-zA-Z0-9]{32,64}|gsk_[a-zA-Z0-9]{32,64}|r8_[a-zA-Z0-9]{24,64}|tvly-[a-zA-Z0-9_-]{20,64}|fc-[a-fA-F0-9]{32}|dapi[a-fA-F0-9]{32}(?:-\d)?|re_[a-zA-Z0-9_]{20,64}|napi_[a-zA-Z0-9]{32,64}|[a-zA-Z0-9]{14}\.atlasv1\.[a-zA-Z0-9]{50,80}|pypi-[A-Za-z0-9_-]{16,128}|whsec_[A-Za-z0-9+/=_-]{24,128}|shpat_[a-fA-F0-9]{32}|shpss_[a-fA-F0-9]{32}|shpca_[a-fA-F0-9]{32}|shppa_[a-fA-F0-9]{32}|hvs\.[A-Za-z0-9_-]{24,128}|hvb\.[A-Za-z0-9_-]{24,128}|glsa_[A-Za-z0-9]{32}_[A-Fa-f0-9]{8}|glc_[A-Za-z0-9+/=_-]{20,128}|pscale_tkn_[A-Za-z0-9_.-]{20,64}|pscale_pw_[A-Za-z0-9_.-]{20,64}|pat[A-Za-z0-9]{14}\.[a-fA-F0-9]{64}|pat-(?:na1|eu1)-[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}|sq0atp-[A-Za-z0-9_-]{22,64}|sq0csp-[A-Za-z0-9_-]{32,64}|NRAK-[A-Z0-9]{27}|v1\.0-[a-fA-F0-9]{24}-[a-fA-F0-9]{16,160}|ATATT3xFfGF0[A-Za-z0-9+/=_-]{24,128}|tskey-(?:auth|api|client)-[A-Za-z0-9_-]{20,96}|sntry[su]_[A-Za-z0-9+/=_-]{32,160}|(?:pk|sk)\.eyJ1[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{16,}|key-[a-f0-9]{32}|[a-f0-9]{32}-us\d{1,2})\b/g, label: 'API_TOKEN' },
+    { name: 'Twilio Account SID / API Key', regex: /\b(?:AC|SK)[a-fA-F0-9]{32}\b/g, label: 'API_TOKEN' },
+    { name: 'Bcrypt / Argon2 Password Hash', regex: /(?<![A-Za-z0-9])(?:\$2[aby]\$\d{2}\$[./A-Za-z0-9=]{20,60}|\$argon2(?:id|i|d)\$[^\s"']{15,120})/g, label: 'SECRET' },
+    { name: 'JSON Web Token (JWT)', regex: /\beyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b/g, label: 'JWT_TOKEN' },
+    { name: 'API Token/Key (GitHub/Slack/NPM)', regex: /\b(?:ghp|gho|ghu|ghs|ghr|glpat|npm|xox[baprs])[-_][A-Za-z0-9_-]{10,}\b/g, label: 'API_TOKEN' },
+    { name: 'Stripe API Key', regex: /\b(?:[rs]k)_(?:test|live)_[a-zA-Z0-9]{10,}\b/g, label: 'STRIPE_KEY' },
+    { name: 'OpenAI Project API Key', regex: /\b(?:sk|pk)-(?:proj-)?[a-zA-Z0-9_-]{16,}\b/gi, label: 'OPENAI_KEY' },
+    { name: 'Slack / Discord Incoming Webhook URL', regex: /\bhttps:\/\/(?:hooks\.slack\.com\/services\/T[A-Z0-9_]+\/B[A-Z0-9_]+\/[A-Za-z0-9_-]+|(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d{17,20}\/[A-Za-z0-9_-]{60,70})\b/gi, label: 'SECRET' },
+    { name: 'Azure Connection String / SAS Token', regex: /(?:DefaultEndpointsProtocol=https?;AccountName=[^;\s"']+;AccountKey=[A-Za-z0-9+/=]{20,}(?:;EndpointSuffix=[^;\s"']+)?|Endpoint=sb:\/\/[^;\s"']+;SharedAccessKeyName=[^;\s"']+;SharedAccessKey=[A-Za-z0-9+/=]{16,}|\bSharedAccessSignature=sr=[^\s"']+&sig=[A-Za-z0-9%/+=]{16,}|\bAccountKey=[A-Za-z0-9+/=]{40,88}==)/gi, label: 'SECRET' },
+    { name: 'Database Connection URI', regex: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql):\/\/[^\s"']+/gi, label: 'DB_URI' },
+    { name: 'Embedded Credentials URI', regex: /\b(?:https?|hxxps?|s?ftp|fxp|wss?):\/\/[a-zA-Z0-9_.%+-]+:[^\s/@:"']+@[a-zA-Z0-9_.-]+(?:\[\.\][a-zA-Z0-9_.-]+|\(\.\)[a-zA-Z0-9_.-]+)*(?::\d+)?(?:\/[^\s"']*)?/gi, label: 'SECRET' },
+    { name: 'URL Query Parameter Secret', regex: /(?<=[?&](?:api_key|apikey|access_token|client_secret|auth_token|token|secret|password|private_key)=)[^\s"'\x26#)>]{8,}/gi, label: 'SECRET' },
+    { name: 'CLI Credential Flag / Curl User Auth', regex: /(?:\bcurl\b[^\r\n]*?\s(?:-u|--user)\s+["']?[A-Za-z0-9_.+-]+:[^\s"']+|\b(?:--password|--api-key|--apikey|--access-token|--auth-token|--client-secret|--secret-key|--private-key)(?:=|\s+)["']?[^\s"']{6,}["']?)/gi, label: 'SECRET' },
+    { name: 'HTTP API Key Header', regex: /\b(?:X-API-Key|X-Amz-Security-Token|X-Functions-Key|X-Shopify-Access-Token|X-Auth-Token|Api-Key)\s*:\s*["']?[A-Za-z0-9_.\-~+/=]{12,}["']?/gi, label: 'SECRET' },
+    { name: 'Docker Registry Auth / K8s Secret Base64', regex: /(?<=["']?(?:auth|identitytoken|registrytoken|\.dockerconfigjson)["']?\s*:\s*["'])[A-Za-z0-9+/=]{16,}(?=["'])/gi, label: 'SECRET' },
+    { name: 'Bearer / Auth Header Token', regex: /(?<=\b(?:Bearer|Token)\s+)[a-zA-Z0-9_\-\.~+/=]{16,}\b/gi, label: 'SECRET' },
+    { name: 'Database/API Secret', regex: /\b(DB|POSTGRES|REDIS|MYSQL|AWS|SECRET|PASSWORD|TOKEN|API|KEY)[A-Z0-9_]*\s*[:=]\s*[^ \t\r\n"']{8,}/gi, label: 'SECRET' },
+    { name: 'Private Cryptographic Key (PEM Block)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----[\s\S]{10,8192}?-----END (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g, label: 'SECRET' },
+    { name: 'Private Cryptographic Key (Header)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g, label: 'SECRET' }
 ];
 
 let LicenseManager;
@@ -327,7 +327,7 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
   }
 
   const ipHoldings = {
-    standard: 'IETF draft-sibiryakov-ztds-protocol-00',
+    standard: 'IETF draft-sibiryakov-ztds-protocol-01',
     standardUrl: 'https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/',
     patent: "U.S. & Int'l Patents Pending (Paris Convention Priority)",
     trademark: 'ZTDS™ Reg. #182655957 (ILPO Cl 9 & 42)'
@@ -337,27 +337,27 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
     {
       statute: 'EU AI Act (Art. 50)',
       scope: 'AI Transparency & Data Minimization',
-      rule: '0-byte external network transmission; prevents unauthorized ingestion into frontier models.'
+      rule: 'Sanitization runs locally by design; reduces the content sent to external AI models. Informational mapping, not a compliance determination.'
     },
     {
       statute: 'GDPR (Art. 4, 25, 28, 32)',
       scope: 'Pseudonymization & Processor Liability',
-      rule: 'Volatile client-side tokenization eliminates GDPR Article 28 data processor liability.'
+      rule: 'Client-side pseudonymization is a technical measure supporting Art. 25 and 32. It does not by itself remove controller or processor obligations.'
     },
     {
       statute: 'HIPAA 45 CFR § 164.514(b)',
       scope: 'Safe Harbor De-Identification',
-      rule: 'Deterministic removal of all 18 PHI identifiers prior to AI analysis.'
+      rule: 'Pattern-based masking of direct identifiers supports Safe Harbor de-identification workflows. Review output for residual identifiers before sharing.'
     },
     {
       statute: 'IRC § 7216 & IRS Pub. 1075',
       scope: 'Tax Return Information Confidentiality',
-      rule: 'Strict criminal penalty safeguard against unauthorized disclosure of tax records to cloud LLMs.'
+      rule: 'Masking identifiers before AI use can reduce exposure of tax return information. Informational mapping, not legal advice.'
     },
     {
       statute: 'FRE 502',
       scope: 'Attorney-Client Privilege Preservation',
-      rule: 'Automated in-memory redaction prevents inadvertent waiver of legal privilege in AI workflows.'
+      rule: 'In-memory redaction can reduce disclosure of privileged details in AI workflows. Privilege determinations remain a legal judgment.'
     }
   ];
 
@@ -371,6 +371,54 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
     ipHoldings,
     multimodalEgress: '0.00 Bytes (Solid Blackout & Burn-in Verified)'
   };
+}
+
+// ── PSR-2 Receipt Integrity (real SHA-256; parity with src/modules/receipt-integrity.js) ──
+const PSR2_VERSION = 'PSR-2';
+const PSR2_STATEMENTS = {
+  measured: [
+    'Token Manifest SHA-256: digest of the sorted token labels held in this session (original values are never hashed or exported).',
+    'Entity counts per type.',
+    'Receipt SHA-256: digest of the canonical field string, so edits to this receipt are detectable.'
+  ],
+  byDesign: [
+    'The sanitization engine runs locally in process memory and does not transmit prompt content. This is an architectural property and is not measured by this receipt.',
+    'Token-to-original mappings are held in volatile memory for the session. This receipt does not record their contents.'
+  ],
+  limits: [
+    'This receipt is not a digital signature and does not prove who generated it or when.',
+    'No final output digest is recorded by this export (Output SHA-256: not recorded).',
+    'Detection is pattern-based. Free-text narrative can contain indirect identifiers that remain after sanitization; review output before sharing.',
+    'Regulatory references are informational technical-safeguard mappings, not a legal determination of compliance.'
+  ]
+};
+function psr2Sha256(input) {
+  return crypto.createHash('sha256').update(String(input == null ? '' : input), 'utf8').digest('hex');
+}
+function buildPsr2Receipt(tokenMap, timestamp = new Date().toISOString()) {
+  const labels = (tokenMap && typeof tokenMap === 'object' ? Object.keys(tokenMap) : []).slice().sort();
+  const counts = {};
+  for (const t of labels) {
+    const m = t.match(/\[([A-Z_]+)_\d+\]/);
+    const type = m ? m[1] : 'CUSTOM';
+    counts[type] = (counts[type] || 0) + 1;
+  }
+  const entityCounts = Object.keys(counts).sort().map(k => `${k}=${counts[k]}`).join(',') || 'none';
+  const manifestSha256 = psr2Sha256(labels.join('\n'));
+  const canonical = [PSR2_VERSION, timestamp, 'none', manifestSha256, entityCounts, 'na'].join('|');
+  return { version: PSR2_VERSION, timestamp, outputSha256: null, manifestSha256, entityCounts, tokensTotal: labels.length, tokensPresentInOutput: null, canonical, receiptSha256: psr2Sha256(canonical) };
+}
+function psr2Lines(r) {
+  return [
+    `Receipt Version: ${r.version}`,
+    `Timestamp (UTC): ${r.timestamp}`,
+    `Output SHA-256: not recorded`,
+    `Token Manifest SHA-256: ${r.manifestSha256}`,
+    `Entity Counts: ${r.entityCounts}`,
+    `Tokens In Final Output: not recorded`,
+    `Canonical: ${r.canonical}`,
+    `Receipt SHA-256: ${r.receiptSha256}`
+  ];
 }
 
 function emitProofFeedback() {
@@ -531,7 +579,7 @@ if (isDiffMode) {
     }
     if (!diffOutput.trim()) {
       if (isJsonMode) {
-        console.log(JSON.stringify({ isDiff: true, empty: true, diff: "", count: 0, telemetry: buildCisoAuditTelemetry({}) }, null, 2));
+        console.log(JSON.stringify({ isDiff: true, empty: true, diff: "", count: 0, telemetry: buildCisoAuditTelemetry({}), receipt: buildPsr2Receipt({}) }, null, 2));
       } else {
         console.log(`[Zero-Trust Agentic Guard: Git Diff]\nNo git diff changes detected (${isStaged ? 'staged' : 'unstaged'}).`);
       }
@@ -545,7 +593,8 @@ if (isDiffMode) {
         sanitizedDiff: sanitizedDiff,
         tokenMap: localSessionMap,
         count: Object.keys(localSessionMap).length,
-        telemetry: telemetry
+        telemetry: telemetry,
+        receipt: buildPsr2Receipt(localSessionMap)
       }, null, 2));
     } else {
       process.stdout.write(sanitizedDiff.endsWith('\n') ? sanitizedDiff : sanitizedDiff + '\n');
@@ -571,7 +620,8 @@ if (hasStdin && !hasCommand && !isRestoreMode && !isDiffMode && !isRulesMode) {
         scrubbedText: sanitized,
         tokenMap: localSessionMap,
         count: Object.keys(localSessionMap).length,
-        telemetry: telemetry
+        telemetry: telemetry,
+        receipt: buildPsr2Receipt(localSessionMap)
       }, null, 2) + '\n');
       emitProofFeedback();
       process.exit(0);

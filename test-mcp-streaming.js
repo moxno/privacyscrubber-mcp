@@ -1,6 +1,6 @@
 /**
  * PrivacyScrubber MCP Server — Real-Time Streaming & Token-Split Guard Test Suite
- * Conforms to ZTDS RFC v1.0 and IETF draft-sibiryakov-ztds-protocol-02.
+ * Conforms to ZTDS RFC v1.0 and IETF draft-sibiryakov-ztds-protocol-01.
  */
 
 import assert from 'node:assert';
