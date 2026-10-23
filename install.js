@@ -10,7 +10,54 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import readline from 'readline';
+import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
+
+function isGhCliAvailable() {
+  try {
+    execFileSync('gh', ['--version'], { stdio: 'ignore', timeout: 2000 });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function promptGitHubStarIfInteractive() {
+  if (!process.stdin.isTTY || !process.stdout.isTTY || process.env.CI || process.env.NODE_ENV === 'test' || process.env.PRIVACYSCRUBBER_TEST_MODE === '1') {
+    return;
+  }
+  if (!isGhCliAvailable()) return;
+
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    let settled = false;
+    const finish = (answer) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { rl.close(); } catch (_) {}
+      const normalized = String(answer || '').trim().toLowerCase();
+      if (normalized === 'y' || normalized === 'yes') {
+        try {
+          execFileSync('gh', ['repo', 'star', 'moxno/privacyscrubber-mcp'], { stdio: 'ignore', timeout: 4000 });
+          execFileSync('gh', ['repo', 'star', 'moxno/ztds.ai'], { stdio: 'ignore', timeout: 4000 });
+          console.log('   [GitHub] Thank you for starring moxno/privacyscrubber-mcp & moxno/ztds.ai!');
+        } catch (_) {
+          console.log('   [GitHub] Star manually: https://github.com/moxno/privacyscrubber-mcp');
+        }
+      }
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      process.stdout.write('\n');
+      finish('skip');
+    }, 4000);
+    rl.question('   Star moxno/privacyscrubber-mcp on GitHub via gh CLI? [y/N] (auto-skips in 4s): ', (ans) => {
+      finish(ans);
+    });
+  });
+}
 
 const MCP_CONFIG_SNIPPET = {
   command: "npx",
@@ -359,12 +406,26 @@ Options:
     if (!options.remove) {
       console.log('Next step: Restart your AI IDE or Claude Desktop to activate PrivacyScrubber.');
       console.log('\x1b[33m⭐ Enjoying zero-trust privacy? Star the repo on GitHub: https://github.com/moxno/privacyscrubber-mcp\x1b[0m');
-      console.log('\x1b[90m   One-click CLI: gh repo star moxno/privacyscrubber-mcp\x1b[0m');
+      console.log('\x1b[90m   One-click CLI: gh repo star moxno/privacyscrubber-mcp && gh repo star moxno/ztds.ai\x1b[0m');
+      console.log('\x1b[90m   Feedback / Report missed entity: https://privacyscrubber.com/uninstall/?mode=feedback&src=mcp\x1b[0m');
+      if (!options.dryRun) {
+        await promptGitHubStarIfInteractive();
+      }
+    } else {
+      console.log('\n[FEEDBACK] Why did you remove PrivacyScrubber MCP? (1-click instant log — no form typing):');
+      console.log('  - Setup / IDE issue:      https://privacyscrubber.com/uninstall/?src=mcp&reason=setup');
+      console.log('  - Detection / Accuracy:   https://privacyscrubber.com/uninstall/?src=mcp&reason=accuracy');
+      console.log('  - Free limit / Pricing:   https://privacyscrubber.com/uninstall/?src=mcp&reason=limit');
+      console.log('  - General feedback:       https://privacyscrubber.com/uninstall/?mode=feedback&src=mcp');
     }
   } else {
     console.log('[SUMMARY] No active client configurations were modified.');
-    console.log('Tip: Run with --all or specify client directly (--cursor, --claude, --windsurf).');
-    console.log('⭐ GitHub Repository: https://github.com/moxno/privacyscrubber-mcp');
+    if (options.remove) {
+      console.log('[FEEDBACK] Share why you uninstalled (1-click): https://privacyscrubber.com/uninstall/?src=mcp');
+    } else {
+      console.log('Tip: Run with --all or specify client directly (--cursor, --claude, --windsurf).');
+      console.log('⭐ GitHub Repository: https://github.com/moxno/privacyscrubber-mcp');
+    }
   }
   console.log('--------------------------------------------------\n');
 

@@ -37,11 +37,22 @@ const __dirname = path.dirname(__filename);
 // Never hardcode the version — bump package.json at root instead.
 const MCP_VERSION = require('./package.json').version;
 
-// CLI Command Intercept (init / install / setup / auto-configure)
+// CLI Command Intercept (init / install / setup / uninstall / star)
 const rawCliArgs = process.argv.slice(2);
-if (rawCliArgs.some(arg => ['init', 'install', '--install', 'setup', '--setup'].includes(arg))) {
+if (rawCliArgs.includes('--star') || rawCliArgs.includes('star')) {
+  console.log('Star PrivacyScrubber MCP & ZTDS on GitHub:');
+  console.log('  - https://github.com/moxno/privacyscrubber-mcp');
+  console.log('  - https://github.com/moxno/ztds.ai');
+  console.log('  - CLI: gh repo star moxno/privacyscrubber-mcp && gh repo star moxno/ztds.ai');
+  process.exit(0);
+}
+if (rawCliArgs.some(arg => ['init', 'install', '--install', 'setup', '--setup', 'uninstall', '--uninstall', '--remove'].includes(arg))) {
   const { runInstaller } = await import('./install.js');
-  const forwardedArgs = rawCliArgs.filter(a => !['init', 'install', '--install', 'setup', '--setup'].includes(a));
+  const isRemove = rawCliArgs.some(arg => ['uninstall', '--uninstall', '--remove'].includes(arg));
+  const forwardedArgs = rawCliArgs.filter(a => !['init', 'install', '--install', 'setup', '--setup', 'uninstall'].includes(a));
+  if (isRemove && !forwardedArgs.includes('--remove') && !forwardedArgs.includes('--uninstall')) {
+    forwardedArgs.push('--remove');
+  }
   await runInstaller(forwardedArgs);
   process.exit(0);
 }
@@ -560,7 +571,7 @@ function checkFreeTierLimit(isPro) {
     mcpLog(`${colors.cyan}🛠️  [PrivacyScrubber] Need programmatic in-code redaction in your Node/TS backend or RAG pipeline? Try our official SDK: npm install @privacyscrubber/sdk${colors.reset}\n`);
   }
   if (count === 3) {
-    mcpLog(`${colors.cyan}💬 We are building the ultimate privacy tool for developers. What feature should we add next? Let us know: https://privacyscrubber.com/feedback${colors.reset}\n`);
+    mcpLog(`${colors.cyan}💬 We are building the ultimate privacy tool for developers. What feature should we add next? Let us know: https://privacyscrubber.com/uninstall/?mode=feedback&src=mcp${colors.reset}\n`);
   }
   if (count === STAR_PROMPT_THRESHOLD) {
     mcpLog(`${colors.yellowBold}PrivacyScrubber is running securely. If this tool saved your PII today, drop a star on GitHub: https://github.com/moxno/privacyscrubber-mcp (CLI: gh repo star moxno/privacyscrubber-mcp)${colors.reset}\n`);
@@ -810,8 +821,13 @@ function formatAuditReceipt(telemetry, compact = false, wasTruncated = false, ch
     return `\n\n> [ZTDS: ${telemetry.totalCount} masked (${entitiesList}) | Risk: ${telemetry.riskLevel} | Compliance: ${telemetry.frameworksList.join(', ')}${truncNotice}]\n`;
   }
 
+  const dailyCount = getDailyUsage();
+  const milestoneLine = (dailyCount === 3 || dailyCount === STAR_PROMPT_THRESHOLD)
+    ? `> * 💡 **Milestone (${dailyCount} scrubs today):** Did PrivacyScrubber save your PII? Run \`gh repo star moxno/privacyscrubber-mcp\` or report any missed pattern at [privacyscrubber.com/feedback](https://privacyscrubber.com/uninstall/?mode=feedback&src=mcp)\n`
+    : '';
+
   if (telemetry.totalCount === 0) {
-    return `\n\n> 🛡️ **PrivacyScrubber Audit Receipt**: CLEAN (ZERO PII DETECTED)\n${truncationLine}> * ⭐ **Star on GitHub:** [moxno/privacyscrubber-mcp](https://github.com/moxno/privacyscrubber-mcp) (\`gh repo star moxno/privacyscrubber-mcp\`) | **SDK & Enterprise:** [privacyscrubber.com/sdk](https://privacyscrubber.com/sdk/?tier=sdk&utm_source=mcp&utm_medium=audit_receipt&utm_campaign=sdk_pipeline)\n`;
+    return `\n\n> 🛡️ **PrivacyScrubber Audit Receipt**: CLEAN (ZERO PII DETECTED)\n${truncationLine}${milestoneLine}> * ⭐ **Star on GitHub:** [moxno/privacyscrubber-mcp](https://github.com/moxno/privacyscrubber-mcp) (\`gh repo star moxno/privacyscrubber-mcp\`) | **Feedback:** [Report Issue](https://privacyscrubber.com/uninstall/?mode=feedback&src=mcp) | **SDK:** [privacyscrubber.com/sdk](https://privacyscrubber.com/sdk/?tier=sdk&utm_source=mcp&utm_medium=audit_receipt&utm_campaign=sdk_pipeline)\n`;
   }
   
   const entitiesList = Object.entries(telemetry.entities)
@@ -820,7 +836,7 @@ function formatAuditReceipt(telemetry, compact = false, wasTruncated = false, ch
 
   const icon = telemetry.riskLevel.includes('CRITICAL') ? '🔴' : (telemetry.riskLevel.includes('MODERATE') ? '🟠' : '🟢');
 
-  return `\n\n> 🛡️ **PrivacyScrubber Audit Receipt**\n> * **Risk Level:** ${icon} ${telemetry.riskLevel}\n> * **Framework References (informational):** ${telemetry.frameworksList.join(', ')}\n> * **Tokens Masked:** ${telemetry.totalCount} (${entitiesList})\n${truncationLine}> * ⭐ **Star on GitHub:** [moxno/privacyscrubber-mcp](https://github.com/moxno/privacyscrubber-mcp) (\`gh repo star moxno/privacyscrubber-mcp\`) | **SDK & Enterprise:** [privacyscrubber.com/sdk](https://privacyscrubber.com/sdk/?tier=sdk&utm_source=mcp&utm_medium=audit_receipt&utm_campaign=sdk_pipeline)\n`;
+  return `\n\n> 🛡️ **PrivacyScrubber Audit Receipt**\n> * **Risk Level:** ${icon} ${telemetry.riskLevel}\n> * **Framework References (informational):** ${telemetry.frameworksList.join(', ')}\n> * **Tokens Masked:** ${telemetry.totalCount} (${entitiesList})\n${truncationLine}${milestoneLine}> * ⭐ **Star on GitHub:** [moxno/privacyscrubber-mcp](https://github.com/moxno/privacyscrubber-mcp) (\`gh repo star moxno/privacyscrubber-mcp\`) | **Feedback:** [Report Issue](https://privacyscrubber.com/uninstall/?mode=feedback&src=mcp) | **SDK:** [privacyscrubber.com/sdk](https://privacyscrubber.com/sdk/?tier=sdk&utm_source=mcp&utm_medium=audit_receipt&utm_campaign=sdk_pipeline)\n`;
 }
 
 function formatCefEvent(eventData = {}) {
@@ -3040,6 +3056,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         '╠══════════════════════════════════════════════════╣',
         '║  GitHub: github.com/moxno/privacyscrubber-mcp    ║',
         '║  CLI Star: gh repo star moxno/privacyscrubber-mcp║',
+        '║  Feedback: privacyscrubber.com/feedback          ║',
         '║  Backend SDK: npm install @privacyscrubber/sdk   ║',
         '╚══════════════════════════════════════════════════╝'
       );
