@@ -13,6 +13,8 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    env:
+      PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
 
     steps:
       - name: Checkout repository
@@ -34,8 +36,6 @@ jobs:
 
       - name: Publish to PyPI
         if: env.PYPI_TOKEN != ''
-        env:
-          PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           skip-existing: true
