@@ -180,6 +180,17 @@ def run_native_mcp_loop():
                                 "type": "object",
                                 "properties": {}
                             }
+                        },
+                        {
+                            "name": "generate_procurement_memo",
+                            "description": "Generate a 1-page CISO/VP Engineering budget approval & ROI memorandum for PrivacyScrubber TEAMS ($99/mo flat) or Developer SDK ($299/mo).",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "target_tier": {"type": "string", "description": "'teams' ($99/mo) or 'sdk' ($299/mo)"},
+                                    "team_size": {"type": "number", "description": "Engineering team size (default: 10)"}
+                                }
+                            }
                         }
                     ]
                 }
@@ -190,14 +201,25 @@ def run_native_mcp_loop():
         elif method == "tools/call":
             tool_name = params.get("name")
             tool_args = params.get("arguments", {})
+            has_license = bool(os.environ.get("PRIVACYSCRUBBER_KEY", "").strip())
 
             if tool_name == "sanitize_text":
                 raw_text = tool_args.get("text", "")
+                req_profile = str(tool_args.get("profile", "General") or "General").strip()
                 scrubbed, tokens = engine.sanitize(raw_text)
+                profile_advisory = ""
+                if not has_license and req_profile.lower() != "general":
+                    profile_advisory = (
+                        f"\n> [Notice] Python Native Fallback runs 7 baseline patterns. To unlock all 30 Specialized Industry Profiles "
+                        f"('{req_profile}', HIPAA, PCI-DSS, Legal, Finance) & 30+ DevOps Secret Detectors:\n"
+                        f"> - 7-Day Free B2B Trial: https://privacyscrubber.com/pricing/?tier=teams&trial=true&utm_source=py_mcp\n"
+                        f"> - TEAMS ($99/mo flat) / SDK ($299/mo) / PRO ($15/mo): https://privacyscrubber.com/pricing/?tier=teams&utm_source=py_mcp"
+                    )
                 footer = (
-                    f"\n\n> [PrivacyScrubber ZTDS: {len(tokens)} entities masked in local RAM | 0 bytes egress]\n"
+                    f"\n\n> [PrivacyScrubber ZTDS: {len(tokens)} entities masked in local RAM | 0 bytes egress]{profile_advisory}\n"
                     f"> Star on GitHub: https://github.com/moxno/privacyscrubber-mcp (`gh repo star moxno/privacyscrubber-mcp`) | "
-                    f"Feedback: https://privacyscrubber.com/uninstall/?mode=feedback&src=py_mcp"
+                    f"Feedback: https://privacyscrubber.com/uninstall/?mode=feedback&src=py_mcp | "
+                    f"7-Day B2B Trial: https://privacyscrubber.com/pricing/?tier=teams&trial=true&utm_source=py_mcp"
                 )
                 res = {
                     "jsonrpc": "2.0",
@@ -224,18 +246,37 @@ def run_native_mcp_loop():
                     normalized_check = resolved_path.replace("\\", "/").lower()
                     if any(seg in normalized_check for seg in FORBIDDEN_PATH_SEGMENTS):
                         raise PermissionError("Access to system credential path is restricted by ZTDS policy.")
-                    if os.path.getsize(resolved_path) > MAX_FILE_BYTES:
-                        raise ValueError("File exceeds 10MB in-memory sanitization limit.")
-                    with open(resolved_path, "r", encoding="utf-8", errors="replace") as f:
-                        raw_content = f.read()
-                    scrubbed, _ = engine.sanitize(raw_content)
-                    res = {
-                        "jsonrpc": "2.0",
-                        "id": req_id,
-                        "result": {
-                            "content": [{"type": "text", "text": scrubbed}]
+                    if normalized_check.endswith((".pdf", ".xlsx", ".xls", ".docx")):
+                        res = {
+                            "jsonrpc": "2.0",
+                            "id": req_id,
+                            "result": {
+                                "isError": True,
+                                "content": [{
+                                    "type": "text",
+                                    "text": (
+                                        "[PrivacyScrubber PRO / TEAMS] PDF, Excel (XLSX), and DOCX binary document sanitization requires the full engine.\n\n"
+                                        "- 7-Day Free B2B Evaluation Key (No card): https://privacyscrubber.com/pricing/?tier=teams&trial=true&utm_source=py_mcp&utm_medium=file_type\n"
+                                        "- TEAMS ($99/mo flat, unlimited seats) / SDK ($299/mo): https://privacyscrubber.com/pricing/?tier=teams&utm_source=py_mcp&utm_medium=file_type\n"
+                                        "- Solo PRO ($15/mo or $110 Lifetime): https://privacyscrubber.com/pricing/?tier=pro&utm_source=py_mcp&utm_medium=file_type\n"
+                                        "- Need CISO budget approval? Call the 'generate_procurement_memo' tool."
+                                    )
+                                }]
+                            }
                         }
-                    }
+                    else:
+                        if os.path.getsize(resolved_path) > MAX_FILE_BYTES:
+                            raise ValueError("File exceeds 10MB in-memory sanitization limit.")
+                        with open(resolved_path, "r", encoding="utf-8", errors="replace") as f:
+                            raw_content = f.read()
+                        scrubbed, _ = engine.sanitize(raw_content)
+                        res = {
+                            "jsonrpc": "2.0",
+                            "id": req_id,
+                            "result": {
+                                "content": [{"type": "text", "text": scrubbed}]
+                            }
+                        }
                 except Exception as err:
                     res = {
                         "jsonrpc": "2.0",
@@ -247,18 +288,45 @@ def run_native_mcp_loop():
                     }
             elif tool_name == "check_status":
                 status_text = (
-                    f"PrivacyScrubber MCP Server (Python Native Fallback v{VERSION})\n"
+                    f"PrivacyScrubber MCP Server (Python Native Engine v{VERSION})\n"
                     f"Architecture: 100% In-Memory RAM | Zero-Network Air-Gapped\n"
+                    f"Active Tier: {'PRO/TEAMS (Licensed)' if has_license else 'Community Baseline (7 core rules)'}\n"
                     f"Active RAM Tokens in Session: {len(engine.session_map)}\n"
+                    f"7-Day Free B2B Trial (TEAMS/SDK): https://privacyscrubber.com/pricing/?tier=teams&trial=true&utm_source=py_mcp_status\n"
+                    f"Commercial Licensing (PRO $15/mo | TEAMS $99/mo | SDK $299/mo): https://privacyscrubber.com/pricing/?tier=teams&utm_source=py_mcp_status\n"
                     f"GitHub Star: https://github.com/moxno/privacyscrubber-mcp (CLI: gh repo star moxno/privacyscrubber-mcp)\n"
                     f"Feedback / Report Issue: https://privacyscrubber.com/uninstall/?mode=feedback&src=py_mcp\n"
-                    f"Commercial Licensing: https://privacyscrubber.com/pricing\n"
                 )
                 res = {
                     "jsonrpc": "2.0",
                     "id": req_id,
                     "result": {
                         "content": [{"type": "text", "text": status_text}]
+                    }
+                }
+            elif tool_name == "generate_procurement_memo":
+                tier = str(tool_args.get("target_tier", "teams")).lower()
+                team_size = int(tool_args.get("team_size", 10) or 10)
+                memo_text = (
+                    f"MEMORANDUM: ADOPTION OF PRIVACYSCRUBBER ({'DEVELOPER SDK' if tier == 'sdk' else 'TEAMS'}) — ZTDS STANDARD\n"
+                    f"TO: Chief Information Security Officer (CISO), Data Protection Officer (DPO), VP Engineering\n"
+                    f"SCOPE: {team_size} Engineers | 100% Local In-Memory RAM Sanitization (0 Bytes Network Egress)\n\n"
+                    f"1. COMPLIANCE & STATUTORY SAFE HARBOR\n"
+                    f"   Enforces client-side pseudonymization prior to AI/LLM ingestion across 30 Specialized Profiles\n"
+                    f"   (GDPR Art. 25/32, HIPAA §164.514, SOC 2 Type II, PCI DSS v4.0, NIST SP 800-53, EU AI Act Art. 50).\n\n"
+                    f"2. TOTAL COST OF OWNERSHIP (TCO) COMPARISON\n"
+                    f"   - Traditional Cloud DLP Proxies: $1,500 - $4,000/mo + 250ms network latency + third-party DPA risk.\n"
+                    f"   - PrivacyScrubber TEAMS: $99/mo flat (unlimited engineering seats in Cursor/Claude/Windsurf).\n"
+                    f"   - PrivacyScrubber Developer SDK: $299/mo flat or $2,990/yr (unlimited backend nodes & RAG pipelines).\n\n"
+                    f"3. PROCUREMENT & 7-DAY EVALUATION\n"
+                    f"   - 7-Day Free B2B Trial: https://privacyscrubber.com/pricing/?tier={tier if tier in ('teams','sdk') else 'teams'}&trial=true&utm_source=py_mcp_memo\n"
+                    f"   - Direct Activation:    https://privacyscrubber.com/pricing/?tier={tier if tier in ('teams','sdk') else 'teams'}&utm_source=py_mcp_memo\n"
+                )
+                res = {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "content": [{"type": "text", "text": memo_text}]
                     }
                 }
             else:
