@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "privacyscrubber-mcp"
-version = "2.4.1"
+version = "2.4.2"
 description = "CISO-Approved Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Windsurf, and Claude Desktop"
 readme = "README.md"
 authors = [
