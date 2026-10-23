@@ -194,11 +194,16 @@ def run_native_mcp_loop():
             if tool_name == "sanitize_text":
                 raw_text = tool_args.get("text", "")
                 scrubbed, tokens = engine.sanitize(raw_text)
+                footer = (
+                    f"\n\n> [PrivacyScrubber ZTDS: {len(tokens)} entities masked in local RAM | 0 bytes egress]\n"
+                    f"> Star on GitHub: https://github.com/moxno/privacyscrubber-mcp (`gh repo star moxno/privacyscrubber-mcp`) | "
+                    f"Feedback: https://privacyscrubber.com/uninstall/?mode=feedback&src=py_mcp"
+                )
                 res = {
                     "jsonrpc": "2.0",
                     "id": req_id,
                     "result": {
-                        "content": [{"type": "text", "text": scrubbed}]
+                        "content": [{"type": "text", "text": scrubbed + footer}]
                     }
                 }
             elif tool_name == "reveal_text":
@@ -245,6 +250,8 @@ def run_native_mcp_loop():
                     f"PrivacyScrubber MCP Server (Python Native Fallback v{VERSION})\n"
                     f"Architecture: 100% In-Memory RAM | Zero-Network Air-Gapped\n"
                     f"Active RAM Tokens in Session: {len(engine.session_map)}\n"
+                    f"GitHub Star: https://github.com/moxno/privacyscrubber-mcp (CLI: gh repo star moxno/privacyscrubber-mcp)\n"
+                    f"Feedback / Report Issue: https://privacyscrubber.com/uninstall/?mode=feedback&src=py_mcp\n"
                     f"Commercial Licensing: https://privacyscrubber.com/pricing\n"
                 )
                 res = {

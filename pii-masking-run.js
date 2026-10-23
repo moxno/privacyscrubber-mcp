@@ -436,7 +436,7 @@ function emitProofFeedback() {
     const hasSecrets = (telemetry.types || []).some(t => ['API_KEY', 'SECRET', 'PASSWORD', 'TOKEN', 'KEY', 'CREDIT_CARD', 'BANK', 'ID', 'SSN'].includes(t));
     if (hasSecrets || totalMasked >= 3) {
       process.stderr.write(`\x1b[33m[ps-guard] Saved credentials/PII from model egress. Star the project: https://github.com/moxno/privacyscrubber-mcp\x1b[0m\n`);
-      process.stderr.write(`\x1b[90m           One-click CLI: gh repo star moxno/privacyscrubber-mcp | Backend SDK: npm i @privacyscrubber/sdk\x1b[0m\n`);
+      process.stderr.write(`\x1b[90m           One-click CLI: gh repo star moxno/privacyscrubber-mcp | Feedback: https://privacyscrubber.com/uninstall/?mode=feedback&src=cli\x1b[0m\n`);
     }
   } else if (args.includes("--verbose")) {
     process.stderr.write(`\x1b[36m[ps-guard] 0 item(s) masked · 0 bytes egress · Zero-Trust RAM verified\x1b[0m\n`);
