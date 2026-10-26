@@ -250,18 +250,23 @@ function performSanitization(text) {
   if (!license.isPro && result.tokenMap) {
     // Free tier: check for secrets and warn
     let hasSecrets = false;
+    const SECRET_TOKEN_RE = /^\[(?:SECRET|API_TOKEN|AWS_KEY|JWT_TOKEN|STRIPE_KEY|OPENAI_KEY|DB_URI)_\d+\]$/;
     Object.entries(result.tokenMap).forEach(([token, original]) => {
-      let isSecret = false;
-      for (const detector of DEVOPS_SECRETS_DETECTOR) {
-        detector.regex.lastIndex = 0;
-        if (detector.regex.test(original)) {
-          isSecret = true;
-          break;
+      let isSecret = SECRET_TOKEN_RE.test(token);
+      if (!isSecret) {
+        for (const detector of DEVOPS_SECRETS_DETECTOR) {
+          detector.regex.lastIndex = 0;
+          if (detector.regex.test(original)) {
+            isSecret = true;
+            break;
+          }
         }
       }
       if (isSecret) {
         hasSecrets = true;
         result.scrubbedText = result.scrubbedText.replaceAll(token, '[SECRET_BLOCKED_UPGRADE_TO_PRO]');
+        delete result.tokenMap[token];
+        delete localSessionMap[token];
       }
     });
 
@@ -280,7 +285,7 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
     const keys = Array.isArray(currentTokenMap) ? currentTokenMap : Object.keys(currentTokenMap);
     for (const t of keys) {
       const tokenStr = typeof t === 'string' ? t : (t.token || t.mask || '');
-      const match = tokenStr.match(/\[([A-Z_]+)_\d+\]/);
+      const match = tokenStr.match(/\[([A-Z0-9_]+)_\d+\]/);
       const baseType = match ? match[1] : (tokenStr.replace(/\[|\]/g, '').replace(/_[0-9]+$/, '') || 'CUSTOM');
       entities[baseType] = (entities[baseType] || 0) + 1;
       totalCount++;
@@ -289,7 +294,7 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
   const types = Object.keys(entities);
   let riskLevel = 'LOW EXPOSURE';
   if (totalCount > 0) {
-    const hasHighRisk = types.some(t => ['ID', 'SSN', 'CREDIT_CARD', 'PASSPORT', 'BANK', 'API_KEY', 'SECRET', 'PASSWORD', 'MRN', 'KEY'].includes(t));
+    const hasHighRisk = types.some(t => ['ID', 'SSN', 'CREDIT_CARD', 'PASSPORT', 'BANK', 'API_KEY', 'SECRET', 'PASSWORD', 'MRN', 'KEY', 'AWS_KEY', 'STRIPE_KEY', 'JWT_TOKEN', 'API_TOKEN'].includes(t));
     if (hasHighRisk || types.length >= 3 || totalCount >= 10) {
       riskLevel = 'CRITICAL (HIGH EXPOSURE)';
     } else if (types.length >= 2 || totalCount >= 3) {
@@ -399,7 +404,7 @@ function buildPsr2Receipt(tokenMap, timestamp = new Date().toISOString()) {
   const labels = (tokenMap && typeof tokenMap === 'object' ? Object.keys(tokenMap) : []).slice().sort();
   const counts = {};
   for (const t of labels) {
-    const m = t.match(/\[([A-Z_]+)_\d+\]/);
+    const m = String(t).trim().match(/^(?:\[|<|\{\{|__)([A-Z0-9_]+)_\d+(?:\]|>|\}\}|__)$/);
     const type = m ? m[1] : 'CUSTOM';
     counts[type] = (counts[type] || 0) + 1;
   }

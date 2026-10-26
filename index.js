@@ -352,7 +352,7 @@ export class StreamingDetokenizer {
     const tailLen = 160;
     const tail = this.pendingBuffer.length > tailLen ? this.pendingBuffer.slice(-tailLen) : this.pendingBuffer;
     const offset = this.pendingBuffer.length > tailLen ? this.pendingBuffer.length - tailLen : 0;
-    const m = tail.match(/(?:(?:\[|【|［|〔|「|『|<|\{\{?|__?|%5[Bb]|\\u005[Bb]|&(?:amp;)?(?:#0*91;|#[xX]0*5[Bb];|lbrack;))[A-Za-z0-9_\-А-Яа-яЁё *`~.\\]{0,128}(?:%5?|&(?:a(?:m(?:p(?:;)?)?)?)?(?:#(?:0*9?3?|[xX]0*5?[Dd]?)?|r(?:b(?:r(?:a(?:c(?:k)?)?)?)?)?)?)?|%[0-9A-Fa-f]?|\\(?:u(?:0(?:0(?:5)?)?)?)?|&(?:a(?:m(?:p(?:;)?)?)?)?(?:#(?:0*9?1?|[xX]0*5?)?|l(?:b(?:r(?:a(?:c(?:k)?)?)?)?)?)?)$/);
+    const m = tail.match(/(?:(?:\[|【|［|〔|「|『|<|\{\{?|__?|%5[Bb]|\\u005[Bb]|&(?:amp;)?(?:#0*91;|#[xX]0*5[Bb];|lbrack;))[A-Za-z0-9_\-\u0410-\u044F\u0401\u0451 *`~.\\]{0,128}(?:%5?|&(?:a(?:m(?:p(?:;)?)?)?)?(?:#(?:0*9?3?|[xX]0*5?[Dd]?)?|r(?:b(?:r(?:a(?:c(?:k)?)?)?)?)?)?)?|%[0-9A-Fa-f]?|\\(?:u(?:0(?:0(?:5)?)?)?)?|&(?:a(?:m(?:p(?:;)?)?)?)?(?:#(?:0*9?1?|[xX]0*5?)?|l(?:b(?:r(?:a(?:c(?:k)?)?)?)?)?)?)$/);
 
     if (m) {
       const candidate = m[0];
@@ -814,7 +814,7 @@ function buildPsr2Receipt(tokenMap, timestamp = new Date().toISOString()) {
   const labels = (tokenMap && typeof tokenMap === 'object' ? Object.keys(tokenMap) : []).slice().sort();
   const counts = {};
   for (const t of labels) {
-    const m = t.match(/\[([A-Z_]+)_\d+\]/);
+    const m = String(t).trim().match(/^(?:\[|<|\{\{|__)([A-Z0-9_]+)_\d+(?:\]|>|\}\}|__)$/);
     const type = m ? m[1] : 'CUSTOM';
     counts[type] = (counts[type] || 0) + 1;
   }
