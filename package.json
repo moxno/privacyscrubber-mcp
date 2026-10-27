@@ -37,7 +37,7 @@
     "build": "node -e \"const fs=require('fs'); if(fs.existsSync('../scripts/build-mcp.js')) require('child_process').execSync('node ../scripts/build-mcp.js', {stdio:'inherit'}); else console.log('MCP assets are pre-built.');\"",
     "test": "node test-mcp.js && node test-mcp-deep.js && node test-mcp-streaming.js",
     "test:stream": "node test-mcp-streaming.js",
-    "prepublishOnly": "npm test"
+    "prepublishOnly": "node -e \"const fs=require('fs'); for(const f of ['ps-license-manager.js','ps-pii-engine.js']){const c=fs.readFileSync(f,'utf8'); if(c.includes('OFFLINE_KEY_SALT')||!c.includes('_0x')){console.error('FATAL: Unobfuscated '+f+' detected! Publish from privacyscrubber-mcp after node scripts/build-mcp.js'); process.exit(1);}}\" && npm test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
