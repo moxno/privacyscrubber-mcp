@@ -10,7 +10,7 @@ import subprocess
 import json
 import re
 
-VERSION = "2.4.2"
+VERSION = "2.4.3"
 
 PATTERNS = {
     "SECRET": re.compile(
@@ -25,7 +25,7 @@ PATTERNS = {
 }
 
 
-TOKEN_RE = re.compile(r'\[[A-Z0-9_]+_\d+\]')
+TOKEN_RE = re.compile(r'\[[A-Za-z0-9_]+_\d+\]')
 FORBIDDEN_PATH_SEGMENTS = ('/etc/shadow', '/etc/passwd', '/.ssh/', '/.aws/', '/.gnupg/', 'id_rsa', 'id_ed25519')
 MAX_FILE_BYTES = 10 * 1024 * 1024
 
@@ -34,6 +34,7 @@ class NativeZtdsEngine:
     def __init__(self):
         self.session_map = {}
         self.counters = {}
+        self.ignore_list = set()
 
     def sanitize(self, text: str) -> tuple:
         if not text:
@@ -44,6 +45,8 @@ class NativeZtdsEngine:
 
         def replacer(match, entity_type: str):
             val = match.group(0)
+            if val.lower() in self.ignore_list:
+                return val
             if val in reverse_map:
                 tok = reverse_map[val]
                 tokens_created[tok] = val
@@ -61,7 +64,12 @@ class NativeZtdsEngine:
                 continue
             scrubbed = pat.sub(lambda m, et=entity_type: replacer(m, et), scrubbed)
 
-        max_tokens = int(os.environ.get("PRIVACYSCRUBBER_MAX_SESSION_TOKENS", "5000"))
+        try:
+            max_tokens = int(os.environ.get("PRIVACYSCRUBBER_MAX_SESSION_TOKENS", "5000") or "5000")
+            if max_tokens < 1:
+                max_tokens = 5000
+        except ValueError:
+            max_tokens = 5000
         if len(self.session_map) > max_tokens:
             prune_count = len(self.session_map) - max_tokens
             keys_to_remove = list(self.session_map.keys())[:prune_count]
@@ -76,11 +84,24 @@ class NativeZtdsEngine:
         active_map = custom_map if custom_map is not None else self.session_map
         if not active_map:
             return text
-        return TOKEN_RE.sub(lambda m: active_map.get(m.group(0), m.group(0)), text)
+        normalized_map = {}
+        for k, v in active_map.items():
+            key_str = str(k).strip()
+            normalized_map[key_str] = v
+            normalized_map[key_str.upper()] = v
+            if not key_str.startswith("[") and not key_str.endswith("]"):
+                bracketed = f"[{key_str}]"
+                normalized_map[bracketed] = v
+                normalized_map[bracketed.upper()] = v
+        return TOKEN_RE.sub(
+            lambda m: normalized_map.get(m.group(0), normalized_map.get(m.group(0).upper(), m.group(0))),
+            text
+        )
 
     def zeroize_session(self) -> None:
         self.session_map.clear()
         self.counters.clear()
+        self.ignore_list.clear()
 
 
 def run_native_mcp_loop():
@@ -191,6 +212,25 @@ def run_native_mcp_loop():
                                     "team_size": {"type": "number", "description": "Engineering team size (default: 10)"}
                                 }
                             }
+                        },
+                        {
+                            "name": "mark_false_positive",
+                            "description": "Whitelist a specific phrase or restore a falsely redacted token in the current in-memory RAM session.",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "value": {"type": "string", "description": "Exact token (e.g. '[EMAIL_1]') or literal phrase to exclude from redaction."}
+                                },
+                                "required": ["value"]
+                            }
+                        },
+                        {
+                            "name": "reset_session",
+                            "description": "Immediately zeroize and purge all volatile in-memory token mappings and counters.",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {}
+                            }
                         }
                     ]
                 }
@@ -201,7 +241,9 @@ def run_native_mcp_loop():
         elif method == "tools/call":
             tool_name = params.get("name")
             tool_args = params.get("arguments", {})
-            has_license = bool(os.environ.get("PRIVACYSCRUBBER_KEY", "").strip())
+            has_license = bool(
+                (os.environ.get("PRIVACYSCRUBBER_KEY", "") or os.environ.get("PRIVACYSCRUBBER_LICENSE_KEY", "")).strip()
+            )
 
             if tool_name == "sanitize_text":
                 raw_text = tool_args.get("text", "")
@@ -327,6 +369,35 @@ def run_native_mcp_loop():
                     "id": req_id,
                     "result": {
                         "content": [{"type": "text", "text": memo_text}]
+                    }
+                }
+            elif tool_name == "mark_false_positive":
+                val = str(tool_args.get("value", "") or "").strip()
+                restored_phrase = engine.session_map.pop(val, None) or engine.session_map.pop(val.upper(), None)
+                target_phrase = restored_phrase if restored_phrase else val
+                if target_phrase:
+                    engine.ignore_list.add(target_phrase.lower())
+                res = {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "content": [{
+                            "type": "text",
+                            "text": f"Marked '{target_phrase}' as a false positive for this RAM session."
+                        }]
+                    }
+                }
+            elif tool_name == "reset_session":
+                cleared_count = len(engine.session_map)
+                engine.zeroize_session()
+                res = {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "content": [{
+                            "type": "text",
+                            "text": f"Session zeroized in RAM ({cleared_count} tokens purged)."
+                        }]
                     }
                 }
             else:
