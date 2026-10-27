@@ -30,4 +30,10 @@ Instead, report it privately through our coordinated disclosure channel:
 - **Email:** `support@privacyscrubber.com` (or `security@privacyscrubber.com`)
 - **Response SLA:** Our team reviews all reports within **24 hours** and will provide a status update and remediation timeline.
 
+## Security Researcher Hall of Fame (Coordinated Disclosure)
+
+We acknowledge and thank the following security researchers for responsible coordinated disclosure:
+
+- **Vishal Vijay Pawar** — Local license entitlement validation hardening & build-pipeline obfuscation gate in `@privacyscrubber/mcp-server` (Remediated in `v2.4.4`, October 2026).
+
 Thank you for helping keep the developer ecosystem secure!
