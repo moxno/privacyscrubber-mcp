@@ -34,6 +34,6 @@ Instead, report it privately through our coordinated disclosure channel:
 
 We acknowledge and thank the following security researchers for responsible coordinated disclosure:
 
-- **Vishal Vijay Pawar** — Local license entitlement validation hardening & build-pipeline obfuscation gate in `@privacyscrubber/mcp-server` (Remediated in `v2.4.4`, October 2026).
+- **[Vishal Vijay Pawar](https://www.linkedin.com/in/vishal-pawar-03078b316/)** — Local license entitlement validation hardening & build-pipeline obfuscation gate in `@privacyscrubber/mcp-server` (Remediated in `v2.4.4`, October 2026).
 
 Thank you for helping keep the developer ecosystem secure!
