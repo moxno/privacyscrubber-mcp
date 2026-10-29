@@ -2457,7 +2457,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     if (name === "sanitize_file" || name === "scrub_file") {
-      const rawPath = args.file_path || args.filePath;
+      const rawPath = args?.file_path || args?.filePath;
       if (!rawPath) {
         return {
           isError: true,
@@ -2882,8 +2882,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     if (name === "redact_file") {
-      const { file_path, dry_run, no_backup } = args;
-      if (!file_path || !fs.existsSync(file_path)) {
+      const { file_path, dry_run, no_backup } = args || {};
+      if (!file_path) {
+        return { isError: true, content: [{ type: "text", text: "Error: Missing required parameter 'file_path'." }] };
+      }
+      if (!fs.existsSync(file_path)) {
         return { isError: true, content: [{ type: "text", text: `Error: File not found at path: ${file_path}` }] };
       }
 
@@ -3168,8 +3171,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     if (name === "audit_directory_for_pii") {
-      const { directory_path, extensions, ignore_node_modules } = args;
-      if (!directory_path || !fs.existsSync(directory_path)) {
+      const { directory_path, extensions, ignore_node_modules } = args || {};
+      if (!directory_path) {
+        return { isError: true, content: [{ type: "text", text: "Error: Missing required parameter 'directory_path'." }] };
+      }
+      if (!fs.existsSync(directory_path)) {
         return { isError: true, content: [{ type: "text", text: `Error: Directory not found at path: ${directory_path}` }] };
       }
 
@@ -3528,7 +3534,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      const resolvedPath = path.resolve(process.cwd(), file_path);
+      const workspaceRoot = fs.existsSync(process.cwd()) ? fs.realpathSync(process.cwd()) : path.resolve(process.cwd());
+      const resolvedPath = path.resolve(workspaceRoot, file_path);
+      const relToRoot = path.relative(workspaceRoot, resolvedPath);
+      if (relToRoot.startsWith("..") || path.isAbsolute(relToRoot)) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: "Error: Security policy violation — target 'file_path' resolves outside the active workspace directory (path traversal blocked)." }]
+        };
+      }
+      let checkCursor = resolvedPath;
+      while (!fs.existsSync(checkCursor)) {
+        const parentCursor = path.dirname(checkCursor);
+        if (parentCursor === checkCursor) break;
+        checkCursor = parentCursor;
+      }
+      if (fs.existsSync(checkCursor)) {
+        const realCheck = fs.realpathSync(checkCursor);
+        const relReal = path.relative(workspaceRoot, realCheck);
+        if (relReal.startsWith("..") || path.isAbsolute(relReal)) {
+          return {
+            isError: true,
+            content: [{ type: "text", text: "Error: Security policy violation — target path symlink escapes the active workspace directory." }]
+          };
+        }
+      }
+
       const targetSession = getSessionMap(session_id);
       const restored = PrivacyScrubberCore.unscrubText(content, targetSession);
       const authenticContent = restored.restoredText;
