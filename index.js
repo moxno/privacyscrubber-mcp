@@ -3229,20 +3229,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       async function walkDir(dir) {
         const entries = await fs.promises.readdir(dir, { withFileTypes: true });
         for (const entry of entries) {
+          if (entry.isSymbolicLink && entry.isSymbolicLink()) continue;
           const fullPath = path.join(dir, entry.name);
+          const safeChild = resolveWorkspaceSafePath(fullPath, "directory_path");
+          if (!safeChild.ok) continue;
           if (entry.isDirectory()) {
-            if (!ignoreDirs.includes(entry.name)) await walkDir(fullPath);
+            if (!ignoreDirs.includes(entry.name)) await walkDir(safeChild.resolvedPath);
           } else if (entry.isFile()) {
             if (extensions && extensions.length > 0) {
               const ext = path.extname(entry.name);
               if (!extensions.includes(ext)) continue;
             }
-            filesToScan.push(fullPath);
+            filesToScan.push(safeChild.resolvedPath);
           }
         }
       }
 
-      await walkDir(directory_path);
+      await walkDir(safeDir.resolvedPath);
 
       let reportLines = [`## Security Audit Report: ${directory_path}`];
       let filesWithIssues = 0;
@@ -4026,6 +4029,9 @@ Before reading sensitive files, running terminal commands that may print credent
       const sessionHash = receipt.receiptSha256;
 
       let outputText = "";
+      const safeCompanyName = String(company_name || "Organization").replace(/[\r\n\x00-\x1f]/g, " ").trim().slice(0, 120);
+      const safeDepartment = String(department || "Security & Compliance").replace(/[\r\n\x00-\x1f]/g, " ").trim().slice(0, 120);
+
       const eventData = {
         vendor: "PrivacyScrubber",
         product: "ZTDS",
@@ -4036,8 +4042,8 @@ Before reading sensitive files, running terminal commands that may print credent
         entities: telemetry.entities,
         frameworks: telemetry.frameworksList,
         sessionHash,
-        organization: company_name,
-        department
+        organization: safeCompanyName,
+        department: safeDepartment
       };
 
       if (format === "cef") {
@@ -4045,19 +4051,26 @@ Before reading sensitive files, running terminal commands that may print credent
       } else if (format === "syslog") {
         outputText = formatSyslogEvent(eventData);
       } else if (format === "json" || format === "markdown") {
-        outputText = formatPsr2Report({ format, receipt, telemetry, company_name, department, utmSource: 'mcp_audit_export', utmMedium: format });
+        outputText = formatPsr2Report({ format, receipt, telemetry, company_name: safeCompanyName, department: safeDepartment, utmSource: 'mcp_audit_export', utmMedium: format });
       } else {
         // Default: jsonl
         outputText = formatJsonlEvent(eventData);
       }
 
       if (typeof destination_file === 'string' && destination_file.trim()) {
+        const safeDest = resolveWorkspaceSafePath(destination_file.trim(), "destination_file");
+        if (!safeDest.ok) {
+          return {
+            isError: true,
+            content: [{ type: "text", text: safeDest.error }]
+          };
+        }
         try {
-          const dir = path.dirname(destination_file);
+          const dir = path.dirname(safeDest.resolvedPath);
           if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
           }
-          fs.appendFileSync(destination_file, outputText + '\n', 'utf8');
+          fs.appendFileSync(safeDest.resolvedPath, outputText + '\n', 'utf8');
         } catch (e) {
           return {
             isError: true,
