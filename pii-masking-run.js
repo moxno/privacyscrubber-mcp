@@ -453,10 +453,26 @@ if (isRestoreMode) {
   let tokenMap = {};
   if (tokenMapInput) {
     try {
+      const safeReviver = (k, v) => (k === '__proto__' || k === 'constructor' || k === 'prototype') ? undefined : v;
       if (tokenMapInput.trim().startsWith('{')) {
-        tokenMap = JSON.parse(tokenMapInput);
-      } else if (fs.existsSync(tokenMapInput)) {
-        tokenMap = JSON.parse(fs.readFileSync(tokenMapInput, 'utf8'));
+        tokenMap = JSON.parse(tokenMapInput, safeReviver);
+      } else {
+        const workspaceRoot = fs.existsSync(process.cwd()) ? fs.realpathSync(process.cwd()) : path.resolve(process.cwd());
+        const resolvedMapPath = path.resolve(workspaceRoot, tokenMapInput);
+        const relToRoot = path.relative(workspaceRoot, resolvedMapPath);
+        if (relToRoot.startsWith('..') || path.isAbsolute(relToRoot)) {
+          throw new Error('Security policy violation: --token-map path resolves outside active workspace.');
+        }
+        if (fs.existsSync(resolvedMapPath)) {
+          const lstat = fs.lstatSync(resolvedMapPath);
+          if (lstat.isSymbolicLink() || !lstat.isFile()) {
+            throw new Error('Security policy violation: --token-map must be a regular non-symlink file.');
+          }
+          if (lstat.size > 10 * 1024 * 1024) {
+            throw new Error('Token map file exceeds 10MB limit.');
+          }
+          tokenMap = JSON.parse(fs.readFileSync(resolvedMapPath, 'utf8'), safeReviver);
+        }
       }
     } catch (e) {
       console.error(`Error parsing token map: ${e.message}`);

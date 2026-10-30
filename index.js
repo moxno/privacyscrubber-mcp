@@ -2584,9 +2584,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   const dataStart = localOffset + 30 + lNameLen + lExtraLen;
                   const compData = docxBuf.subarray(dataStart, dataStart + compSize);
                   if (method === 0) {
-                    zipEntries[entryName] = compData.toString('utf8');
+                    if (compData.length <= 20 * 1024 * 1024) {
+                      zipEntries[entryName] = compData.toString('utf8');
+                    }
                   } else if (method === 8) {
-                    zipEntries[entryName] = zlib.inflateRawSync(compData).toString('utf8');
+                    zipEntries[entryName] = zlib.inflateRawSync(compData, { maxOutputLength: 20 * 1024 * 1024 }).toString('utf8');
                   }
                 }
                 pos += 46 + nameLen + extraLen + commentLen;
@@ -2931,7 +2933,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       try {
-        const stat = await fs.promises.stat(resolvedRedactPath);
+        const lstat = await fs.promises.lstat(resolvedRedactPath);
+        if (lstat.isSymbolicLink() || !lstat.isFile()) {
+          return { isError: true, content: [{ type: "text", text: `Error: Target must be a regular non-symlink file.` }] };
+        }
+        const stat = lstat;
         if (stat.size > 50 * 1024 * 1024) {
           return { isError: true, content: [{ type: "text", text: `Error: File is too large (>50MB).` }] };
         }
@@ -3624,6 +3630,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return {
             isError: true,
             content: [{ type: "text", text: "Error: Security policy violation — target path symlink escapes the active workspace directory." }]
+          };
+        }
+      }
+
+      const license = checkLicenseStatus();
+      const limitStatus = checkFreeTierLimit(license.isPro);
+      if (limitStatus.blocked) {
+        return buildDailyLimitBlockedResponse();
+      }
+      if (fs.existsSync(resolvedPath)) {
+        const existingLstat = fs.lstatSync(resolvedPath);
+        if (existingLstat.isSymbolicLink() || !existingLstat.isFile()) {
+          return {
+            isError: true,
+            content: [{ type: "text", text: "Error: Security policy violation — target must be a regular non-symlink file." }]
           };
         }
       }
