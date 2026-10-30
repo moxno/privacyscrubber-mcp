@@ -34,7 +34,7 @@ Instead, report it privately through our coordinated disclosure channel:
 
 We acknowledge and thank the following security researchers for responsible coordinated disclosure:
 
-- **[Vishal Vijay Pawar](https://www.linkedin.com/in/vishal-pawar-03078b316/)** — Local license entitlement validation hardening, build-pipeline AST obfuscation enforcement, and client-side custom rule ReDoS validation hardening (`PS-VDP-2026-10-001`, `PS-VDP-2026-10-002`, Remediated in `v2.4.4`, October 2026).
+- **[Vishal Vijay Pawar](https://www.linkedin.com/in/vishal-pawar-03078b316/)** — Local license entitlement validation hardening, build-pipeline AST obfuscation enforcement, client-side custom rule ReDoS validation hardening, and workspace root path-boundary containment across MCP file-read handlers (`PS-VDP-2026-10-001`, `PS-VDP-2026-10-002`, `PS-VDP-2026-10-004`, Remediated in `v2.4.4`, October 2026).
 - **[Sudarshan Manjuba Dhanvai](https://www.linkedin.com/in/sudarshan-dhanvai-1175b940a/)** — Workspace root path-boundary containment and symlink escape prevention in `guard_apply_patch` (`PS-VDP-2026-10-003`, October 2026).
 
 Thank you for helping keep the developer ecosystem secure!

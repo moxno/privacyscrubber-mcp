@@ -2178,6 +2178,35 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
   throw new Error(`Resource not found: ${uri}`);
 });
 
+function resolveWorkspaceSafePath(inputPath, paramName = "file_path") {
+  const workspaceRoot = fs.existsSync(process.cwd()) ? fs.realpathSync(process.cwd()) : path.resolve(process.cwd());
+  const resolvedPath = path.resolve(workspaceRoot, inputPath);
+  const relToRoot = path.relative(workspaceRoot, resolvedPath);
+  if (relToRoot.startsWith("..") || path.isAbsolute(relToRoot)) {
+    return {
+      ok: false,
+      error: `Error: Security policy violation — target '${paramName}' resolves outside the active workspace directory (path traversal blocked).`
+    };
+  }
+  let checkCursor = resolvedPath;
+  while (!fs.existsSync(checkCursor)) {
+    const parentCursor = path.dirname(checkCursor);
+    if (parentCursor === checkCursor) break;
+    checkCursor = parentCursor;
+  }
+  if (fs.existsSync(checkCursor)) {
+    const realCheck = fs.realpathSync(checkCursor);
+    const relReal = path.relative(workspaceRoot, realCheck);
+    if (relReal.startsWith("..") || path.isAbsolute(relReal)) {
+      return {
+        ok: false,
+        error: `Error: Security policy violation — target path symlink escapes the active workspace directory.`
+      };
+    }
+  }
+  return { ok: true, resolvedPath, workspaceRoot };
+}
+
 // Handle tool execution calls
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
@@ -2474,8 +2503,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const targetSession = getSessionMap(session_id);
       const targetIgnoreList = getSessionIgnoreList(session_id);
       const filePath = rawPath;
-      
-      const resolvedPath = path.resolve(filePath);
+      const safeTarget = resolveWorkspaceSafePath(filePath, "file_path");
+      if (!safeTarget.ok) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: safeTarget.error }]
+        };
+      }
+      const resolvedPath = safeTarget.resolvedPath;
       if (!fs.existsSync(resolvedPath)) {
         return {
           isError: true,
@@ -2886,22 +2921,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (!file_path) {
         return { isError: true, content: [{ type: "text", text: "Error: Missing required parameter 'file_path'." }] };
       }
-      if (!fs.existsSync(file_path)) {
+      const safeTarget = resolveWorkspaceSafePath(file_path, "file_path");
+      if (!safeTarget.ok) {
+        return { isError: true, content: [{ type: "text", text: safeTarget.error }] };
+      }
+      const resolvedRedactPath = safeTarget.resolvedPath;
+      if (!fs.existsSync(resolvedRedactPath)) {
         return { isError: true, content: [{ type: "text", text: `Error: File not found at path: ${file_path}` }] };
       }
 
       try {
-        const stat = await fs.promises.stat(file_path);
+        const stat = await fs.promises.stat(resolvedRedactPath);
         if (stat.size > 50 * 1024 * 1024) {
           return { isError: true, content: [{ type: "text", text: `Error: File is too large (>50MB).` }] };
         }
 
-        const buffer = fs.readFileSync(file_path);
+        const buffer = fs.readFileSync(resolvedRedactPath);
         if (buffer.indexOf(0) !== -1) {
           return { isError: true, content: [{ type: "text", text: `Error: Cannot redact binary file.` }] };
         }
         let content = buffer.toString('utf8');
-        const ext = path.extname(file_path).toLowerCase();
+        const ext = path.extname(resolvedRedactPath).toLowerCase();
         if (ext === ".eml") {
           const decodeQpUtf8 = (str) =>
             str.replace(/=\r?\n/g, "").replace(/(?:=[0-9A-Fa-f]{2})+/g, (seq) => {
@@ -2995,15 +3035,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
 
         if (!no_backup) {
-          fs.writeFileSync(`${file_path}.bak`, content, 'utf8');
+          fs.writeFileSync(`${resolvedRedactPath}.bak`, content, 'utf8');
         }
 
-        fs.writeFileSync(file_path, result.scrubbedText, 'utf8');
+        fs.writeFileSync(resolvedRedactPath, result.scrubbedText, 'utf8');
 
         return {
           content: [{ 
             type: "text", 
-            text: `✅ File successfully redacted.\nReplaced ${Object.keys(localSessionMap).length} tokens (${summary}).\n${!no_backup ? `Backup saved to ${file_path}.bak` : "No backup created (no_backup=true)."}` 
+            text: `✅ File successfully redacted.\nReplaced ${Object.keys(localSessionMap).length} tokens (${summary}).\n${!no_backup ? `Backup saved to ${resolvedRedactPath}.bak` : "No backup created (no_backup=true)."}` 
           }]
         };
 
@@ -3175,7 +3215,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (!directory_path) {
         return { isError: true, content: [{ type: "text", text: "Error: Missing required parameter 'directory_path'." }] };
       }
-      if (!fs.existsSync(directory_path)) {
+      const safeDir = resolveWorkspaceSafePath(directory_path, "directory_path");
+      if (!safeDir.ok) {
+        return { isError: true, content: [{ type: "text", text: safeDir.error }] };
+      }
+      if (!fs.existsSync(safeDir.resolvedPath)) {
         return { isError: true, content: [{ type: "text", text: `Error: Directory not found at path: ${directory_path}` }] };
       }
 
@@ -3308,7 +3352,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // Transparent in-memory unmasking of any token placeholders before local execution
       const rawExecutableCommand = reverseTokens(command, targetSession);
 
-      const execCwd = cwd ? path.resolve(cwd) : process.cwd();
+      let execCwd = process.cwd();
+      if (cwd) {
+        const safeCwd = resolveWorkspaceSafePath(cwd, "cwd");
+        if (!safeCwd.ok) {
+          return { isError: true, content: [{ type: "text", text: safeCwd.error }] };
+        }
+        execCwd = safeCwd.resolvedPath;
+      }
       let stdout = '';
       let stderr = '';
       let exitCode = 0;
@@ -3364,7 +3415,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [{ type: "text", text: "Error: Missing required parameter 'file_path'." }]
         };
       }
-      const resolvedPath = path.resolve(process.cwd(), file_path);
+      const safeTarget = resolveWorkspaceSafePath(file_path, "file_path");
+      if (!safeTarget.ok) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: safeTarget.error }]
+        };
+      }
+      const resolvedPath = safeTarget.resolvedPath;
       if (!fs.existsSync(resolvedPath)) {
         return {
           isError: true,
@@ -3470,7 +3528,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { staged = false, cwd, session_id = "default" } = args || {};
       const targetSession = getSessionMap(session_id);
       const targetIgnoreList = getSessionIgnoreList(session_id);
-      const repoCwd = cwd ? path.resolve(cwd) : process.cwd();
+      let repoCwd = process.cwd();
+      if (cwd) {
+        const safeCwd = resolveWorkspaceSafePath(cwd, "cwd");
+        if (!safeCwd.ok) {
+          return { isError: true, content: [{ type: "text", text: safeCwd.error }] };
+        }
+        repoCwd = safeCwd.resolvedPath;
+      }
       const license = checkLicenseStatus();
       const limitStatus = checkFreeTierLimit(license.isPro);
       if (limitStatus.blocked) {
@@ -3592,7 +3657,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     if (name === "create_agent_rules") {
       const { agent_types = ["all"], workspace_dir } = args || {};
-      const targetDir = workspace_dir ? path.resolve(workspace_dir) : process.cwd();
+      let targetDir = process.cwd();
+      if (workspace_dir) {
+        const safeWorkspace = resolveWorkspaceSafePath(workspace_dir, "workspace_dir");
+        if (!safeWorkspace.ok) {
+          return { isError: true, content: [{ type: "text", text: safeWorkspace.error }] };
+        }
+        targetDir = safeWorkspace.resolvedPath;
+      }
       const targets = agent_types.includes("all") ? ["cursor", "windsurf", "claude_code", "copilot", "cline"] : agent_types;
 
       const ruleText = `# PrivacyScrubber Zero-Trust Agentic Guard (CISO Security Rules)
