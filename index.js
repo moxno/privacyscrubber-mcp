@@ -4154,6 +4154,18 @@ function getSessionMetricsSummary() {
   return parts.join(', ');
 }
 
+function isCatastrophicRegex(pat) {
+  if (!pat || typeof pat !== 'string' || pat.length > 500) return true;
+  const nestedQuantifierRegex = /\([^)]*(\+|\*|\{\d+,?\d*\})\)[+*]|\([^)]*(\+|\*|\{\d+,?\d*\})\)\{\d+,?\d*\}|\([^)]*\|[^)]*\)(?:[+*]|\{\d+,?\d*\})/;
+  if (nestedQuantifierRegex.test(pat)) return true;
+  try {
+    new RegExp(pat, 'gi');
+    return false;
+  } catch (_) {
+    return true;
+  }
+}
+
 function loadCustomRules() {
   const license = checkLicenseStatus();
   const configPath = resolveConfigPath();
@@ -4169,7 +4181,7 @@ function loadCustomRules() {
             label: (r.label || r.category || "CUSTOM").toUpperCase(),
             regex: r.pattern || r.regex || "",
             category: (r.label || r.category || "CUSTOM").toUpperCase()
-          })).filter(r => r.pattern);
+          })).filter(r => r.pattern && !isCatastrophicRegex(r.pattern));
         } else {
           mcpLog(`${colors.yellowBold}⚠️  [PrivacyScrubber] Custom rules detected in privacyscrubber.json, but are ignored in the Free Tier.${colors.reset}\n${colors.cyan}👉  Set PRIVACYSCRUBBER_KEY to your PRO license key.${colors.reset}\n`);
         }
