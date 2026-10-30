@@ -30,11 +30,11 @@ Instead, report it privately through our coordinated disclosure channel:
 - **Email:** `support@privacyscrubber.com` (or `security@privacyscrubber.com`)
 - **Response SLA:** Our team reviews all reports within **24 hours** and will provide a status update and remediation timeline.
 
-## Security Researcher Hall of Fame (Coordinated Disclosure)
+## Security Advisories & Acknowledgments
 
-We acknowledge and thank the following security researchers for responsible coordinated disclosure:
+Plaintext acknowledgment of external contributors for defense-in-depth hardening and coordinated disclosure (consolidated by root cause, zero external links):
 
-- **[Vishal Vijay Pawar](https://www.linkedin.com/in/vishal-pawar-03078b316/)** — Local license entitlement validation hardening, build-pipeline AST obfuscation enforcement, client-side custom rule ReDoS validation hardening, and workspace root path-boundary containment across MCP file-read handlers (`PS-VDP-2026-10-001`, `PS-VDP-2026-10-002`, `PS-VDP-2026-10-004`, Remediated in `v2.4.4`, October 2026).
-- **[Sudarshan Manjuba Dhanvai](https://www.linkedin.com/in/sudarshan-dhanvai-1175b940a/)** — Workspace root path-boundary containment and symlink escape prevention in `guard_apply_patch` (`PS-VDP-2026-10-003`, October 2026).
+- `PS-VDP-2026-10-001` / `002` (Oct 2026, `v2.4.4`) — Local entitlement validation, custom-rule regex guard, and MCP workspace path-boundary hardening (reported by Vishal Vijay Pawar).
+- `PS-VDP-2026-10-003` (Oct 2026, `v2.4.4`) — MCP patch workspace path-boundary hardening (reported by Sudarshan Manjuba Dhanvai).
 
 Thank you for helping keep the developer ecosystem secure!
