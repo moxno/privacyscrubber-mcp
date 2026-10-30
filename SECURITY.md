@@ -30,11 +30,15 @@ Instead, report it privately through our coordinated disclosure channel:
 - **Email:** `support@privacyscrubber.com` (or `security@privacyscrubber.com`)
 - **Response SLA:** Our team reviews all reports within **24 hours** and will provide a status update and remediation timeline.
 
-## Security Advisories & Acknowledgments
+## Attribution Threshold & Security Advisories
 
-Plaintext acknowledgment of external contributors for defense-in-depth hardening and coordinated disclosure (consolidated by root cause, zero external links):
+Public plaintext acknowledgment in our Coordinated Disclosure Log is reserved strictly for:
+1. Validated **High or Critical vulnerabilities (CVSS >= 7.0)** demonstrating cross-origin PII exfiltration, cryptographic bypass, or remote code execution; or
+2. Researchers who accumulate **5 or more distinct validated code-level security patches** (consolidated by root cause).
 
-- `PS-VDP-2026-10-001` / `002` (Oct 2026, `v2.4.4`) — Local entitlement validation, custom-rule regex guard, and MCP workspace path-boundary hardening (reported by Vishal Vijay Pawar).
-- `PS-VDP-2026-10-003` (Oct 2026, `v2.4.4`) — MCP patch workspace path-boundary hardening (reported by Sudarshan Manjuba Dhanvai).
+Single Low/Medium hardening items, UX storage refinements, and documentation updates are remediated silently without public attribution, external promotional links, certificates, or license grants.
+
+- `PS-VDP-2026-10-001` (`High`) / `PS-VDP-2026-10-002` (`Medium`) / `PS-VDP-2026-10-004` (`Medium`) (Oct 2026 · `v2.4.4`) — Local entitlement validation, custom-rule regex guard (`ReDoS`), and MCP/SDK workspace path-boundary hardening (reported by Vishal Vijay Pawar).
+- `PS-VDP-2026-10-003` (`Medium`) (Oct 2026 · `v2.4.4`) — MCP patch workspace path-boundary hardening (reported by Sudarshan Manjuba Dhanvai).
 
 Thank you for helping keep the developer ecosystem secure!
