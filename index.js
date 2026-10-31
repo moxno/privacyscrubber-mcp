@@ -1827,7 +1827,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "create_agent_rules",
-        description: "Zero-Trust Agentic Guard: Scaffolds CISO-grade AI Agent Rules in workspace (.cursorrules, .windsurfrules, CLAUDE.md, .github/copilot-instructions.md, .clinerules). Guides autonomous agents to route all file reads, git diffs, and shell commands through PrivacyScrubber Guard tools.",
+        description: "Zero-Trust Agentic Guard: Scaffolds CISO-grade AI Agent Rules in workspace (.cursor/rules/privacyscrubber.mdc, .cursorrules, .windsurfrules, CLAUDE.md, AGENTS.md, .github/copilot-instructions.md, .clinerules). Guides autonomous agents to route all file reads, git diffs, and shell commands through PrivacyScrubber Guard tools.",
         inputSchema: {
           type: "object",
           properties: {
@@ -1835,7 +1835,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: "array",
               items: {
                 type: "string",
-                enum: ["all", "cursor", "windsurf", "claude_code", "copilot", "cline"]
+                enum: ["all", "cursor", "windsurf", "claude_code", "agents_md", "codex", "copilot", "cline"]
               },
               description: "List of agent targets to generate rules for. Use ['all'] to generate rules for all supported AI agents."
             },
@@ -3689,7 +3689,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         targetDir = safeWorkspace.resolvedPath;
       }
-      const targets = agent_types.includes("all") ? ["cursor", "windsurf", "claude_code", "copilot", "cline"] : agent_types;
+      const targets = agent_types.includes("all") ? ["cursor", "windsurf", "claude_code", "copilot", "cline", "agents_md"] : agent_types;
 
       const ruleText = `# PrivacyScrubber Zero-Trust Agentic Guard (CISO Security Rules)
 # 100% Local In-Memory Data Sanitization. Zero Network Egress.
@@ -3713,6 +3713,14 @@ Before reading sensitive files, running terminal commands that may print credent
         const p = path.join(targetDir, '.cursorrules');
         fs.writeFileSync(p, ruleText, 'utf8');
         generatedFiles.push('.cursorrules');
+
+        const cursorRulesDir = path.join(targetDir, '.cursor', 'rules');
+        try {
+          if (!fs.existsSync(cursorRulesDir)) fs.mkdirSync(cursorRulesDir, { recursive: true });
+          const mdcContent = `---\ndescription: PrivacyScrubber Zero-Trust Data Sanitization (ZTDS) Agentic Guard\nglobs: *\nalwaysApply: true\n---\n\n${ruleText}`;
+          fs.writeFileSync(path.join(cursorRulesDir, 'privacyscrubber.mdc'), mdcContent, 'utf8');
+          generatedFiles.push('.cursor/rules/privacyscrubber.mdc');
+        } catch (_) {}
       }
       if (targets.includes("windsurf")) {
         const p = path.join(targetDir, '.windsurfrules');
@@ -3730,6 +3738,19 @@ Before reading sensitive files, running terminal commands that may print credent
         } else {
           fs.writeFileSync(p, ruleText, 'utf8');
           generatedFiles.push('CLAUDE.md');
+        }
+      }
+      if (targets.includes("agents_md") || targets.includes("codex")) {
+        const p = path.join(targetDir, 'AGENTS.md');
+        if (fs.existsSync(p)) {
+          const existing = fs.readFileSync(p, 'utf8');
+          if (!existing.includes("Zero-Trust Agentic Guard")) {
+            fs.writeFileSync(p, existing + "\n\n" + ruleText, 'utf8');
+            generatedFiles.push('AGENTS.md (appended)');
+          }
+        } else {
+          fs.writeFileSync(p, ruleText, 'utf8');
+          generatedFiles.push('AGENTS.md');
         }
       }
       if (targets.includes("copilot")) {
@@ -3768,22 +3789,38 @@ Before reading sensitive files, running terminal commands that may print credent
       }
 
       const targetSession = getSessionMap(session_id);
+      const seenUnmask = new WeakMap();
 
       function unmaskRecursive(val) {
         if (typeof val === 'string') {
           return reverseTokens(val, targetSession);
         }
+        if (val === null || typeof val !== 'object') return val;
+        if (
+          val instanceof Date ||
+          val instanceof RegExp ||
+          val instanceof Error ||
+          ArrayBuffer.isView(val) ||
+          (typeof ArrayBuffer !== 'undefined' && val instanceof ArrayBuffer)
+        ) {
+          return val;
+        }
+        if (seenUnmask.has(val)) return seenUnmask.get(val);
         if (Array.isArray(val)) {
-          return val.map(unmaskRecursive);
-        }
-        if (val !== null && typeof val === 'object') {
-          const res = {};
-          for (const [k, v] of Object.entries(val)) {
-            res[k] = unmaskRecursive(v);
+          const outArr = [];
+          seenUnmask.set(val, outArr);
+          for (let i = 0; i < val.length; i++) {
+            outArr.push(unmaskRecursive(val[i]));
           }
-          return res;
+          return outArr;
         }
-        return val;
+        const res = {};
+        seenUnmask.set(val, res);
+        for (const [k, v] of Object.entries(val)) {
+          if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+          res[k] = unmaskRecursive(v);
+        }
+        return res;
       }
 
       const unmasked = unmaskRecursive(targetArgs);
@@ -4087,6 +4124,15 @@ Before reading sensitive files, running terminal commands that may print credent
           };
         }
         try {
+          if (fs.existsSync(safeDest.resolvedPath)) {
+            const st = fs.lstatSync(safeDest.resolvedPath);
+            if (st.isSymbolicLink() || !st.isFile()) {
+              return {
+                isError: true,
+                content: [{ type: "text", text: "Error: Security policy violation — destination_file must be a regular non-symlink file." }]
+              };
+            }
+          }
           const dir = path.dirname(safeDest.resolvedPath);
           if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
