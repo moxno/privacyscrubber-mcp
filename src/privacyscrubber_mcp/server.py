@@ -138,7 +138,14 @@ def run_native_mcp_loop():
                     "serverInfo": {
                         "name": "@privacyscrubber/mcp-server",
                         "version": VERSION
-                    }
+                    },
+                    "instructions": (
+                        "Zero-Trust Data Sanitization (ZTDS) Protocol Active (100% local RAM, 0 network egress).\n"
+                        "AUTOMATIC INTERCEPTION RULES FOR AI AGENTS:\n"
+                        "1. FILE READS: Before reading .env, configs, logs, or sensitive files, call 'sanitize_file' instead of native file read tools.\n"
+                        "2. RAW TEXT: Sanitize raw user PII/secrets via 'sanitize_text' before external reasoning.\n"
+                        "3. LOCAL RESTORATION: Keep tokens like [EMAIL_1], [API_KEY_1] intact during reasoning and call 'reveal_text' to restore final answers."
+                    )
                 }
             }
             sys.stdout.write(json.dumps(res) + "\n")
@@ -153,6 +160,12 @@ def run_native_mcp_loop():
             sys.stdout.flush()
 
         elif method == "tools/list":
+            ro_annot = {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False
+            }
             res = {
                 "jsonrpc": "2.0",
                 "id": req_id,
@@ -161,6 +174,7 @@ def run_native_mcp_loop():
                         {
                             "name": "sanitize_text",
                             "description": "Locally intercept and scrub PII, credentials, API keys, and sensitive tokens from text in local RAM before AI ingestion.",
+                            "annotations": {"title": "Sanitize Text in Local RAM", **ro_annot},
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
@@ -173,6 +187,7 @@ def run_native_mcp_loop():
                         {
                             "name": "reveal_text",
                             "description": "Locally re-insert and detokenize original cleartext into AI responses containing synthetic tokens in local RAM.",
+                            "annotations": {"title": "Restore Tokens in Local RAM", **ro_annot},
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
@@ -185,18 +200,21 @@ def run_native_mcp_loop():
                         {
                             "name": "sanitize_file",
                             "description": "Sanitize local file content before providing to AI agent.",
+                            "annotations": {"title": "Sanitize Local File in RAM", **ro_annot},
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
-                                    "path": {"type": "string", "description": "Absolute or relative path to file"},
+                                    "file_path": {"type": "string", "description": "Absolute or workspace-relative path to file"},
+                                    "path": {"type": "string", "description": "Deprecated alias for file_path"},
                                     "profile": {"type": "string", "description": "Optional profile name"}
                                 },
-                                "required": ["path"]
+                                "required": ["file_path"]
                             }
                         },
                         {
                             "name": "check_status",
                             "description": "Inspect active PrivacyScrubber licensing, architecture, and memory session status.",
+                            "annotations": {"title": "Check MCP Status", **ro_annot},
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {}
@@ -205,6 +223,7 @@ def run_native_mcp_loop():
                         {
                             "name": "generate_procurement_memo",
                             "description": "Generate a 1-page CISO/VP Engineering budget approval & ROI memorandum for PrivacyScrubber TEAMS ($99/mo flat) or Developer SDK ($299/mo).",
+                            "annotations": {"title": "Generate CISO Procurement Memo", **ro_annot},
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
@@ -216,17 +235,20 @@ def run_native_mcp_loop():
                         {
                             "name": "mark_false_positive",
                             "description": "Whitelist a specific phrase or restore a falsely redacted token in the current in-memory RAM session.",
+                            "annotations": {"title": "Mark False Positive Token", **ro_annot},
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
-                                    "value": {"type": "string", "description": "Exact token (e.g. '[EMAIL_1]') or literal phrase to exclude from redaction."}
+                                    "token": {"type": "string", "description": "Exact token (e.g. '[EMAIL_1]') or literal phrase to exclude from redaction."},
+                                    "value": {"type": "string", "description": "Deprecated alias for token."}
                                 },
-                                "required": ["value"]
+                                "required": ["token"]
                             }
                         },
                         {
-                            "name": "reset_session",
+                            "name": "guard_session_reset",
                             "description": "Immediately zeroize and purge all volatile in-memory token mappings and counters.",
+                            "annotations": {"title": "Reset RAM Session", **ro_annot},
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {}
@@ -245,7 +267,7 @@ def run_native_mcp_loop():
                 (os.environ.get("PRIVACYSCRUBBER_KEY", "") or os.environ.get("PRIVACYSCRUBBER_LICENSE_KEY", "")).strip()
             )
 
-            if tool_name == "sanitize_text":
+            if tool_name in ("sanitize_text", "scrub_text"):
                 raw_text = tool_args.get("text", "")
                 req_profile = str(tool_args.get("profile", "General") or "General").strip()
                 scrubbed, tokens = engine.sanitize(raw_text)
@@ -281,13 +303,20 @@ def run_native_mcp_loop():
                         "content": [{"type": "text", "text": restored}]
                     }
                 }
-            elif tool_name == "sanitize_file":
-                file_path = tool_args.get("path", "")
+            elif tool_name in ("sanitize_file", "scrub_file", "guard_read_file"):
+                file_path = str(tool_args.get("file_path") or tool_args.get("path") or "").strip()
                 try:
-                    resolved_path = os.path.abspath(os.path.expanduser(str(file_path)))
+                    if not file_path:
+                        raise ValueError("Missing required parameter 'file_path'.")
+                    workspace_real = os.path.realpath(os.getcwd())
+                    resolved_path = os.path.realpath(os.path.abspath(os.path.expanduser(file_path)))
+                    if resolved_path != workspace_real and not resolved_path.startswith(workspace_real + os.sep):
+                        raise PermissionError(f"Path '{file_path}' escapes active workspace root '{workspace_real}'.")
                     normalized_check = resolved_path.replace("\\", "/").lower()
                     if any(seg in normalized_check for seg in FORBIDDEN_PATH_SEGMENTS):
                         raise PermissionError("Access to system credential path is restricted by ZTDS policy.")
+                    if not os.path.isfile(resolved_path):
+                        raise FileNotFoundError(f"Regular file not found: {file_path}")
                     if normalized_check.endswith((".pdf", ".xlsx", ".xls", ".docx")):
                         res = {
                             "jsonrpc": "2.0",
@@ -372,7 +401,7 @@ def run_native_mcp_loop():
                     }
                 }
             elif tool_name == "mark_false_positive":
-                val = str(tool_args.get("value", "") or "").strip()
+                val = str(tool_args.get("token") or tool_args.get("value") or "").strip()
                 restored_phrase = engine.session_map.pop(val, None) or engine.session_map.pop(val.upper(), None)
                 target_phrase = restored_phrase if restored_phrase else val
                 if target_phrase:
@@ -387,7 +416,7 @@ def run_native_mcp_loop():
                         }]
                     }
                 }
-            elif tool_name == "reset_session":
+            elif tool_name in ("guard_session_reset", "reset_session"):
                 cleared_count = len(engine.session_map)
                 engine.zeroize_session()
                 res = {

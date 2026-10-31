@@ -94,19 +94,26 @@ async function runMcpSession() {
     console.log(`<-- Tools list received. Total tools: ${tools.length}`);
     tools.forEach(t => console.log(`  - Tool: ${t.name} (${t.description.substring(0, 60)}...)`));
 
-    if (tools.length !== 25) {
-      throw new Error(`Expected 25 tools, got ${tools.length}`);
+    if (tools.length !== 23) {
+      throw new Error(`Expected 23 tools, got ${tools.length}`);
+    }
+    if (!initResponse.result?.instructions || !initResponse.result.instructions.includes('AUTOMATIC INTERCEPTION RULES')) {
+      throw new Error('Initialize response missing MCP system instructions');
     }
     const expectedToolNames = [
-      'audit_context', 'sanitize_text', 'scrub_text', 'reveal_text', 'stream_reveal_text', 'sanitize_file', 'scrub_file',
+      'audit_context', 'sanitize_text', 'reveal_text', 'stream_reveal_text', 'sanitize_file',
       'check_status', 'create_default_config', 'mark_false_positive',
       'guard_exec', 'guard_read_file', 'guard_git_diff', 'guard_apply_patch', 'create_agent_rules',
       'guard_unmask_args', 'guard_session_info', 'guard_session_reset',
       'guard_rag_chunk', 'guard_rag_restore', 'export_audit_log', 'generate_procurement_memo'
     ];
     for (const toolName of expectedToolNames) {
-      if (!tools.find(t => t.name === toolName)) {
+      const found = tools.find(t => t.name === toolName);
+      if (!found) {
         throw new Error(`${toolName} tool is missing from tools list`);
+      }
+      if (!found.annotations || typeof found.annotations.readOnlyHint !== 'boolean') {
+        throw new Error(`${toolName} tool is missing MCP annotations`);
       }
     }
 

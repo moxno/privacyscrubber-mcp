@@ -154,6 +154,13 @@ function resolveConfigPath() {
   return configPath;
 }
 
+function isCatastrophicRegex(pattern) {
+  if (!pattern || typeof pattern !== 'string' || pattern.length > 500) return true;
+  if (/(\([^)]*[+*][^)]*\))[+*?{]/.test(pattern)) return true;
+  if (/(\.\*){3,}/.test(pattern)) return true;
+  return false;
+}
+
 function loadCustomRules() {
   const license = checkLicenseStatus();
   const configPath = resolveConfigPath();
@@ -164,12 +171,20 @@ function loadCustomRules() {
       const rules = config.customRules || [];
       if (rules.length > 0) {
         if (license.isPro) {
-          return rules.map(r => ({
-            pattern: r.pattern || r.regex || "",
-            label: (r.label || r.category || "CUSTOM").toUpperCase(),
-            regex: r.pattern || r.regex || "",
-            category: (r.label || r.category || "CUSTOM").toUpperCase()
-          })).filter(r => r.pattern);
+          return rules.map(r => {
+            const pat = r.pattern || r.regex || "";
+            if (!pat || isCatastrophicRegex(pat)) return null;
+            try {
+              return {
+                pattern: pat,
+                label: (r.label || r.category || "CUSTOM").toUpperCase(),
+                regex: new RegExp(pat, "gi"),
+                category: (r.label || r.category || "CUSTOM").toUpperCase()
+              };
+            } catch (_) {
+              return null;
+            }
+          }).filter(Boolean);
         } else {
           process.stderr.write(`⚠️  [PrivacyScrubber] Custom rules detected in privacyscrubber.json, but are ignored in the Free Tier.\n👉  Set PRIVACYSCRUBBER_KEY to your PRO license key.\n`);
         }
@@ -245,34 +260,6 @@ function performSanitization(text) {
 
   if (result && result.tokenMap) {
     Object.assign(localSessionMap, result.tokenMap);
-  }
-  
-  if (!license.isPro && result.tokenMap) {
-    // Free tier: check for secrets and warn
-    let hasSecrets = false;
-    const SECRET_TOKEN_RE = /^\[(?:SECRET|API_TOKEN|AWS_KEY|JWT_TOKEN|STRIPE_KEY|OPENAI_KEY|DB_URI)_\d+\]$/;
-    Object.entries(result.tokenMap).forEach(([token, original]) => {
-      let isSecret = SECRET_TOKEN_RE.test(token);
-      if (!isSecret) {
-        for (const detector of DEVOPS_SECRETS_DETECTOR) {
-          detector.regex.lastIndex = 0;
-          if (detector.regex.test(original)) {
-            isSecret = true;
-            break;
-          }
-        }
-      }
-      if (isSecret) {
-        hasSecrets = true;
-        result.scrubbedText = result.scrubbedText.replaceAll(token, '[SECRET_BLOCKED_UPGRADE_TO_PRO]');
-        delete result.tokenMap[token];
-        delete localSessionMap[token];
-      }
-    });
-
-    if (hasSecrets) {
-      process.stderr.write(`\x1b[1;31m🚫  [PrivacyScrubber] Secrets/Keys detected in output. Replaced with [SECRET_BLOCKED_UPGRADE_TO_PRO] to protect your data (Requires PRO tier).\x1b[0m\n`);
-    }
   }
 
   return result.scrubbedText + (wasTruncated ? `\n\n[PrivacyScrubber Free Tier: Payload truncated to ${limit.toLocaleString()} characters. Upgrade to PRO ($15/mo or $110 Lifetime) or Developer SDK ($299/mo) for unlimited payload processing: https://privacyscrubber.com/pricing]` : '');
@@ -542,6 +529,11 @@ Before reading sensitive files, running terminal commands that may print credent
   if (targets.includes("cursor")) {
     fs.writeFileSync(path.join(targetDir, '.cursorrules'), RULE_TEXT, 'utf8');
     generatedFiles.push('.cursorrules');
+    const cursorRulesDir = path.join(targetDir, '.cursor', 'rules');
+    if (!fs.existsSync(cursorRulesDir)) fs.mkdirSync(cursorRulesDir, { recursive: true });
+    const mdcContent = `---\ndescription: PrivacyScrubber Zero-Trust Data Sanitization (ZTDS) — Mandatory PII & Secret Guard\nglobs: "**/*"\nalwaysApply: true\n---\n\n${RULE_TEXT}`;
+    fs.writeFileSync(path.join(cursorRulesDir, 'privacyscrubber.mdc'), mdcContent, 'utf8');
+    generatedFiles.push('.cursor/rules/privacyscrubber.mdc');
   }
   if (targets.includes("windsurf")) {
     fs.writeFileSync(path.join(targetDir, '.windsurfrules'), RULE_TEXT, 'utf8');
@@ -560,6 +552,21 @@ Before reading sensitive files, running terminal commands that may print credent
     } else {
       fs.writeFileSync(p, RULE_TEXT, 'utf8');
       generatedFiles.push('CLAUDE.md');
+    }
+  }
+  if (targets.includes("agents_md") || targets.includes("codex") || rulesTargets.includes("all")) {
+    const agentsPath = path.join(targetDir, 'AGENTS.md');
+    if (fs.existsSync(agentsPath)) {
+      const existing = fs.readFileSync(agentsPath, 'utf8');
+      if (!existing.includes("Zero-Trust Agentic Guard")) {
+        fs.writeFileSync(agentsPath, existing.trimEnd() + "\n\n" + RULE_TEXT, 'utf8');
+        generatedFiles.push('AGENTS.md (appended)');
+      } else {
+        generatedFiles.push('AGENTS.md (already present)');
+      }
+    } else {
+      fs.writeFileSync(agentsPath, RULE_TEXT, 'utf8');
+      generatedFiles.push('AGENTS.md');
     }
   }
   if (targets.includes("copilot")) {

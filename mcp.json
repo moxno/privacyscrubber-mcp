@@ -1,9 +1,0 @@
-{
-  "name": "privacyscrubber-mcp",
-  "description": "Zero-Trust PII & secrets sanitizer for Cursor. Locally scrubs data in-memory before sending context to LLMs.",
-  "command": "npx",
-  "args": [
-    "-y",
-    "@privacyscrubber/mcp-server@latest"
-  ]
-}

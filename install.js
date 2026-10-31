@@ -234,6 +234,7 @@ export function parseArgs(rawArgs = process.argv.slice(2)) {
     dryRun: false,
     remove: false,
     all: false,
+    rules: false,
     targets: [],
     help: false
   };
@@ -242,6 +243,7 @@ export function parseArgs(rawArgs = process.argv.slice(2)) {
     if (arg === '--dry-run') options.dryRun = true;
     else if (arg === '--remove' || arg === '--uninstall') options.remove = true;
     else if (arg === '--all') options.all = true;
+    else if (arg === '--rules') options.rules = true;
     else if (arg === '--claude') options.targets.push('claude');
     else if (arg === '--claude-code') options.targets.push('claude-code', 'claude-code-project');
     else if (arg === '--cursor') options.targets.push('cursor', 'cursor-storage', 'cursor-workspace');
@@ -249,7 +251,10 @@ export function parseArgs(rawArgs = process.argv.slice(2)) {
     else if (arg === '--zed') options.targets.push('zed');
     else if (arg === '--windsurf') options.targets.push('windsurf');
     else if (arg === '--cline') options.targets.push('cline', 'roo');
-    else if (arg === '--workspace') options.targets.push('cursor-workspace', 'claude-code-project', 'vscode');
+    else if (arg === '--workspace') {
+      options.targets.push('cursor-workspace', 'claude-code-project', 'vscode');
+      options.rules = true;
+    }
     else if (arg === '--help' || arg === '-h') options.help = true;
   }
 
@@ -327,7 +332,8 @@ Options:
   --zed           Configure Zed IDE (~/.config/zed/settings.json)
   --windsurf      Configure Windsurf only
   --cline         Configure Cline / Roo-Code only
-  --workspace     Configure workspace paths (.cursor, .mcp.json, .vscode)
+  --workspace     Configure workspace paths (.cursor, .mcp.json, .vscode) & agent rules
+  --rules         Scaffold native AI agent rules (.cursor/rules/privacyscrubber.mdc, AGENTS.md)
   --dry-run       Preview configuration changes without writing files
   --remove        Remove PrivacyScrubber from all target client configurations
   -h, --help      Display this help guide
@@ -398,6 +404,41 @@ Options:
       configuredCount++;
     }
     console.log('');
+  }
+
+  if (options.rules && !options.remove) {
+    const cwd = process.cwd();
+    const mdcPath = path.join(cwd, '.cursor', 'rules', 'privacyscrubber.mdc');
+    const agentsMdPath = path.join(cwd, 'AGENTS.md');
+    const ruleBody = [
+      '# PrivacyScrubber Zero-Trust Agentic Guard (ZTDS)',
+      '1. Never read `.env`, `*secret*`, `*credentials*`, `*.pem`, `*.key`, or database dumps with native `read_file` / `cat`. Call `guard_read_file` or `sanitize_file`.',
+      '2. Route shell commands that may print credentials or PII through `guard_exec`, and inspect git diffs via `guard_git_diff`.',
+      '3. Keep tokens like `[API_KEY_1]`, `[EMAIL_1]` intact during reasoning. Restore final answers via `reveal_text` or write to disk via `guard_apply_patch`.'
+    ].join('\n');
+    const mdcContent = `---\ndescription: PrivacyScrubber Zero-Trust Data Sanitization (ZTDS) — Mandatory PII & Secret Guard\nglobs: "**/*"\nalwaysApply: true\n---\n\n${ruleBody}\n`;
+
+    if (options.dryRun) {
+      console.log(`[DRY-RUN OK]: Would scaffold agent rules in ${mdcPath} and ${agentsMdPath}\n`);
+    } else {
+      try {
+        fs.mkdirSync(path.dirname(mdcPath), { recursive: true });
+        if (!fs.existsSync(mdcPath) || !fs.readFileSync(mdcPath, 'utf8').includes('PrivacyScrubber Zero-Trust Agentic Guard')) {
+          fs.writeFileSync(mdcPath, mdcContent, 'utf8');
+          console.log(`[RULES] Created ${mdcPath}`);
+        }
+        if (!fs.existsSync(agentsMdPath)) {
+          fs.writeFileSync(agentsMdPath, ruleBody + '\n', 'utf8');
+          console.log(`[RULES] Created ${agentsMdPath}`);
+        } else {
+          const existingAgents = fs.readFileSync(agentsMdPath, 'utf8');
+          if (!existingAgents.includes('PrivacyScrubber Zero-Trust Agentic Guard')) {
+            fs.writeFileSync(agentsMdPath, existingAgents.trimEnd() + '\n\n' + ruleBody + '\n', 'utf8');
+            console.log(`[RULES] Updated ${agentsMdPath}`);
+          }
+        }
+      } catch (_) {}
+    }
   }
 
   console.log('--------------------------------------------------');

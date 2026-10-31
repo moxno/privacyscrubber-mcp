@@ -30,20 +30,16 @@
       "description": "STEP 3: Call this last. Restores masked tokens back with original private data from the local volatile RAM-only session map."
     },
     {
+      "name": "stream_reveal_text",
+      "description": "STEP 3 (Streaming): Real-time streaming token detokenizer for LLM Server-Sent Events (SSE) and stdio chunk pipelines."
+    },
+    {
       "name": "audit_context",
       "description": "STEP 0 (Pre-Flight): Non-destructive security inspection of raw prompts or document chunks before sending to LLMs. Evaluates PII, secrets, risk severity, and triggered regulatory frameworks."
     },
     {
-      "name": "scrub_text",
-      "description": "Alias for sanitize_text."
-    },
-    {
       "name": "sanitize_file",
       "description": "Reads a local file, sanitizes its contents using the selected profile, and outputs the safe version for AI analysis. Securely keeps original identifiers in memory."
-    },
-    {
-      "name": "scrub_file",
-      "description": "Alias for sanitize_file."
     },
     {
       "name": "audit_directory_for_pii",
@@ -116,7 +112,9 @@
     {
       "name": "generate_procurement_memo",
       "description": "Zero-Trust Enterprise Procurement: Generates an executive-ready Procurement & ROI Memorandum for CISOs, DPOs, and VP of Engineering."
-    },
+    }
+  ],
+  "prompts": [
     {
       "name": "secure_ai_workflow",
       "description": "Zero-Trust Data Sanitization workflow instruction to automatically scrub PII before processing data."

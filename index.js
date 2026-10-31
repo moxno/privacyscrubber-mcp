@@ -1364,6 +1364,15 @@ We request approval to acquire a **PrivacyScrubber TEAMS License** (\$99/month f
 `;
 }
 
+const MCP_SYSTEM_INSTRUCTIONS = [
+  "Zero-Trust Data Sanitization (ZTDS) Protocol Active (100% local RAM, 0 network egress).",
+  "AUTOMATIC INTERCEPTION RULES FOR AI AGENTS:",
+  "1. FILE READS: Before reading .env, configs, logs, database dumps, or documents (DOCX/PDF/XLSX/CSV/JSON), call 'guard_read_file' (or 'sanitize_file') instead of native file read tools.",
+  "2. SHELL & GIT: Route terminal commands that may output secrets or PII through 'guard_exec', and inspect diffs via 'guard_git_diff'.",
+  "3. RAW TEXT & RAG: Sanitize raw user PII/secrets in prompts via 'sanitize_text' (or 'guard_rag_chunk' for vector chunks) before external reasoning.",
+  "4. LOCAL RESTORATION: Keep placeholders like [EMAIL_1], [API_KEY_1], [NAME_1] intact during reasoning. Call 'reveal_text' to restore final answers, 'guard_apply_patch' to write unmasked code/configs to disk, or 'guard_unmask_args' for local tool calls."
+].join("\n");
+
 // Create the MCP server
 const server = new Server(
   {
@@ -1377,6 +1386,7 @@ const server = new Server(
       logging: {},
       resources: {},
     },
+    instructions: MCP_SYSTEM_INSTRUCTIONS,
   }
 );
 
@@ -1387,6 +1397,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "audit_context",
         description: "STEP 0 (Pre-Flight): Non-destructive security inspection of raw prompts or document chunks before sending to LLMs. Evaluates PII, secrets, risk severity (CLEAN, LOW, MODERATE, CRITICAL), and triggered regulatory frameworks (GDPR, HIPAA, SOC 2, PCI DSS) with zero text mutation.",
+        annotations: {
+          title: "Audit Context for PII & Secrets",
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {
@@ -1414,6 +1431,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "sanitize_text",
         description: "STEP 1: Call this first. You MUST NOT process raw user data before calling this. Locally scrubs PII, secrets, and credentials (like API keys, passwords, emails, phones, names) from code, logs, or text. Replaces them with safe placeholders (e.g., [EMAIL_1], [API_KEY_1]). Keep your data secure before passing it to any LLM. Supports General and all 30 specialized industry profiles in RAM session map. (For in-code backend services or RAG vector pipelines outside of MCP, use '@privacyscrubber/sdk': npm i @privacyscrubber/sdk)",
+        annotations: {
+          title: "Sanitize Text in Local RAM",
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {
@@ -1447,43 +1471,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
-        name: "scrub_text",
-        description: "Alias for 'sanitize_text'. Locally scrubs PII, secrets, and credentials from prompts or text before LLM ingestion. Supports General and all 30 specialized industry profiles in RAM session map.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            text: {
-              type: "string",
-              description: "The raw text, code, or logs to sanitize."
-            },
-            profile: {
-              type: "string",
-              description: PROFILE_PARAM_DESCRIPTION
-            },
-            sector: {
-              type: "string",
-              description: SECTOR_PARAM_DESCRIPTION
-            },
-            compact: {
-              type: "boolean",
-              description: "Optional. Compact 1-line audit summary."
-            },
-            ignore_list: {
-              type: "array",
-              items: { type: "string" },
-              description: "Optional list of plaintext values to skip during detection."
-            },
-            session_id: {
-              type: "string",
-              description: "Optional session ID for multi-agent isolation. Defaults to 'default'."
-            }
-          },
-          required: ["text"]
-        }
-      },
-      {
         name: "reveal_text",
         description: "STEP 3: Call this last. You MUST pass your final generated response through this tool to restore tokens (e.g., [EMAIL_1]) back with the original private data from the local volatile RAM-only session map before showing it to the user. Supports both standard batch mode and real-time streaming mode (stream: true).",
+        annotations: {
+          title: "Restore Tokens in Local RAM",
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {
@@ -1510,6 +1506,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "stream_reveal_text",
         description: "STEP 3 (Streaming): Real-time streaming token detokenizer for LLM Server-Sent Events (SSE) and stdio chunk pipelines. Buffers split token candidates across chunk boundaries (e.g. '[EM' + 'AIL_1]') so no characters or tokens are corrupted. Pass 'flush: true' on the final chunk.",
+        annotations: {
+          title: "Streaming Token Detokenizer",
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {
@@ -1535,43 +1538,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "sanitize_file",
-        description: "Reads a local file, sanitizes its contents using the selected profile, and outputs the safe version for AI analysis. Securely keeps original identifiers in memory.",
+        description: "Reads a local file (including plain text, source code, .eml, .rtf, .docx, .pdf, .xlsx), sanitizes its contents using the selected profile, and outputs the safe version for AI analysis. Securely keeps original identifiers in memory.",
+        annotations: {
+          title: "Sanitize Local File in RAM",
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {
             file_path: {
               type: "string",
-              description: "Absolute path to the file to sanitize."
-            },
-            profile: {
-              type: "string",
-              description: PROFILE_PARAM_DESCRIPTION
-            },
-            sector: {
-              type: "string",
-              description: SECTOR_PARAM_DESCRIPTION
-            },
-            compact: {
-              type: "boolean",
-              description: "Optional. Compact 1-line audit summary."
-            },
-            session_id: {
-              type: "string",
-              description: "Optional session ID for multi-agent isolation. Defaults to 'default'."
-            }
-          },
-          required: ["file_path"]
-        }
-      },
-      {
-        name: "scrub_file",
-        description: "Alias for 'sanitize_file'. Reads and sanitizes a local file.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            file_path: {
-              type: "string",
-              description: "Absolute path to the file to sanitize."
+              description: "Absolute or workspace-relative path to the file to sanitize."
             },
             profile: {
               type: "string",
@@ -1596,6 +1576,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "audit_directory_for_pii",
         description: "Scans a local directory for leaks of secrets, keys, and PII. Returns a summary report. Use this tool for Security Auditing.",
+        annotations: {
+          title: "Audit Directory for PII & Secrets",
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {
@@ -1627,6 +1614,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "redact_file",
         description: "Action/Redact: In-place redaction of a local file. Replaces PII and secrets with tokens and saves the file. By default, creates a .bak backup. Use dry_run=true to test without modifying.",
+        annotations: {
+          title: "In-Place File Redaction",
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: false,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {
@@ -1657,6 +1651,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "create_default_config",
         description: "Creates a default 'privacyscrubber.json' configuration file in the active workspace root directory if one does not exist. Includes template structures for custom regex rules and exclusion bypass patterns.",
+        annotations: {
+          title: "Create Default Workspace Config",
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {},
@@ -1666,6 +1667,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "generate_compliance_report",
         description: "Generates an official Zero-Trust Compliance Audit Certificate (GDPR, HIPAA, EU AI Act, SOC 2) for the current MCP session. Returns cryptographic session hash, masked entities breakdown, and compliance certification.",
+        annotations: {
+          title: "Generate Compliance Audit Certificate",
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {
@@ -1693,6 +1701,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "mark_false_positive",
         description: "Marks a previously detected token as a false positive. The original plaintext value will be excluded from all future sanitize_text calls in this session. Returns the restored original value and updated ignore list size.",
+        annotations: {
+          title: "Mark Token as False Positive",
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {
@@ -1711,6 +1726,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "check_status",
         description: "Returns the current PrivacyScrubber MCP tier, session usage, available profiles, and PRO upgrade instructions. Call this to see your license status or get setup help.",
+        annotations: {
+          title: "Check MCP License & Session Status",
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {},
@@ -1720,6 +1742,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "guard_exec",
         description: "Zero-Trust Agentic Guard: Safely executes a shell/terminal command locally in isolated process, sanitizes stdout and stderr in volatile RAM, tokenizes any API keys, credentials, database URIs, or PII before sending output to LLM. Maps original values in memory for safe local restoration.",
+        annotations: {
+          title: "Guard Shell Command Execution",
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: false,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {
@@ -1742,6 +1771,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             timeout_ms: {
               type: "number",
               description: "Execution timeout in milliseconds. Defaults to 15000 (15s)."
+            },
+            session_id: {
+              type: "string",
+              description: "Optional session ID for multi-agent isolation. Defaults to 'default'."
             }
           },
           required: ["command"]
@@ -1749,7 +1782,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "guard_read_file",
-        description: "Zero-Trust Agentic Guard: Reads a sensitive local file (.env, config, credentials, source code, database dumps), sanitizes all credentials and PII in volatile RAM, and returns safe tokenized content for AI agent context.",
+        description: "Zero-Trust Agentic Guard: Preferred over native file read tools. Reads any sensitive local file (.env, config, credentials, source code, database dumps, .docx, .pdf, .xlsx, .eml, .rtf), sanitizes all credentials and PII in volatile RAM, and returns safe tokenized content for AI agent context.",
+        annotations: {
+          title: "Guard Local File Read",
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {
@@ -1768,6 +1808,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             max_lines: {
               type: "number",
               description: "Optional line cap for large files. Defaults to 500."
+            },
+            session_id: {
+              type: "string",
+              description: "Optional session ID for multi-agent isolation. Defaults to 'default'."
             }
           },
           required: ["file_path"]
@@ -1776,6 +1820,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "guard_git_diff",
         description: "Zero-Trust Agentic Guard: Inspects unstaged or staged git diffs locally, sanitizes any newly added or modified credentials, tokens, or PII in RAM, and returns safe diff for AI commit generation or code review.",
+        annotations: {
+          title: "Guard Git Diff Inspection",
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {
@@ -1806,6 +1857,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "guard_apply_patch",
         description: "Zero-Trust Agentic Guard: Reverses token placeholders ([API_KEY_1], [SECRET_1]) in AI-generated code or text, restores authentic values from local volatile RAM, and writes real content directly to target file on disk. Remote LLM never learns actual secrets.",
+        annotations: {
+          title: "Guard Apply Unmasked Patch to Disk",
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {
@@ -1820,6 +1878,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             create_backup: {
               type: "boolean",
               description: "Whether to create a .bak backup if target file already exists. Defaults to true."
+            },
+            session_id: {
+              type: "string",
+              description: "Optional session ID for multi-agent isolation. Defaults to 'default'."
             }
           },
           required: ["file_path", "content"]
@@ -1828,6 +1890,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "create_agent_rules",
         description: "Zero-Trust Agentic Guard: Scaffolds CISO-grade AI Agent Rules in workspace (.cursor/rules/privacyscrubber.mdc, .cursorrules, .windsurfrules, CLAUDE.md, AGENTS.md, .github/copilot-instructions.md, .clinerules). Guides autonomous agents to route all file reads, git diffs, and shell commands through PrivacyScrubber Guard tools.",
+        annotations: {
+          title: "Scaffold AI Agent Security Rules",
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {
@@ -1850,6 +1919,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "guard_unmask_args",
         description: "Zero-Trust Agentic Guard: Detokenizes parameters, JSON objects, or arguments in local RAM before dispatching to local tools or APIs without sending cleartext secrets back to the LLM.",
+        annotations: {
+          title: "Unmask Tool Arguments in Local RAM",
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {
@@ -1867,6 +1943,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "guard_session_info",
         description: "Zero-Trust Agentic Guard: Returns diagnostic metrics on active in-memory sessions, token counts, and memory footprint with zero plaintext leakage.",
+        annotations: {
+          title: "Inspect RAM Session Diagnostics",
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {
@@ -1881,6 +1964,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "guard_session_reset",
         description: "Zero-Trust Agentic Guard: Explicitly purges the in-memory token map for a specific session_id or all sessions upon agent task completion.",
+        annotations: {
+          title: "Reset RAM Session Token Map",
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {
@@ -1899,6 +1989,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "guard_rag_chunk",
         description: "Zero-Trust Agentic Guard: Sanitizes an array of document chunks or knowledge base records before sending to embedding models or vector databases (Chroma, Pinecone, Qdrant). Keeps authentic data in local RAM with zero network leakage.",
+        annotations: {
+          title: "Sanitize RAG Document Chunks",
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {
@@ -1939,6 +2036,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "guard_rag_restore",
         description: "Zero-Trust Agentic Guard: Re-hydrates retrieved vector search results or chunks by restoring token placeholders with authentic data from the volatile RAM session before presenting to the user.",
+        annotations: {
+          title: "Restore RAG Vector Search Results",
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {
@@ -1972,6 +2076,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "export_audit_log",
         description: "Zero-Trust Enterprise Compliance: Exports an immutable, tamper-evident audit log in SIEM standard formats (CEF / ArcSight, RFC 5424 Syslog, JSONL, or JSON) with zero plaintext PII leakage. Can write directly to a local log file or stream.",
+        annotations: {
+          title: "Export SIEM Compliance Audit Log",
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {
@@ -2006,6 +2117,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "generate_procurement_memo",
         description: "Zero-Trust Enterprise Procurement: Generates an executive-ready Procurement & ROI Memorandum for Chief Information Security Officers (CISO), Data Protection Officers (DPO), and VP of Engineering. Compares TCO of traditional Cloud DLP ($1.5k–$4k/mo) vs PrivacyScrubber TEAMS ($99/mo flat) or Developer SDK ($299/mo flat), citing statutory frameworks (GDPR Art. 4/28, HIPAA §164.514, SOC 2 Type II, PCI DSS v4.0, NIST SP 800-53, EU AI Act Art. 50).",
+        annotations: {
+          title: "Generate CISO Procurement & ROI Memo",
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
         inputSchema: {
           type: "object",
           properties: {
@@ -3452,23 +3570,72 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
       const rawBuffer = fs.readFileSync(resolvedPath);
-      const checkLen = Math.min(rawBuffer.length, 8000);
-      for (let i = 0; i < checkLen; i++) {
-        if (rawBuffer[i] === 0) {
-          return {
-            isError: true,
-            content: [{ type: "text", text: `Error: Binary file format detected. Use sanitize_file for DOCX/PDF/XLSX documents.` }]
-          };
-        }
-      }
+      const ext = path.extname(resolvedPath).toLowerCase();
       const license = checkLicenseStatus();
       const limitStatus = checkFreeTierLimit(license.isPro);
       if (limitStatus.blocked) {
         return buildDailyLimitBlockedResponse();
       }
 
-      let rawContent = rawBuffer.toString('utf8');
-      const ext = path.extname(resolvedPath).toLowerCase();
+      let rawContent = '';
+      if (ext === '.docx') {
+        try {
+          const mammoth = require('mammoth');
+          const result = await mammoth.extractRawText({ buffer: rawBuffer });
+          rawContent = result.value || '';
+        } catch (docxErr) {
+          return {
+            isError: true,
+            content: [{ type: "text", text: `Error: Failed to parse DOCX file: ${docxErr.message}` }]
+          };
+        }
+      } else if (ext === '.pdf' || ext === '.xlsx' || ext === '.xls') {
+        if (!license.isPro) {
+          return {
+            isError: true,
+            content: [{
+              type: "text",
+              text: `🔒 [PrivacyScrubber PRO / TEAMS] PDF and Excel file sanitization is a PRO feature (${ext === '.pdf' ? 'PDF' : 'Excel/XLSX'} detected).\n\n👉 7-Day Free B2B Trial (No card): https://privacyscrubber.com/pricing/?tier=teams&trial=true&utm_source=mcp_cli&utm_medium=file_type&utm_campaign=b2b_trial`
+            }]
+          };
+        }
+        if (ext === '.pdf') {
+          try {
+            const pdf = require('pdf-parse');
+            const data = await pdf(rawBuffer);
+            rawContent = data.text || '';
+          } catch (pdfErr) {
+            return {
+              isError: true,
+              content: [{ type: "text", text: `Error: Failed to parse PDF file: ${pdfErr.message}` }]
+            };
+          }
+        } else {
+          try {
+            const XLSX = require('xlsx');
+            const workbook = XLSX.read(rawBuffer, { type: 'buffer' });
+            workbook.SheetNames.forEach(sheetName => {
+              rawContent += `--- Sheet: ${sheetName} ---\n` + XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]) + '\n';
+            });
+          } catch (xlsxErr) {
+            return {
+              isError: true,
+              content: [{ type: "text", text: `Error: Failed to parse Excel file: ${xlsxErr.message}` }]
+            };
+          }
+        }
+      } else {
+        const checkLen = Math.min(rawBuffer.length, 8000);
+        for (let i = 0; i < checkLen; i++) {
+          if (rawBuffer[i] === 0) {
+            return {
+              isError: true,
+              content: [{ type: "text", text: `Error: Binary file format detected. Only plain text, source code, and document formats (.docx, .pdf, .xlsx, .eml, .rtf) are supported.` }]
+            };
+          }
+        }
+        rawContent = rawBuffer.toString('utf8');
+      }
       if (ext === '.eml') {
         const decodeQpUtf8 = (str) =>
           str.replace(/=\r?\n/g, '').replace(/(?:=[0-9A-Fa-f]{2})+/g, (seq) => {
