@@ -61,6 +61,9 @@ Automatically detects installed AI IDEs on your machine and safely configures Pr
 # Auto-detect and configure all installed clients (Cursor, Claude Desktop, Claude Code, Windsurf, VS Code, Cline, Zed):
 npx -y @privacyscrubber/mcp-server install --all
 
+# Scaffold project-level deterministic IDE hooks (.cursor/hooks.json, .claude/settings.json) & agent rules:
+npx -y @privacyscrubber/mcp-server install --workspace
+
 # Or target specific environments directly:
 npx -y @privacyscrubber/mcp-server install --claude-code
 npx -y @privacyscrubber/mcp-server install --vscode
@@ -460,8 +463,8 @@ Reverses token placeholders (`[API_KEY_1]`, `[SECRET_1]`) in AI-generated code o
     *   `content` (string, required): Content containing tokens to restore on disk.
     *   `create_backup` (boolean, optional): Backup existing file before write (defaults to `true`).
 
-### 8. `create_agent_rules` (1-Click Agent Rule Injection)
-Automatically scaffolds CISO-grade Zero-Trust directives into `.cursorrules`, `.windsurfrules`, `CLAUDE.md`, `.github/copilot-instructions.md`, or `.clinerules`.
+### 8. `create_agent_rules` (1-Click Agent Rule & Deterministic Hook Injection)
+Automatically scaffolds CISO-grade Zero-Trust directives into `.cursorrules`, `.windsurfrules`, `CLAUDE.md`, `.github/copilot-instructions.md`, `.clinerules`, plus deterministic IDE lifecycle hooks in `.cursor/hooks.json` (`beforeReadFile`, `beforeShellExecution`) and `.claude/settings.json` (`PreToolUse`).
 
 *   **Arguments:**
     *   `agent_types` (array, optional): `["all"]`, `["cursor"]`, `["windsurf"]`, `["claude_code"]`, `["copilot"]`, `["cline"]`. Defaults to `["all"]`.
@@ -482,13 +485,13 @@ Returns a visual dashboard showing your current tier, session request count, act
 *   **Response Example (Free Tier):**
     ```
     ╔══════════════════════════════════════════════════╗
-    ║       PrivacyScrubber MCP Server v2.4.5          ║
+    ║       PrivacyScrubber MCP Server v2.5.4          ║
     ╠══════════════════════════════════════════════════╣
     ║  🔓 Tier: FREE                                   ║
     ║  📊 Session requests: 5                          ║
-    ║  📁 Input size limit: 15,000 characters/request  ║
+    ║  📁 Input size limit: 15k General / 5k Vertical  ║
     ╠══════════════════════════════════════════════════╣
-    ║  🏷️  Profiles: General only — PRO unlocks 30 more ║
+    ║  🏷️  Profiles: 30 Specialized (5k trial)          ║
     ║  📋 Custom rules: 🔒 Locked — requires PRO       ║
     ╠══════════════════════════════════════════════════╣
     ║  💳 Upgrade to PRO — $110 Lifetime               ║
@@ -547,8 +550,12 @@ ps-guard -- npm test
 # Review git diff with secrets redacted
 ps-guard --diff --staged
 
-# Generate rules for all AI IDEs (.cursorrules, .windsurfrules, CLAUDE.md, copilot, cline)
+# Generate rules & deterministic hooks (.cursor/hooks.json, .claude/settings.json, .cursorrules, CLAUDE.md)
 ps-guard --rules
+
+# Deterministic IDE Lifecycle Hook Handler (Claude Code PreToolUse & Cursor v1.7+ beforeReadFile/beforeShellExecution)
+# Blocks native reads of .env*, *.pem, *.key, id_rsa, *credentials*.json and redirects the agent to guard_read_file / guard_exec:
+npx -y @privacyscrubber/mcp-server --hook
 ```
 
 ---
@@ -561,7 +568,7 @@ Looking for real-time protection directly inside your web browser?
 
 ## 📄 License & Commercial Upgrade
 
-By default, the server runs under the **Free Tier** (restricted to 15,000 characters per request and the basic `General` PII profile). To unlock 30 specialized engineering, medical, legal, and financial PII profiles, as well as team-wide custom rules, you can purchase a commercial license.
+By default, the server runs under the **Free Tier** (15,000 characters per request on the `General` PII profile and a 5,000-character trial quota per request across all 30 specialized industry profiles). To unlock unlimited throughput across all 30 specialized engineering, medical, legal, and financial PII profiles, as well as team-wide custom rules, you can purchase a commercial license.
 
 ### Commercial Plan & Feature Comparison
 
