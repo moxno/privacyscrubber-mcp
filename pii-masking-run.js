@@ -35,6 +35,7 @@ if (args.includes("--version") || args.includes("-v")) {
 
 const isDiffMode = args.includes("--diff");
 const isRulesMode = args.includes("--rules");
+const isHookMode = args.includes("--hook");
 const isJsonMode = args.includes("--json");
 const isRestoreMode = args.includes("--restore") || args.includes("--unscrub");
 let tokenMapInput = null;
@@ -42,10 +43,15 @@ const tokenMapIdx = args.indexOf("--token-map");
 if (tokenMapIdx !== -1 && args[tokenMapIdx + 1]) {
   tokenMapInput = args[tokenMapIdx + 1];
 }
+let hookPayloadArg = null;
+const payloadIdx = args.indexOf("--payload");
+if (payloadIdx !== -1 && args[payloadIdx + 1]) {
+  hookPayloadArg = args[payloadIdx + 1];
+}
 const hasCommand = cmdIndex !== -1 && args.slice(cmdIndex + 1).length > 0;
 const hasStdin = !process.stdin.isTTY;
 
-if (args.includes("-h") || args.includes("--help") || (!hasCommand && !isDiffMode && !isRulesMode && !isRestoreMode && !hasStdin)) {
+if (args.includes("-h") || args.includes("--help") || (!hasCommand && !isDiffMode && !isRulesMode && !isHookMode && !isRestoreMode && !hasStdin)) {
   console.log("PrivacyScrubber CLI & Agentic Guard: ps-guard / pii-masking-run");
   console.log("\nUsage:");
   console.log("  npx ps-guard [options] -- <command> [args...]");
@@ -53,6 +59,7 @@ if (args.includes("-h") || args.includes("--help") || (!hasCommand && !isDiffMod
   console.log("  npx ps-guard --diff [--staged] [options]");
   console.log("  npx ps-guard --restore --token-map <file|json> [options]");
   console.log("  npx ps-guard --rules [targets]");
+  console.log("  npx ps-guard --hook               (Claude Code & Cursor IDE PreToolUse / beforeReadFile hook)");
   console.log("\nOptions:");
   console.log("  --profile <name>  Specify detection profile (e.g. General, Dev, Medical, Legal, HR)");
   console.log("  --key <licKey>    PrivacyScrubber PRO License Key");
@@ -62,6 +69,7 @@ if (args.includes("-h") || args.includes("--help") || (!hasCommand && !isDiffMod
   console.log("  --diff            Sanitize git diff output before committing or sending to AI");
   console.log("  --staged          Use staged git changes with --diff");
   console.log("  --rules [targets] Generate AI agent rules (.cursorrules, .windsurfrules, CLAUDE.md, copilot, cline)");
+  console.log("  --hook            Evaluate IDE lifecycle hook JSON from stdin (Claude Code & Cursor)");
   console.log("  -q, --quiet       Suppress stderr proof telemetry");
   console.log("  -v, --version     Print version");
   console.log("  -h, --help        Show this help screen");
@@ -73,6 +81,98 @@ if (args.includes("-h") || args.includes("--help") || (!hasCommand && !isDiffMod
   console.log("  npx ps-guard --diff --staged");
   console.log("  npx ps-guard --rules cursor,windsurf");
   process.exit(0);
+}
+
+// Fast-path Mode 0: Deterministic IDE Lifecycle Hook (--hook) for Claude Code & Cursor v1.7+
+if (isHookMode) {
+  const SENSITIVE_FILE_RX = /(?:^|[\\/])(?:\.env(?:\.[a-zA-Z0-9_-]+)?|id_rsa|id_ed25519|id_ecdsa|.*\.pem|.*\.key|.*\.p12|.*\.pfx|.*credentials.*\.json|.*secret.*\.(?:json|ya?ml|env|txt)|\.npmrc|\.pypirc|\.netrc)$/i;
+  const SAFE_TEMPLATE_RX = /\.(?:example|sample|template|dist|schema)$/i;
+  const SENSITIVE_CMD_RX = /(?:^|[;&|]\s*)(?:cat|head|tail|less|more|bat|sed|awk|grep)\s+[^\n|;&]*(?:\.env\b|id_rsa|\.pem\b|\.key\b|credentials\.json|\bsecrets?\.)|(?:^|[;&|]\s*)(?:printenv|env\s*$|export\s+-p|aws\s+configure\s+get|gcloud\s+auth\s+print-access-token)/i;
+
+  const evaluateHookPayload = (rawStr) => {
+    let payload = {};
+    try {
+      payload = rawStr && rawStr.trim() ? JSON.parse(rawStr) : {};
+    } catch (_) {
+      process.stdout.write(JSON.stringify({ permission: "allow", continue: true }) + "\n");
+      process.exit(0);
+    }
+
+    const eventName = String(payload.hook_event_name || payload.hookEventName || payload.event || "");
+    const toolName = String(payload.tool_name || payload.toolName || "");
+    const toolInput = (payload.tool_input || payload.toolInput || payload) || {};
+
+    const candidatePath = String(
+      toolInput.file_path || toolInput.path || toolInput.target_file || payload.file_path || payload.path || ""
+    ).trim();
+    const candidateCmd = String(
+      toolInput.command || toolInput.cmd || payload.command || ""
+    ).trim();
+
+    const isCursorEvent = /^(?:beforeReadFile|beforeShellExecution|beforeSubmitPrompt|beforeMCPExecution)$/i.test(eventName) ||
+      (!toolName && (payload.file_path !== undefined || payload.command !== undefined || payload.attachments !== undefined));
+
+    const isReadTool = /^(?:Read|View|read_file|view_file|ReadFile)$/i.test(toolName) || /^beforeReadFile$/i.test(eventName) || (!toolName && Boolean(candidatePath));
+    const isShellTool = /^(?:Bash|Execute|run_command| run_terminal_cmd)$/i.test(toolName) || /^beforeShellExecution$/i.test(eventName) || (!toolName && Boolean(candidateCmd));
+
+    if (isReadTool && candidatePath && SENSITIVE_FILE_RX.test(candidatePath) && !SAFE_TEMPLATE_RX.test(candidatePath)) {
+      const reason = `Blocked by PrivacyScrubber ZTDS policy: Direct read of sensitive file '${path.basename(candidatePath)}' is prohibited. Call the PrivacyScrubber MCP tool 'guard_read_file' or 'sanitize_file' instead so secrets are tokenized in local RAM.`;
+      if (isCursorEvent) {
+        process.stdout.write(JSON.stringify({
+          permission: "deny",
+          userMessage: `[PrivacyScrubber ZTDS] Direct read of ${path.basename(candidatePath)} blocked to prevent cloud egress.`,
+          agentMessage: reason
+        }) + "\n");
+        process.exit(0);
+      }
+      process.stdout.write(JSON.stringify({
+        permission: "deny",
+        hookSpecificOutput: {
+          hookEventName: eventName || "PreToolUse",
+          permissionDecision: "deny",
+          permissionDecisionReason: reason
+        }
+      }) + "\n");
+      process.stderr.write(reason + "\n");
+      process.exit(2);
+    }
+
+    if (isShellTool && candidateCmd && SENSITIVE_CMD_RX.test(candidateCmd)) {
+      const reason = `Blocked by PrivacyScrubber ZTDS policy: Shell command exposing raw credentials ('${candidateCmd.slice(0, 60)}') is prohibited. Call the PrivacyScrubber MCP tool 'guard_exec' instead so stdout/stderr are sanitized in local RAM.`;
+      if (isCursorEvent) {
+        process.stdout.write(JSON.stringify({
+          permission: "deny",
+          userMessage: `[PrivacyScrubber ZTDS] Shell command exposing raw credentials blocked.`,
+          agentMessage: reason
+        }) + "\n");
+        process.exit(0);
+      }
+      process.stdout.write(JSON.stringify({
+        permission: "deny",
+        hookSpecificOutput: {
+          hookEventName: eventName || "PreToolUse",
+          permissionDecision: "deny",
+          permissionDecisionReason: reason
+        }
+      }) + "\n");
+      process.stderr.write(reason + "\n");
+      process.exit(2);
+    }
+
+    process.stdout.write(JSON.stringify({ permission: "allow", continue: true }) + "\n");
+    process.exit(0);
+  };
+
+  if (hookPayloadArg !== null) {
+    evaluateHookPayload(hookPayloadArg);
+  } else if (!process.stdin.isTTY) {
+    let buf = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (c) => { buf += c; });
+    process.stdin.on("end", () => evaluateHookPayload(buf));
+  } else {
+    evaluateHookPayload("{}");
+  }
 }
 
 // Import the production core engine
@@ -578,6 +678,46 @@ Before reading sensitive files, running terminal commands that may print credent
   if (targets.includes("cline")) {
     fs.writeFileSync(path.join(targetDir, '.clinerules'), RULE_TEXT, 'utf8');
     generatedFiles.push('.clinerules');
+  }
+  if (args.includes("--hooks") || targets.includes("hooks") || rulesTargets.includes("all")) {
+    try {
+      const cursorHooksPath = path.join(targetDir, '.cursor', 'hooks.json');
+      fs.mkdirSync(path.dirname(cursorHooksPath), { recursive: true });
+      let cursorHooks = { version: 1, hooks: {} };
+      if (fs.existsSync(cursorHooksPath)) {
+        try { cursorHooks = JSON.parse(fs.readFileSync(cursorHooksPath, 'utf8')); } catch (_) {}
+      }
+      if (!cursorHooks.hooks || typeof cursorHooks.hooks !== 'object') cursorHooks.hooks = {};
+      const hookCmd = "npx -y @privacyscrubber/mcp-server --hook";
+      for (const ev of ['beforeReadFile', 'beforeShellExecution']) {
+        if (!Array.isArray(cursorHooks.hooks[ev])) cursorHooks.hooks[ev] = [];
+        if (!cursorHooks.hooks[ev].some(h => h && h.command && h.command.includes('privacyscrubber'))) {
+          cursorHooks.hooks[ev].push({ command: hookCmd });
+        }
+      }
+      fs.writeFileSync(cursorHooksPath, JSON.stringify(cursorHooks, null, 2) + '\n', 'utf8');
+      generatedFiles.push('.cursor/hooks.json');
+
+      const claudeSettingsPath = path.join(targetDir, '.claude', 'settings.json');
+      fs.mkdirSync(path.dirname(claudeSettingsPath), { recursive: true });
+      let claudeSettings = {};
+      if (fs.existsSync(claudeSettingsPath)) {
+        try { claudeSettings = JSON.parse(fs.readFileSync(claudeSettingsPath, 'utf8')); } catch (_) {}
+      }
+      if (!claudeSettings.hooks || typeof claudeSettings.hooks !== 'object') claudeSettings.hooks = {};
+      if (!Array.isArray(claudeSettings.hooks.PreToolUse)) claudeSettings.hooks.PreToolUse = [];
+      const hasClaudeHook = claudeSettings.hooks.PreToolUse.some(entry =>
+        Array.isArray(entry?.hooks) && entry.hooks.some(h => h && h.command && h.command.includes('privacyscrubber'))
+      );
+      if (!hasClaudeHook) {
+        claudeSettings.hooks.PreToolUse.push({
+          matcher: "Read|Bash",
+          hooks: [{ type: "command", command: hookCmd }]
+        });
+      }
+      fs.writeFileSync(claudeSettingsPath, JSON.stringify(claudeSettings, null, 2) + '\n', 'utf8');
+      generatedFiles.push('.claude/settings.json');
+    } catch (_) {}
   }
 
   console.log(`[Zero-Trust Agentic Guard: Agent Rules Generated]`);

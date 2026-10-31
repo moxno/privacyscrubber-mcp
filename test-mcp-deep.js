@@ -539,13 +539,19 @@ async function runMcpSession() {
     const claudePath = path.join(tempWsDir, 'CLAUDE.md');
     const copilotPath = path.join(tempWsDir, '.github', 'copilot-instructions.md');
     const clinePath = path.join(tempWsDir, '.clinerules');
+    const cursorHooksPath = path.join(tempWsDir, '.cursor', 'hooks.json');
+    const claudeSettingsPath = path.join(tempWsDir, '.claude', 'settings.json');
 
     if (!fs.existsSync(cursorrulesPath) || !fs.existsSync(windsurfrulesPath) ||
-        !fs.existsSync(claudePath) || !fs.existsSync(copilotPath) || !fs.existsSync(clinePath)) {
-      throw new Error("create_agent_rules failed to write all 5 rule files.");
+        !fs.existsSync(claudePath) || !fs.existsSync(copilotPath) || !fs.existsSync(clinePath) ||
+        !fs.existsSync(cursorHooksPath) || !fs.existsSync(claudeSettingsPath)) {
+      throw new Error("create_agent_rules failed to write all rule and IDE hook files (.cursor/hooks.json, .claude/settings.json).");
+    }
+    if (!rulesResponse.result?.structuredContent || !Array.isArray(rulesResponse.result.structuredContent.generatedFiles)) {
+      throw new Error("create_agent_rules missing MCP 2026 structuredContent.");
     }
     fs.rmSync(tempWsDir, { recursive: true, force: true });
-    console.log("✅ create_agent_rules verified.");
+    console.log("✅ create_agent_rules + IDE hooks (.cursor/hooks.json, .claude/settings.json) + structuredContent verified.");
 
     // 8.6.5.1. Test generate_procurement_memo
     console.log("--> Calling 'generate_procurement_memo'...");
@@ -857,6 +863,37 @@ async function runMcpSession() {
       throw new Error(`pii-masking-run Test 11 (--restore) failed. Expected cleartext restored. Got: ${cli11.stdout}`);
     }
     console.log('✅ pii-masking-run --restore --token-map pass.');
+
+    // Test 12: --hook deterministic IDE lifecycle hook (Claude Code PreToolUse & Cursor beforeReadFile)
+    const hookClaudeEnv = await runCli(['--hook'], JSON.stringify({
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Read',
+      tool_input: { file_path: '/workspace/.env.production' }
+    }));
+    const hookClaudeParsed = JSON.parse(hookClaudeEnv.stdout.trim());
+    if (hookClaudeEnv.code !== 2 || hookClaudeParsed.hookSpecificOutput?.permissionDecision !== 'deny') {
+      throw new Error(`pii-masking-run Test 12a (Claude PreToolUse .env) failed. Code=${hookClaudeEnv.code}, Output=${hookClaudeEnv.stdout}`);
+    }
+
+    const hookCursorEnv = await runCli(['--hook'], JSON.stringify({
+      hook_event_name: 'beforeReadFile',
+      file_path: '/workspace/config/secrets.json'
+    }));
+    const hookCursorParsed = JSON.parse(hookCursorEnv.stdout.trim());
+    if (hookCursorEnv.code !== 0 || hookCursorParsed.permission !== 'deny' || !hookCursorParsed.agentMessage.includes('guard_read_file')) {
+      throw new Error(`pii-masking-run Test 12b (Cursor beforeReadFile secrets.json) failed. Code=${hookCursorEnv.code}, Output=${hookCursorEnv.stdout}`);
+    }
+
+    const hookSafeFile = await runCli(['--hook'], JSON.stringify({
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Read',
+      tool_input: { file_path: '/workspace/.env.example' }
+    }));
+    const hookSafeParsed = JSON.parse(hookSafeFile.stdout.trim());
+    if (hookSafeFile.code !== 0 || hookSafeParsed.permission !== 'allow') {
+      throw new Error(`pii-masking-run Test 12c (Safe .env.example) should be allowed. Code=${hookSafeFile.code}, Output=${hookSafeFile.stdout}`);
+    }
+    console.log('✅ pii-masking-run --hook (Claude Code & Cursor IDE deterministic hooks) pass.');
 
     console.log("\n🎉 All deep integration, hardening, and CLI tests passed successfully!");
     // ─────────────────────────────────────────────────────────────────────

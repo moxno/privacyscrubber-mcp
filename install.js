@@ -235,6 +235,7 @@ export function parseArgs(rawArgs = process.argv.slice(2)) {
     remove: false,
     all: false,
     rules: false,
+    hooks: false,
     targets: [],
     help: false
   };
@@ -244,6 +245,7 @@ export function parseArgs(rawArgs = process.argv.slice(2)) {
     else if (arg === '--remove' || arg === '--uninstall') options.remove = true;
     else if (arg === '--all') options.all = true;
     else if (arg === '--rules') options.rules = true;
+    else if (arg === '--hooks') options.hooks = true;
     else if (arg === '--claude') options.targets.push('claude');
     else if (arg === '--claude-code') options.targets.push('claude-code', 'claude-code-project');
     else if (arg === '--cursor') options.targets.push('cursor', 'cursor-storage', 'cursor-workspace');
@@ -254,6 +256,7 @@ export function parseArgs(rawArgs = process.argv.slice(2)) {
     else if (arg === '--workspace') {
       options.targets.push('cursor-workspace', 'claude-code-project', 'vscode');
       options.rules = true;
+      options.hooks = true;
     }
     else if (arg === '--help' || arg === '-h') options.help = true;
   }
@@ -437,6 +440,53 @@ Options:
             console.log(`[RULES] Updated ${agentsMdPath}`);
           }
         }
+      } catch (_) {}
+    }
+  }
+
+  if (options.hooks && !options.remove) {
+    const cwd = process.cwd();
+    const cursorHooksPath = path.join(cwd, '.cursor', 'hooks.json');
+    const claudeSettingsPath = path.join(cwd, '.claude', 'settings.json');
+    const hookCmd = 'npx -y @privacyscrubber/mcp-server --hook';
+
+    if (options.dryRun) {
+      console.log(`[DRY-RUN OK]: Would scaffold IDE lifecycle hooks in ${cursorHooksPath} and ${claudeSettingsPath}\n`);
+    } else {
+      try {
+        fs.mkdirSync(path.dirname(cursorHooksPath), { recursive: true });
+        let cursorHooks = { version: 1, hooks: {} };
+        if (fs.existsSync(cursorHooksPath)) {
+          try { cursorHooks = JSON.parse(fs.readFileSync(cursorHooksPath, 'utf8')); } catch (_) {}
+        }
+        if (!cursorHooks.hooks || typeof cursorHooks.hooks !== 'object') cursorHooks.hooks = {};
+        for (const ev of ['beforeReadFile', 'beforeShellExecution']) {
+          if (!Array.isArray(cursorHooks.hooks[ev])) cursorHooks.hooks[ev] = [];
+          if (!cursorHooks.hooks[ev].some(h => h && h.command && h.command.includes('privacyscrubber'))) {
+            cursorHooks.hooks[ev].push({ command: hookCmd });
+          }
+        }
+        fs.writeFileSync(cursorHooksPath, JSON.stringify(cursorHooks, null, 2) + '\n', 'utf8');
+        console.log(`[HOOKS] Configured ${cursorHooksPath}`);
+
+        fs.mkdirSync(path.dirname(claudeSettingsPath), { recursive: true });
+        let claudeSettings = {};
+        if (fs.existsSync(claudeSettingsPath)) {
+          try { claudeSettings = JSON.parse(fs.readFileSync(claudeSettingsPath, 'utf8')); } catch (_) {}
+        }
+        if (!claudeSettings.hooks || typeof claudeSettings.hooks !== 'object') claudeSettings.hooks = {};
+        if (!Array.isArray(claudeSettings.hooks.PreToolUse)) claudeSettings.hooks.PreToolUse = [];
+        const hasClaudeHook = claudeSettings.hooks.PreToolUse.some(entry =>
+          Array.isArray(entry?.hooks) && entry.hooks.some(h => h && h.command && h.command.includes('privacyscrubber'))
+        );
+        if (!hasClaudeHook) {
+          claudeSettings.hooks.PreToolUse.push({
+            matcher: 'Read|Bash',
+            hooks: [{ type: 'command', command: hookCmd }]
+          });
+        }
+        fs.writeFileSync(claudeSettingsPath, JSON.stringify(claudeSettings, null, 2) + '\n', 'utf8');
+        console.log(`[HOOKS] Configured ${claudeSettingsPath}`);
       } catch (_) {}
     }
   }

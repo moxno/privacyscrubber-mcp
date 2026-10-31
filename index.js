@@ -82,6 +82,9 @@ if (rawCliArgs.includes('--memo') || rawCliArgs.includes('memo')) {
   console.log(generateProcurementMemo({ targetTier: tierArg, format: 'text' }));
   process.exit(0);
 }
+if (rawCliArgs.includes('--hook')) {
+  await import('./pii-masking-run.js');
+}
 if (rawCliArgs.some(arg => ['init', 'install', '--install', 'setup', '--setup', 'uninstall', '--uninstall', '--remove'].includes(arg))) {
   const { runInstaller } = await import('./install.js');
   const isRemove = rawCliArgs.some(arg => ['uninstall', '--uninstall', '--remove'].includes(arg));
@@ -2296,11 +2299,51 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
   throw new Error(`Resource not found: ${uri}`);
 });
 
+function getEffectiveWorkspaceRoots() {
+  const roots = [];
+  const addCandidate = (dir) => {
+    if (!dir || typeof dir !== 'string') return;
+    const trimmed = dir.trim();
+    if (!trimmed) return;
+    try {
+      const resolved = fs.existsSync(trimmed) ? fs.realpathSync(trimmed) : path.resolve(trimmed);
+      if (!roots.includes(resolved)) roots.push(resolved);
+    } catch (_) {
+      const fallback = path.resolve(trimmed);
+      if (!roots.includes(fallback)) roots.push(fallback);
+    }
+  };
+
+  addCandidate(process.cwd());
+  addCandidate(process.env.PRIVACYSCRUBBER_WORKSPACE);
+  addCandidate(process.env.CURSOR_WORKSPACE_PATH);
+  addCandidate(process.env.VSCODE_CWD);
+  addCandidate(process.env.PROJECT_ROOT);
+  addCandidate(process.env.INIT_CWD);
+  if (process.env.WORKSPACE_FOLDER_PATHS) {
+    for (const part of process.env.WORKSPACE_FOLDER_PATHS.split(path.delimiter)) {
+      addCandidate(part);
+    }
+  }
+  return roots;
+}
+
+function isWithinAnyWorkspaceRoot(targetPath, roots) {
+  for (const root of roots) {
+    const rel = path.relative(root, targetPath);
+    if (!rel.startsWith("..") && !path.isAbsolute(rel)) {
+      return { ok: true, matchedRoot: root };
+    }
+  }
+  return { ok: false, matchedRoot: roots[0] || process.cwd() };
+}
+
 function resolveWorkspaceSafePath(inputPath, paramName = "file_path") {
-  const workspaceRoot = fs.existsSync(process.cwd()) ? fs.realpathSync(process.cwd()) : path.resolve(process.cwd());
-  const resolvedPath = path.resolve(workspaceRoot, inputPath);
-  const relToRoot = path.relative(workspaceRoot, resolvedPath);
-  if (relToRoot.startsWith("..") || path.isAbsolute(relToRoot)) {
+  const roots = getEffectiveWorkspaceRoots();
+  const primaryRoot = roots[0];
+  const resolvedPath = path.resolve(primaryRoot, inputPath);
+  const boundaryCheck = isWithinAnyWorkspaceRoot(resolvedPath, roots);
+  if (!boundaryCheck.ok) {
     return {
       ok: false,
       error: `Error: Security policy violation — target '${paramName}' resolves outside the active workspace directory (path traversal blocked).`
@@ -2314,15 +2357,15 @@ function resolveWorkspaceSafePath(inputPath, paramName = "file_path") {
   }
   if (fs.existsSync(checkCursor)) {
     const realCheck = fs.realpathSync(checkCursor);
-    const relReal = path.relative(workspaceRoot, realCheck);
-    if (relReal.startsWith("..") || path.isAbsolute(relReal)) {
+    const realBoundary = isWithinAnyWorkspaceRoot(realCheck, roots);
+    if (!realBoundary.ok) {
       return {
         ok: false,
         error: `Error: Security policy violation — target path symlink escapes the active workspace directory.`
       };
     }
   }
-  return { ok: true, resolvedPath, workspaceRoot };
+  return { ok: true, resolvedPath, workspaceRoot: boundaryCheck.matchedRoot };
 }
 
 // Handle tool execution calls
@@ -2357,18 +2400,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const result = PrivacyScrubberCore.scrubText(text, customRules, {}, normalizedProfile, dryRunMap, license.isPro);
       const telemetry = buildCisoAuditTelemetry(result.tokenMap || {});
 
+      const structuredAudit = {
+        riskLevel: telemetry.riskLevel,
+        totalDetected: telemetry.totalDetected,
+        entities: telemetry.entities,
+        triggeredFrameworks: telemetry.triggeredFrameworks,
+        profile: targetProfile,
+        executionEngine: "ZTDS Client-Side RAM"
+      };
+
       if (format === "json") {
         return {
+          structuredContent: structuredAudit,
           content: [{
             type: "text",
-            text: JSON.stringify({
-              riskLevel: telemetry.riskLevel,
-              totalDetected: telemetry.totalDetected,
-              entities: telemetry.entities,
-              triggeredFrameworks: telemetry.triggeredFrameworks,
-              profile: targetProfile,
-              executionEngine: "ZTDS Client-Side RAM"
-            }, null, 2)
+            text: JSON.stringify(structuredAudit, null, 2)
           }]
         };
       }
@@ -2393,6 +2439,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       return {
+        structuredContent: structuredAudit,
         content: [{ type: "text", text: report }]
       };
     }
@@ -2453,6 +2500,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const receiptMd = formatAuditReceipt(telemetry, compact, wasTruncated, charLimit);
 
       return {
+        structuredContent: {
+          scrubbedText,
+          tokensRedacted: telemetry.totalCount,
+          riskLevel: telemetry.riskLevel,
+          entities: telemetry.entities,
+          frameworks: telemetry.frameworksList,
+          profile: finalProfile,
+          sessionId: session_id,
+          wasTruncated: Boolean(wasTruncated)
+        },
         content: [
           { type: "text", text: scrubbedText + receiptMd }
         ]
@@ -2522,6 +2579,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       restoredText = restoredText.replace(/\b(mysql|postgresql|postgres|redis|mongodb|https?|ftp|ssh|git|aws):\/\/\1:\/\//gi, '$1://');
 
       return {
+        structuredContent: {
+          restoredText,
+          restoredCount: restored.restoredCount || 0,
+          sessionId: session_id
+        },
         content: [
           {
             type: "text",
@@ -3030,6 +3092,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const receiptMd = formatAuditReceipt(telemetry, compact, wasTruncated, charLimit);
 
       return {
+        structuredContent: {
+          scrubbedText,
+          tokensRedacted: telemetry.totalCount,
+          riskLevel: telemetry.riskLevel,
+          entities: telemetry.entities,
+          frameworks: telemetry.frameworksList,
+          profile: finalProfile,
+          sessionId: session_id,
+          wasTruncated: Boolean(wasTruncated)
+        },
         content: [
           { type: "text", text: scrubbedText + receiptMd }
         ]
@@ -3775,31 +3847,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      const workspaceRoot = fs.existsSync(process.cwd()) ? fs.realpathSync(process.cwd()) : path.resolve(process.cwd());
-      const resolvedPath = path.resolve(workspaceRoot, file_path);
-      const relToRoot = path.relative(workspaceRoot, resolvedPath);
-      if (relToRoot.startsWith("..") || path.isAbsolute(relToRoot)) {
+      const safeTarget = resolveWorkspaceSafePath(file_path, "file_path");
+      if (!safeTarget.ok) {
         return {
           isError: true,
-          content: [{ type: "text", text: "Error: Security policy violation — target 'file_path' resolves outside the active workspace directory (path traversal blocked)." }]
+          content: [{ type: "text", text: safeTarget.error }]
         };
       }
-      let checkCursor = resolvedPath;
-      while (!fs.existsSync(checkCursor)) {
-        const parentCursor = path.dirname(checkCursor);
-        if (parentCursor === checkCursor) break;
-        checkCursor = parentCursor;
-      }
-      if (fs.existsSync(checkCursor)) {
-        const realCheck = fs.realpathSync(checkCursor);
-        const relReal = path.relative(workspaceRoot, realCheck);
-        if (relReal.startsWith("..") || path.isAbsolute(relReal)) {
-          return {
-            isError: true,
-            content: [{ type: "text", text: "Error: Security policy violation — target path symlink escapes the active workspace directory." }]
-          };
-        }
-      }
+      const resolvedPath = safeTarget.resolvedPath;
 
       const license = checkLicenseStatus();
       const limitStatus = checkFreeTierLimit(license.isPro);
@@ -3933,7 +3988,57 @@ Before reading sensitive files, running terminal commands that may print credent
         generatedFiles.push('.clinerules');
       }
 
+      if (args?.include_hooks !== false && (targets.includes("cursor") || targets.includes("claude_code") || agent_types.includes("all"))) {
+        const hookCmd = "npx -y @privacyscrubber/mcp-server --hook";
+        if (targets.includes("cursor") || agent_types.includes("all")) {
+          try {
+            const cursorHooksPath = path.join(targetDir, '.cursor', 'hooks.json');
+            fs.mkdirSync(path.dirname(cursorHooksPath), { recursive: true });
+            let cursorHooks = { version: 1, hooks: {} };
+            if (fs.existsSync(cursorHooksPath)) {
+              try { cursorHooks = JSON.parse(fs.readFileSync(cursorHooksPath, 'utf8')); } catch (_) {}
+            }
+            if (!cursorHooks.hooks || typeof cursorHooks.hooks !== 'object') cursorHooks.hooks = {};
+            for (const ev of ['beforeReadFile', 'beforeShellExecution']) {
+              if (!Array.isArray(cursorHooks.hooks[ev])) cursorHooks.hooks[ev] = [];
+              if (!cursorHooks.hooks[ev].some(h => h && h.command && h.command.includes('privacyscrubber'))) {
+                cursorHooks.hooks[ev].push({ command: hookCmd });
+              }
+            }
+            fs.writeFileSync(cursorHooksPath, JSON.stringify(cursorHooks, null, 2) + '\n', 'utf8');
+            generatedFiles.push('.cursor/hooks.json');
+          } catch (_) {}
+        }
+        if (targets.includes("claude_code") || agent_types.includes("all")) {
+          try {
+            const claudeSettingsPath = path.join(targetDir, '.claude', 'settings.json');
+            fs.mkdirSync(path.dirname(claudeSettingsPath), { recursive: true });
+            let claudeSettings = {};
+            if (fs.existsSync(claudeSettingsPath)) {
+              try { claudeSettings = JSON.parse(fs.readFileSync(claudeSettingsPath, 'utf8')); } catch (_) {}
+            }
+            if (!claudeSettings.hooks || typeof claudeSettings.hooks !== 'object') claudeSettings.hooks = {};
+            if (!Array.isArray(claudeSettings.hooks.PreToolUse)) claudeSettings.hooks.PreToolUse = [];
+            const hasClaudeHook = claudeSettings.hooks.PreToolUse.some(entry =>
+              Array.isArray(entry?.hooks) && entry.hooks.some(h => h && h.command && h.command.includes('privacyscrubber'))
+            );
+            if (!hasClaudeHook) {
+              claudeSettings.hooks.PreToolUse.push({
+                matcher: "Read|Bash",
+                hooks: [{ type: "command", command: hookCmd }]
+              });
+            }
+            fs.writeFileSync(claudeSettingsPath, JSON.stringify(claudeSettings, null, 2) + '\n', 'utf8');
+            generatedFiles.push('.claude/settings.json');
+          } catch (_) {}
+        }
+      }
+
       return {
+        structuredContent: {
+          workspace: targetDir,
+          generatedFiles
+        },
         content: [{
           type: "text",
           text: `[Zero-Trust Agentic Guard: Agent Rules Generated]\n` +
@@ -4000,17 +4105,20 @@ Before reading sensitive files, running terminal commands that may print credent
         }
       }
 
+      const unmaskPayload = {
+        status: "success",
+        success: true,
+        session_id,
+        tokens_restored: tokensRestored,
+        unmasked_count: tokensRestored,
+        unmasked_args: unmasked
+      };
+
       return {
+        structuredContent: unmaskPayload,
         content: [{
           type: "text",
-          text: JSON.stringify({
-            status: "success",
-            success: true,
-            session_id,
-            tokens_restored: tokensRestored,
-            unmasked_count: tokensRestored,
-            unmasked_args: unmasked
-          }, null, 2)
+          text: JSON.stringify(unmaskPayload, null, 2)
         }]
       };
     }
@@ -4024,6 +4132,7 @@ Before reading sensitive files, running terminal commands that may print credent
         const session = agentSessions.get(sid);
         if (!session) {
           return {
+            structuredContent: { sessionId: sid, exists: false, totalTokens: 0 },
             content: [{
               type: "text",
               text: `[Zero-Trust Agentic Guard: Session Info]\nSession '${sid}' does not exist or has expired.`
@@ -4034,6 +4143,16 @@ Before reading sensitive files, running terminal commands that may print credent
         const telemetry = buildCisoAuditTelemetry(session.map);
         const streamBufferLen = session.streamDetokenizer ? session.streamDetokenizer.buffer.length : 0;
         return {
+          structuredContent: {
+            sessionId: sid,
+            exists: true,
+            createdAt: new Date(session.createdAt).toISOString(),
+            lastActive: new Date(session.lastActive).toISOString(),
+            totalTokens: tokenEntries.length,
+            streamBufferBytes: streamBufferLen,
+            entities: telemetry.entities,
+            riskLevel: telemetry.riskLevel
+          },
           content: [{
             type: "text",
             text: `[Zero-Trust Agentic Guard: Session Info - ${sid}]\n` +
@@ -4058,6 +4177,13 @@ Before reading sensitive files, running terminal commands that may print credent
       }
 
       return {
+        structuredContent: {
+          activeSessions: agentSessions.size,
+          totalTokens,
+          heapUsedMb: Number((memUsage.heapUsed / (1024 * 1024)).toFixed(2)),
+          uptimeSeconds: Math.floor(process.uptime()),
+          sessions: sessionList
+        },
         content: [{
           type: "text",
           text: `[Zero-Trust Agentic Guard: Global Session Diagnostics]\n` +
@@ -4156,19 +4282,21 @@ Before reading sensitive files, running terminal commands that may print credent
 
       const telemetry = buildCisoAuditTelemetry(targetSession);
       const auditReceipt = formatAuditReceipt(telemetry);
+      const ragChunkPayload = {
+        status: "success",
+        session_id,
+        total_chunks: chunks.length,
+        tokens_redacted_in_batch: totalTokensRedacted,
+        total_session_tokens: Object.keys(targetSession).length,
+        risk_level: telemetry.riskLevel,
+        sanitized_chunks: sanitizedChunks
+      };
 
       return {
+        structuredContent: ragChunkPayload,
         content: [{
           type: "text",
-          text: JSON.stringify({
-            status: "success",
-            session_id,
-            total_chunks: chunks.length,
-            tokens_redacted_in_batch: totalTokensRedacted,
-            total_session_tokens: Object.keys(targetSession).length,
-            risk_level: telemetry.riskLevel,
-            sanitized_chunks: sanitizedChunks
-          }, null, 2) + `\n\n${auditReceipt}`
+          text: JSON.stringify(ragChunkPayload, null, 2) + `\n\n${auditReceipt}`
         }]
       };
     }
@@ -4216,16 +4344,19 @@ Before reading sensitive files, running terminal commands that may print credent
         }
       }
 
+      const ragRestorePayload = {
+        status: "success",
+        session_id,
+        total_results: results.length,
+        tokens_restored: totalTokensRestored,
+        restored_results: restoredResults
+      };
+
       return {
+        structuredContent: ragRestorePayload,
         content: [{
           type: "text",
-          text: JSON.stringify({
-            status: "success",
-            session_id,
-            total_results: results.length,
-            tokens_restored: totalTokensRestored,
-            restored_results: restoredResults
-          }, null, 2)
+          text: JSON.stringify(ragRestorePayload, null, 2)
         }]
       };
     }
@@ -4314,6 +4445,15 @@ Before reading sensitive files, running terminal commands that may print credent
       }
 
       return {
+        structuredContent: {
+          format,
+          riskLevel: telemetry.riskLevel,
+          tokensMasked: telemetry.totalCount,
+          entities: telemetry.entities,
+          frameworks: telemetry.frameworksList,
+          receiptSha256: sessionHash,
+          timestamp
+        },
         content: [{
           type: "text",
           text: outputText
