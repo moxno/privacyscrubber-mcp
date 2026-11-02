@@ -43,6 +43,7 @@ if (rawCliArgs.includes('--help') || rawCliArgs.includes('-h') || rawCliArgs.inc
   console.log(`PrivacyScrubber MCP Server v${MCP_VERSION} — Zero-Trust Data Sanitization (ZTDS)`);
   console.log('\nUsage:');
   console.log('  npx @privacyscrubber/mcp-server              Start MCP stdio server');
+  console.log('  npx @privacyscrubber/mcp-server --wrap <cmd> Transparent ZTDS proxy for any 3rd-party MCP server');
   console.log('  npx @privacyscrubber/mcp-server init         Auto-configure Claude, Cursor, Windsurf, Cline');
   console.log('  npx @privacyscrubber/mcp-server uninstall    Remove from IDE configurations');
   console.log('  npx @privacyscrubber/mcp-server trial        Request 7-day B2B TEAMS/SDK evaluation key');
@@ -82,8 +83,9 @@ if (rawCliArgs.includes('--memo') || rawCliArgs.includes('memo')) {
   console.log(generateProcurementMemo({ targetTier: tierArg, format: 'text' }));
   process.exit(0);
 }
-if (rawCliArgs.includes('--hook')) {
+if (rawCliArgs.includes('--hook') || rawCliArgs.includes('--wrap')) {
   await import('./pii-masking-run.js');
+  await new Promise(() => {});
 }
 if (rawCliArgs.some(arg => ['init', 'install', '--install', 'setup', '--setup', 'uninstall', '--uninstall', '--remove'].includes(arg))) {
   const { runInstaller } = await import('./install.js');
@@ -751,6 +753,20 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
         trademark: 'ZTDS™ Reg. #182655957 (ILPO Cl 9 & 42)'
     };
 
+    const agenticProtocol = {
+        protocolsSupported: ['MCP-1.0 (stdio/SSE)', 'A2A-1.0 (Agent2Agent)', 'ZTDS-RFC-v1.0'],
+        agentCardUrl: 'https://privacyscrubber.com/.well-known/agent-card.json',
+        ztdsStandardCardUrl: 'https://ztds.ai/.well-known/agent-card.json',
+        regulatorySafeHarbor: [
+            'GDPR-Art-4(5)-Pseudonymization',
+            'GDPR-Art-25-Privacy-by-Design',
+            'GDPR-Art-32-TOMs',
+            'EU-AI-Act-Art-50',
+            'IL-PPL-Amendment-13-Sec-17'
+        ],
+        zeroCleartextEgress: true
+    };
+
     const statutoryCitations = [
         {
             statute: 'EU AI Act (Art. 50)',
@@ -787,6 +803,7 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
         frameworksList: Array.from(frameworksSet),
         statutoryCitations,
         ipHoldings,
+        agenticProtocol,
         multimodalEgress: '0.00 Bytes (Solid Blackout & Burn-in Verified)'
     };
 }

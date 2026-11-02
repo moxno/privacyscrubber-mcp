@@ -895,6 +895,73 @@ async function runMcpSession() {
     }
     console.log('✅ pii-masking-run --hook (Claude Code & Cursor IDE deterministic hooks) pass.');
 
+    // Test 13: --wrap Transparent MCP JSON-RPC 2.0 Stdio Proxy Wrapper (interactive turn-by-turn RPC)
+    const mockUpstreamScript = [
+      "const rl = require('readline').createInterface({ input: process.stdin, terminal: false });",
+      "rl.on('line', (line) => {",
+      "  const msg = JSON.parse(line);",
+      "  if (msg.method === 'tools/list') {",
+      "    process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { tools: [{ name: 'query_crm', description: 'Contact admin@example.com' }] } }) + '\\n');",
+      "  } else if (msg.method === 'tools/call' && msg.params.name === 'get_customer') {",
+      "    process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: 'Customer email is ceo@acmecorp.io and API key is sk_live_9876543210abcdef' }] } }) + '\\n');",
+      "  } else if (msg.method === 'tools/call' && msg.params.name === 'send_invoice') {",
+      "    process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: 'Dispatched to_len=' + String(msg.params.arguments.recipient_email || '').length + ' DomainOk=' + String(msg.params.arguments.recipient_email || '').endsWith('@acmecorp.io') }] } }) + '\\n');",
+      "  }",
+      "});"
+    ].join(' ');
+
+    const wrapProc = spawn(process.execPath, [path.resolve(__dirname, 'pii-masking-run.js'), '--wrap', '--', process.execPath, '-e', mockUpstreamScript]);
+    let wrapBuf = '';
+    const wrapPending = new Map();
+    wrapProc.stdout.on('data', (chunk) => {
+      wrapBuf += chunk.toString();
+      let nl;
+      while ((nl = wrapBuf.indexOf('\n')) !== -1) {
+        const line = wrapBuf.slice(0, nl).trim();
+        wrapBuf = wrapBuf.slice(nl + 1);
+        if (line) {
+          const parsed = JSON.parse(line);
+          if (parsed.id && wrapPending.has(parsed.id)) {
+            const resolve = wrapPending.get(parsed.id);
+            wrapPending.delete(parsed.id);
+            resolve(parsed);
+          }
+        }
+      }
+    });
+    const sendWrapRpc = (id, method, params) => new Promise((resolve) => {
+      wrapPending.set(id, resolve);
+      wrapProc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
+    });
+
+    // Turn 1: tools/list schema description should NOT be mutated
+    const wrapRes101 = await sendWrapRpc(101, 'tools/list', {});
+    if (wrapRes101.result?.tools?.[0]?.description !== 'Contact admin@example.com') {
+      wrapProc.kill();
+      throw new Error(`pii-masking-run Test 13a (--wrap tools/list) mutated schema description: ${JSON.stringify(wrapRes101)}`);
+    }
+    // Turn 2: tools/call inbound result MUST have email & stripe key scrubbed, and _meta.ztds_receipt attached
+    const wrapRes102 = await sendWrapRpc(102, 'tools/call', { name: 'get_customer', arguments: { id: 1 } });
+    const text102 = wrapRes102.result?.content?.[0]?.text || '';
+    const receipt102 = wrapRes102.result?._meta?.ztds_receipt;
+    if (!text102.includes('[EMAIL_1]') || text102.includes('ceo@acmecorp.io') || text102.includes('sk_live_9876543210abcdef')) {
+      wrapProc.kill();
+      throw new Error(`pii-masking-run Test 13b (--wrap inbound scrubbing) leaked cleartext PII/secret: ${text102}`);
+    }
+    if (!receipt102 || receipt102.zero_cleartext_egress !== true || receipt102.tokensTotal < 2) {
+      wrapProc.kill();
+      throw new Error(`pii-masking-run Test 13c (--wrap ztds_receipt) missing or invalid: ${JSON.stringify(receipt102)}`);
+    }
+    // Turn 3: tools/call outbound params MUST restore '[EMAIL_1]' -> 'ceo@acmecorp.io' (len=15, endsWith @acmecorp.io) before reaching upstream
+    const wrapRes103 = await sendWrapRpc(103, 'tools/call', { name: 'send_invoice', arguments: { recipient_email: '[EMAIL_1]' } });
+    wrapProc.stdin.end();
+    const text103 = wrapRes103.result?.content?.[0]?.text || '';
+    if (!text103.includes('to_len=15') || !text103.includes('DomainOk=true')) {
+      wrapProc.kill();
+      throw new Error(`pii-masking-run Test 13d (--wrap outbound detokenization) failed to restore [EMAIL_1] at upstream tool: ${text103}`);
+    }
+    console.log('✅ pii-masking-run --wrap (Transparent MCP JSON-RPC 2.0 bidirectional proxy) pass.');
+
     console.log("\n🎉 All deep integration, hardening, and CLI tests passed successfully!");
     // ─────────────────────────────────────────────────────────────────────
     mcpProcess.kill();

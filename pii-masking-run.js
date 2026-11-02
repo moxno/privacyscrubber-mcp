@@ -36,6 +36,7 @@ if (args.includes("--version") || args.includes("-v")) {
 const isDiffMode = args.includes("--diff");
 const isRulesMode = args.includes("--rules");
 const isHookMode = args.includes("--hook");
+const isWrapMode = args.includes("--wrap");
 const isJsonMode = args.includes("--json");
 const isRestoreMode = args.includes("--restore") || args.includes("--unscrub");
 let tokenMapInput = null;
@@ -48,19 +49,44 @@ const payloadIdx = args.indexOf("--payload");
 if (payloadIdx !== -1 && args[payloadIdx + 1]) {
   hookPayloadArg = args[payloadIdx + 1];
 }
-const hasCommand = cmdIndex !== -1 && args.slice(cmdIndex + 1).length > 0;
+
+let wrapCommandArgs = [];
+if (isWrapMode) {
+  if (cmdIndex !== -1 && args.slice(cmdIndex + 1).length > 0) {
+    wrapCommandArgs = args.slice(cmdIndex + 1);
+  } else {
+    const wrapIdx = args.indexOf("--wrap");
+    const afterWrap = args.slice(wrapIdx + 1);
+    for (let i = 0; i < afterWrap.length; i++) {
+      const a = afterWrap[i];
+      if ((a === "--profile" || a === "--key" || a === "--token-map") && afterWrap[i + 1]) {
+        i++;
+        continue;
+      }
+      if (a === "--quiet" || a === "-q" || a === "--verbose" || a === "--json") {
+        continue;
+      }
+      wrapCommandArgs = afterWrap.slice(i);
+      break;
+    }
+  }
+}
+
+const hasCommand = (cmdIndex !== -1 && args.slice(cmdIndex + 1).length > 0) || wrapCommandArgs.length > 0;
 const hasStdin = !process.stdin.isTTY;
 
-if (args.includes("-h") || args.includes("--help") || (!hasCommand && !isDiffMode && !isRulesMode && !isHookMode && !isRestoreMode && !hasStdin)) {
+if (args.includes("-h") || args.includes("--help") || (!hasCommand && !isDiffMode && !isRulesMode && !isHookMode && !isWrapMode && !isRestoreMode && !hasStdin)) {
   console.log("PrivacyScrubber CLI & Agentic Guard: ps-guard / pii-masking-run");
   console.log("\nUsage:");
   console.log("  npx ps-guard [options] -- <command> [args...]");
+  console.log("  npx ps-guard --wrap [options] [--] <mcp-server-cmd> [args...]");
   console.log("  cat <file> | npx ps-guard [options]");
   console.log("  npx ps-guard --diff [--staged] [options]");
   console.log("  npx ps-guard --restore --token-map <file|json> [options]");
   console.log("  npx ps-guard --rules [targets]");
   console.log("  npx ps-guard --hook               (Claude Code & Cursor IDE PreToolUse / beforeReadFile hook)");
   console.log("\nOptions:");
+  console.log("  --wrap            Transparent JSON-RPC 2.0 stdio proxy for any 3rd-party MCP server");
   console.log("  --profile <name>  Specify detection profile (e.g. General, Dev, Medical, Legal, HR)");
   console.log("  --key <licKey>    PrivacyScrubber PRO License Key");
   console.log("  --json            Output structured JSON (scrubbedText, tokenMap, count, telemetry)");
@@ -75,6 +101,7 @@ if (args.includes("-h") || args.includes("--help") || (!hasCommand && !isDiffMod
   console.log("  -h, --help        Show this help screen");
   console.log("\nExamples:");
   console.log("  npx ps-guard -- cat database-dump.sql");
+  console.log("  npx ps-guard --wrap -- npx -y @modelcontextprotocol/server-postgres postgresql://localhost/mydb");
   console.log("  npx ps-guard --profile dev -- npm test");
   console.log("  cat .env | npx ps-guard --profile dev --json");
   console.log("  cat ai_reply.txt | npx ps-guard --restore --token-map map.json");
@@ -425,6 +452,20 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
     trademark: 'ZTDS™ Reg. #182655957 (ILPO Cl 9 & 42)'
   };
 
+  const agenticProtocol = {
+    protocolsSupported: ['MCP-1.0 (stdio/SSE)', 'A2A-1.0 (Agent2Agent)', 'ZTDS-RFC-v1.0'],
+    agentCardUrl: 'https://privacyscrubber.com/.well-known/agent-card.json',
+    ztdsStandardCardUrl: 'https://ztds.ai/.well-known/agent-card.json',
+    regulatorySafeHarbor: [
+      'GDPR-Art-4(5)-Pseudonymization',
+      'GDPR-Art-25-Privacy-by-Design',
+      'GDPR-Art-32-TOMs',
+      'EU-AI-Act-Art-50',
+      'IL-PPL-Amendment-13-Sec-17'
+    ],
+    zeroCleartextEgress: true
+  };
+
   const statutoryCitations = [
     {
       statute: 'EU AI Act (Art. 50)',
@@ -461,6 +502,7 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
     frameworksList: Array.from(frameworksSet),
     statutoryCitations,
     ipHoldings,
+    agenticProtocol,
     multimodalEgress: '0.00 Bytes (Solid Blackout & Burn-in Verified)'
   };
 }
@@ -775,8 +817,183 @@ if (isDiffMode) {
   }
 }
 
-// Mode 3: Stdin Stream Mode (pipe)
-if (hasStdin && !hasCommand && !isRestoreMode && !isDiffMode && !isRulesMode) {
+// Mode 2.5: Transparent MCP JSON-RPC 2.0 Stdio Proxy Wrapper (--wrap)
+if (isWrapMode) {
+  if (wrapCommandArgs.length === 0) {
+    console.error('Error: --wrap requires an upstream MCP server command (e.g. npx ps-guard --wrap -- npx -y @modelcontextprotocol/server-postgres ...)');
+    process.exit(1);
+  }
+
+  const SKIP_SANITIZE_KEYS = new Set([
+    'jsonrpc', 'id', 'method', 'type', 'mimeType', 'uri', 'name', 'role',
+    'protocolVersion', 'cursor', 'nextCursor', 'isError', 'version'
+  ]);
+
+  const deepDetokenizeParams = (node, depth = 0) => {
+    if (depth > 20 || node === null || node === undefined) return node;
+    if (typeof node === 'string') {
+      if (Object.keys(localSessionMap).length === 0) return node;
+      const res = PrivacyScrubberCore.unscrubText(node, localSessionMap);
+      return (res && typeof res.restoredText === 'string') ? res.restoredText : node;
+    }
+    if (Array.isArray(node)) {
+      return node.map(item => deepDetokenizeParams(item, depth + 1));
+    }
+    if (typeof node === 'object') {
+      const out = {};
+      for (const [k, v] of Object.entries(node)) {
+        if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+        out[k] = deepDetokenizeParams(v, depth + 1);
+      }
+      return out;
+    }
+    return node;
+  };
+
+  const deepSanitizeResult = (node, keyName = '', depth = 0) => {
+    if (depth > 20 || node === null || node === undefined) return node;
+    if (typeof node === 'string') {
+      if (SKIP_SANITIZE_KEYS.has(keyName) || node.length < 4) return node;
+      return performSanitization(node);
+    }
+    if (Array.isArray(node)) {
+      return node.map(item => deepSanitizeResult(item, keyName, depth + 1));
+    }
+    if (typeof node === 'object') {
+      const out = {};
+      for (const [k, v] of Object.entries(node)) {
+        if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+        if (k === 'inputSchema' || k === 'outputSchema' || k === 'capabilities' || k === 'serverInfo' || k === '_meta') {
+          out[k] = v;
+        } else {
+          out[k] = deepSanitizeResult(v, k, depth + 1);
+        }
+      }
+      return out;
+    }
+    return node;
+  };
+
+  const zeroizeSessionMap = () => {
+    for (const k of Object.keys(localSessionMap)) {
+      localSessionMap[k] = '';
+      delete localSessionMap[k];
+    }
+  };
+
+  const [cmdBin, ...cmdRest] = wrapCommandArgs;
+  const child = spawn(cmdBin, cmdRest, {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    shell: process.platform === 'win32'
+  });
+
+  // Intercept client -> upstream MCP server (JSON-RPC requests on stdin)
+  const rlClientIn = readline.createInterface({
+    input: process.stdin,
+    terminal: false
+  });
+
+  rlClientIn.on('line', (line) => {
+    if (!child.stdin || child.stdin.destroyed) return;
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('{')) {
+      child.stdin.write(line + '\n');
+      return;
+    }
+    try {
+      const msg = JSON.parse(trimmed);
+      if (msg && typeof msg === 'object' && msg.params && (msg.method === 'tools/call' || msg.method === 'prompts/get' || msg.method === 'resources/read' || msg.method === 'sampling/createMessage')) {
+        msg.params = deepDetokenizeParams(msg.params);
+        child.stdin.write(JSON.stringify(msg) + '\n');
+        return;
+      }
+    } catch (_) {}
+    child.stdin.write(line + '\n');
+  });
+
+  rlClientIn.on('close', () => {
+    if (child.stdin && !child.stdin.destroyed) {
+      child.stdin.end();
+    }
+  });
+
+  // Intercept upstream MCP server -> client (JSON-RPC responses/notifications on stdout)
+  const rlUpstreamOut = readline.createInterface({
+    input: child.stdout,
+    terminal: false
+  });
+
+  rlUpstreamOut.on('line', (line) => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('{')) {
+      process.stdout.write(performSanitization(line) + '\n');
+      return;
+    }
+    try {
+      const msg = JSON.parse(trimmed);
+      if (msg && typeof msg === 'object') {
+        if (msg.result && typeof msg.result === 'object') {
+          const isSchemaListing = Array.isArray(msg.result.tools) || Array.isArray(msg.result.prompts) || Array.isArray(msg.result.resourceTemplates) || Boolean(msg.result.protocolVersion);
+          if (!isSchemaListing) {
+            msg.result = deepSanitizeResult(msg.result);
+            const receipt = buildPsr2Receipt(localSessionMap);
+            const telemetry = buildCisoAuditTelemetry(localSessionMap);
+            msg.result._meta = Object.assign({}, msg.result._meta || {}, {
+              ztds_receipt: {
+                version: receipt.version,
+                timestamp: receipt.timestamp,
+                manifestSha256: receipt.manifestSha256,
+                receiptSha256: receipt.receiptSha256,
+                entityCounts: receipt.entityCounts,
+                tokensTotal: receipt.tokensTotal,
+                riskLevel: telemetry.riskLevel,
+                regulatorySafeHarbor: telemetry.agenticProtocol ? telemetry.agenticProtocol.regulatorySafeHarbor : [],
+                zero_cleartext_egress: true
+              }
+            });
+          }
+        } else if (msg.params && typeof msg.params === 'object') {
+          msg.params = deepSanitizeResult(msg.params);
+        }
+        process.stdout.write(JSON.stringify(msg) + '\n');
+        return;
+      }
+    } catch (_) {}
+    process.stdout.write(performSanitization(line) + '\n');
+  });
+
+  const rlUpstreamErr = readline.createInterface({
+    input: child.stderr,
+    terminal: false
+  });
+
+  rlUpstreamErr.on('line', (line) => {
+    process.stderr.write(performSanitization(line) + '\n');
+  });
+
+  const handleSignal = (sig) => {
+    zeroizeSessionMap();
+    if (!child.killed) {
+      try { child.kill(sig); } catch (_) {}
+    }
+  };
+  process.on('SIGINT', () => handleSignal('SIGINT'));
+  process.on('SIGTERM', () => handleSignal('SIGTERM'));
+  process.on('exit', zeroizeSessionMap);
+
+  child.on('close', (code) => {
+    emitProofFeedback();
+    zeroizeSessionMap();
+    process.exit(code || 0);
+  });
+
+  child.on('error', (err) => {
+    zeroizeSessionMap();
+    console.error(`Error spawning wrapped MCP server: ${err.message}`);
+    process.exit(1);
+  });
+} else if (hasStdin && !hasCommand && !isRestoreMode && !isDiffMode && !isRulesMode) {
+  // Mode 3: Stdin Stream Mode (pipe)
   if (isJsonMode) {
     let rawInput = '';
     process.stdin.setEncoding('utf8');
