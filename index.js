@@ -762,6 +762,7 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
             'GDPR-Art-25-Privacy-by-Design',
             'GDPR-Art-32-TOMs',
             'EU-AI-Act-Art-50',
+            'EU-AI-Act-Art-17-EN-18286-QMS',
             'IL-PPL-Amendment-13-Sec-17'
         ],
         zeroCleartextEgress: true
@@ -769,9 +770,9 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
 
     const statutoryCitations = [
         {
-            statute: 'EU AI Act (Art. 50)',
-            scope: 'AI Transparency & Data Minimization',
-            rule: 'Sanitization runs locally by design; reduces the content sent to external AI models. Informational mapping, not a compliance determination.'
+            statute: 'EU AI Act (Art. 50 & Art. 17 / EN 18286:2026 QMS)',
+            scope: 'AI Transparency, Data Minimization & Harmonized QMS Governance',
+            rule: 'Sanitization runs locally by design; reduces the content sent to external AI models and supports Article 17 Quality Management System (EN 18286:2026) data governance controls. Informational mapping, not a compliance determination.'
         },
         {
             statute: 'GDPR (Art. 4, 25, 28, 32)',
