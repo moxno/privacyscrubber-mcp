@@ -496,7 +496,7 @@ Options:
     console.log(`[SUMMARY] ${options.remove ? 'Cleaned' : 'Configured'} ${configuredCount} AI client(s) successfully.`);
     if (!options.remove) {
       console.log('Next step: Restart your AI IDE or Claude Desktop to activate PrivacyScrubber.');
-      console.log('\x1b[36m💼 B2B 7-Day Free Trial (TEAMS/SDK): npx @privacyscrubber/mcp-server trial\x1b[0m');
+      console.log('\x1b[36m💼 B2B 7-Day Free Trial (TEAMS $99/mo · SDK $299/mo): npx @privacyscrubber/mcp-server trial  |  https://privacyscrubber.com/pricing/?tier=teams&trial=true&utm_source=mcp_install\x1b[0m');
       console.log('\x1b[36m📋 Generate CISO Procurement Memo:   npx @privacyscrubber/mcp-server memo\x1b[0m');
       console.log('\x1b[33m⭐ Enjoying zero-trust privacy? Star the repo on GitHub: https://github.com/moxno/privacyscrubber-mcp\x1b[0m');
       console.log('\x1b[90m   One-click CLI: gh repo star moxno/privacyscrubber-mcp && gh repo star moxno/ztds.ai\x1b[0m');

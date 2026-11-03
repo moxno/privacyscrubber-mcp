@@ -462,6 +462,7 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
       'GDPR-Art-32-TOMs',
       'EU-AI-Act-Art-50',
       'EU-AI-Act-Art-17-EN-18286-QMS',
+      'CNIL-ICO-Agentic-Memory-Compartmentalization',
       'IL-PPL-Amendment-13-Sec-17'
     ],
     zeroCleartextEgress: true

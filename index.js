@@ -763,6 +763,7 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
             'GDPR-Art-32-TOMs',
             'EU-AI-Act-Art-50',
             'EU-AI-Act-Art-17-EN-18286-QMS',
+            'CNIL-ICO-Agentic-Memory-Compartmentalization',
             'IL-PPL-Amendment-13-Sec-17'
         ],
         zeroCleartextEgress: true
@@ -2507,10 +2508,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const charLimit = (isAdvanced && !isAutoElevated && !license.isPro) ? 5000 : 15000;
       if (isAdvanced && !license.isPro) {
-        mcpLog(`${colors.yellowBold}[PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char trial quota).${colors.reset}\n${colors.cyan}[Upgrade] Commercial TEAMS ($99/mo flat) & Developer SDK ($299/mo): https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp&utm_medium=profile_quota&utm_campaign=teams_upgrade${colors.reset}\n`);
+        mcpLog(`${colors.yellowBold}[PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char trial quota).${colors.reset}\n${colors.cyan}[Upgrade] 7-Day B2B Trial / TEAMS ($99/mo flat) & Developer SDK ($299/mo): https://privacyscrubber.com/pricing?tier=teams&trial=true&profile=${encodeURIComponent(targetProfile)}&utm_source=mcp&utm_medium=profile_quota&utm_campaign=teams_upgrade (or run: npx @privacyscrubber/mcp-server trial)${colors.reset}\n`);
       }
 
-      const { processedText, wasTruncated } = truncateIfFree(text, license.isPro, charLimit);
+      const { processedText, wasTruncated } = truncateIfFree(text, license.isPro, charLimit, finalProfile);
 
       const { scrubbedText, newTokens } = performSanitization(processedText, finalProfile, currentIgnoreList, currentSession);
       
@@ -2869,10 +2870,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
           const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
           if (isAdvanced && !license.isPro) {
-            mcpLog(`${colors.yellowBold}[PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char trial quota).${colors.reset}\n${colors.cyan}[Upgrade] Commercial TEAMS ($99/mo flat) & Developer SDK ($299/mo): https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp&utm_medium=profile_quota&utm_campaign=teams_upgrade${colors.reset}\n`);
+            mcpLog(`${colors.yellowBold}[PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char trial quota).${colors.reset}\n${colors.cyan}[Upgrade] 7-Day B2B Trial / TEAMS ($99/mo flat) & Developer SDK ($299/mo): https://privacyscrubber.com/pricing?tier=teams&trial=true&profile=${encodeURIComponent(targetProfile)}&utm_source=mcp&utm_medium=profile_quota&utm_campaign=teams_upgrade (or run: npx @privacyscrubber/mcp-server trial)${colors.reset}\n`);
           }
 
-          const { processedText: processedContent, wasTruncated } = truncateIfFree(content, license.isPro, charLimit);
+          const { processedText: processedContent, wasTruncated } = truncateIfFree(content, license.isPro, charLimit, finalProfile);
 
           const sanitized = performSanitization(processedContent, finalProfile, targetIgnoreList, targetSession);
           const { scrubbedText, newTokens } = sanitized;
@@ -3100,10 +3101,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const charLimit = (isAdvanced && !isAutoElevated && !license.isPro) ? 5000 : 15000;
       if (isAdvanced && !license.isPro) {
-        mcpLog(`${colors.yellowBold}[PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char trial quota).${colors.reset}\n${colors.cyan}[Upgrade] Commercial TEAMS ($99/mo flat) & Developer SDK ($299/mo): https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp&utm_medium=profile_quota&utm_campaign=teams_upgrade${colors.reset}\n`);
+        mcpLog(`${colors.yellowBold}[PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char trial quota).${colors.reset}\n${colors.cyan}[Upgrade] 7-Day B2B Trial / TEAMS ($99/mo flat) & Developer SDK ($299/mo): https://privacyscrubber.com/pricing?tier=teams&trial=true&profile=${encodeURIComponent(targetProfile)}&utm_source=mcp&utm_medium=profile_quota&utm_campaign=teams_upgrade (or run: npx @privacyscrubber/mcp-server trial)${colors.reset}\n`);
       }
 
-      const { processedText: processedContent2, wasTruncated } = truncateIfFree(content, license.isPro, charLimit);
+      const { processedText: processedContent2, wasTruncated } = truncateIfFree(content, license.isPro, charLimit, finalProfile);
 
       const { scrubbedText, newTokens } = performSanitization(processedContent2, finalProfile, targetIgnoreList, targetSession);
       const telemetry = buildCisoAuditTelemetry(newTokens);
@@ -3599,8 +3600,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const isAdvanced = targetProfile.toLowerCase() !== "general";
       const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
 
-      const { processedText: cleanStdout, wasTruncated: truncOut } = truncateIfFree(stdout, license.isPro, charLimit);
-      const { processedText: cleanStderr, wasTruncated: truncErr } = truncateIfFree(stderr, license.isPro, charLimit);
+      const { processedText: cleanStdout, wasTruncated: truncOut } = truncateIfFree(stdout, license.isPro, charLimit, targetProfile);
+      const { processedText: cleanStderr, wasTruncated: truncErr } = truncateIfFree(stderr, license.isPro, charLimit, targetProfile);
 
       const resCommand = performSanitization(command, targetProfile, targetIgnoreList, targetSession);
       const resStdout = performSanitization(cleanStdout, targetProfile, targetIgnoreList, targetSession);
@@ -3769,7 +3770,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const isAdvanced = targetProfile.toLowerCase() !== "general";
       const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
 
-      const { processedText, wasTruncated: wasCharTruncated } = truncateIfFree(capped, license.isPro, charLimit);
+      const { processedText, wasTruncated: wasCharTruncated } = truncateIfFree(capped, license.isPro, charLimit, targetProfile);
       const currentSession = getSessionMap(session_id);
       const currentIgnoreList = getSessionIgnoreList(session_id);
       const { scrubbedText, newTokens } = performSanitization(processedText, targetProfile, currentIgnoreList, currentSession);
@@ -3833,7 +3834,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const isAdvanced = targetProfile.toLowerCase() !== "general";
       const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
 
-      const { processedText, wasTruncated } = truncateIfFree(diffOutput, license.isPro, charLimit);
+      const { processedText, wasTruncated } = truncateIfFree(diffOutput, license.isPro, charLimit, targetProfile);
       const { scrubbedText, newTokens } = performSanitization(processedText, targetProfile, targetIgnoreList, targetSession);
 
       const telemetry = buildCisoAuditTelemetry(newTokens);
@@ -4639,10 +4640,11 @@ export function performSanitization(text, profile, ignoreList = null, customSess
   return { scrubbedText: result.scrubbedText, newTokens };
 }
 
-export function truncateIfFree(text, isPro, charLimit = 15000) {
+export function truncateIfFree(text, isPro, charLimit = 15000, profile = 'general') {
   if (!isPro && text.length > charLimit) {
-    mcpLog(`${colors.yellowBold}[PrivacyScrubber] Input truncated to ${charLimit.toLocaleString()} characters (Free Tier Limit).${colors.reset}\n${colors.cyan}[Upgrade] Set PRIVACYSCRUBBER_KEY to your PRO/TEAMS/SDK license key for unlimited throughput: https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp&utm_medium=truncation&utm_campaign=teams_upgrade${colors.reset}\n`);
-    const upsellNotice = `\n\n[PrivacyScrubber Free Tier: Payload truncated to ${charLimit.toLocaleString()} chars. Upgrade to PRO ($15/mo or $110 Lifetime) or Developer SDK ($299/mo) for unlimited payload processing: https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp&utm_medium=truncation&utm_campaign=teams_upgrade]`;
+    const safeProf = encodeURIComponent(String(profile || 'general'));
+    mcpLog(`${colors.yellowBold}[PrivacyScrubber] Input truncated to ${charLimit.toLocaleString()} characters (Free Tier Limit for profile '${profile || 'general'}').${colors.reset}\n${colors.cyan}[Upgrade] Set PRIVACYSCRUBBER_KEY to your PRO/TEAMS/SDK license key or start a 7-day B2B trial ('npx @privacyscrubber/mcp-server trial'): https://privacyscrubber.com/pricing?tier=teams&trial=true&profile=${safeProf}&utm_source=mcp&utm_medium=truncation&utm_campaign=teams_upgrade${colors.reset}\n`);
+    const upsellNotice = `\n\n[PrivacyScrubber Free Tier: Payload truncated to ${charLimit.toLocaleString()} chars (${profile || 'general'}). Upgrade to PRO ($15/mo or $110 LT), TEAMS ($99/mo flat) or Developer SDK ($299/mo): https://privacyscrubber.com/pricing?tier=teams&trial=true&profile=${safeProf}&utm_source=mcp&utm_medium=truncation&utm_campaign=teams_upgrade | CLI Trial: npx @privacyscrubber/mcp-server trial]`;
     return { processedText: text.substring(0, charLimit), wasTruncated: true, upsellNotice, charLimit };
   }
   return { processedText: text, wasTruncated: false, upsellNotice: "", charLimit };
