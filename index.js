@@ -4642,7 +4642,7 @@ export function performSanitization(text, profile, ignoreList = null, customSess
 
 export function truncateIfFree(text, isPro, charLimit = 15000, profile = 'general') {
   if (!isPro && text.length > charLimit) {
-    const safeProf = encodeURIComponent(String(profile || 'general'));
+    const safeProf = encodeURIComponent(String(profile || 'general').toLowerCase());
     mcpLog(`${colors.yellowBold}[PrivacyScrubber] Input truncated to ${charLimit.toLocaleString()} characters (Free Tier Limit for profile '${profile || 'general'}').${colors.reset}\n${colors.cyan}[Upgrade] Set PRIVACYSCRUBBER_KEY to your PRO/TEAMS/SDK license key or start a 7-day B2B trial ('npx @privacyscrubber/mcp-server trial'): https://privacyscrubber.com/pricing?tier=teams&trial=true&profile=${safeProf}&utm_source=mcp&utm_medium=truncation&utm_campaign=teams_upgrade${colors.reset}\n`);
     const upsellNotice = `\n\n[PrivacyScrubber Free Tier: Payload truncated to ${charLimit.toLocaleString()} chars (${profile || 'general'}). Upgrade to PRO ($15/mo or $110 LT), TEAMS ($99/mo flat) or Developer SDK ($299/mo): https://privacyscrubber.com/pricing?tier=teams&trial=true&profile=${safeProf}&utm_source=mcp&utm_medium=truncation&utm_campaign=teams_upgrade | CLI Trial: npx @privacyscrubber/mcp-server trial]`;
     return { processedText: text.substring(0, charLimit), wasTruncated: true, upsellNotice, charLimit };

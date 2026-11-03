@@ -237,9 +237,13 @@ try {
   const sample20k = "B".repeat(20000);
 
   // Free Tier - Industry profile (5,000 char quota)
-  const freeIndustry = truncateIfFree(sample6k, false, 5000);
+  const freeIndustry = truncateIfFree(sample6k, false, 5000, 'Medical');
   if (!freeIndustry.wasTruncated || freeIndustry.processedText.length !== 5000) {
     console.error("❌ Test 10 failed: Free tier specialized profile must truncate at 5,000 chars.");
+    process.exit(1);
+  }
+  if (!freeIndustry.upsellNotice || !freeIndustry.upsellNotice.includes('tier=teams&trial=true') || !freeIndustry.upsellNotice.includes('profile=medical') || !freeIndustry.upsellNotice.includes('npx @privacyscrubber/mcp-server trial')) {
+    console.error("❌ Test 10 failed: truncateIfFree upsellNotice missing profile-aware trial URL or CLI command:", freeIndustry.upsellNotice);
     process.exit(1);
   }
 
@@ -256,7 +260,7 @@ try {
     console.error("❌ Test 10 failed: PRO tier must not truncate payloads regardless of character limit.");
     process.exit(1);
   }
-  console.log("✅ Test 10 passed: Quota enforcement (5k vertical trial, 15k universal, unlimited PRO) verified.");
+  console.log("✅ Test 10 passed: Quota enforcement (5k vertical trial, 15k universal, unlimited PRO & profile-aware trial funnel) verified.");
 
   console.log("\n🎉 All local cryptographic and MCP Quality Assurance tests passed!");
   process.exit(0);
