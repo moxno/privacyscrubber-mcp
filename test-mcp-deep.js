@@ -117,6 +117,26 @@ async function runMcpSession() {
       }
     }
 
+    // 2.1 Verify prompts/list, resources/list, resources/templates/list, and resources/read (Glama & MCP SDK inspection parity)
+    console.log("--> Sending 'prompts/list', 'resources/list', and 'resources/templates/list' requests...");
+    const promptsResponse = await sendRequest('prompts/list', {});
+    if (promptsResponse.error || !Array.isArray(promptsResponse.result?.prompts) || promptsResponse.result.prompts.length < 3) {
+      throw new Error(`prompts/list failed: ${JSON.stringify(promptsResponse)}`);
+    }
+    const resourcesResponse = await sendRequest('resources/list', {});
+    if (resourcesResponse.error || !Array.isArray(resourcesResponse.result?.resources) || resourcesResponse.result.resources.length < 5) {
+      throw new Error(`resources/list failed: ${JSON.stringify(resourcesResponse)}`);
+    }
+    const templatesResponse = await sendRequest('resources/templates/list', {});
+    if (templatesResponse.error || !Array.isArray(templatesResponse.result?.resourceTemplates) || templatesResponse.result.resourceTemplates.length < 1) {
+      throw new Error(`resources/templates/list failed: ${JSON.stringify(templatesResponse)}`);
+    }
+    const readCatalogResponse = await sendRequest('resources/read', { uri: 'mcp://privacyscrubber/profiles/catalog' });
+    if (readCatalogResponse.error || !readCatalogResponse.result?.contents?.[0]?.text?.includes('30 Specialized Industry Profiles')) {
+      throw new Error(`resources/read catalog failed: ${JSON.stringify(readCatalogResponse)}`);
+    }
+    console.log(`✅ MCP inspection protocol verified (${promptsResponse.result.prompts.length} prompts, ${resourcesResponse.result.resources.length} resources, ${templatesResponse.result.resourceTemplates.length} templates).`);
+
     // 3. Test sanitize_text (General profile)
     console.log("--> Calling 'sanitize_text' with General profile...");
     const rawText = "Contact John Doe at john.doe@example.com or phone 555-0199.";

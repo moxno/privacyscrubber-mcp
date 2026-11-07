@@ -15,6 +15,7 @@ import {
   ListToolsRequestSchema,
   ListPromptsRequestSchema,
   GetPromptRequestSchema,
+  ListResourcesRequestSchema,
   ListResourceTemplatesRequestSchema,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
@@ -2252,6 +2253,60 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
   };
 });
 
+const PROFILE_RESOURCE_DESCRIPTIONS = {
+  "general": "Scrubs basic PII: Names, Emails, Phone Numbers, Credit Cards, SSN, IPv4/IPv6, and standard API Keys.",
+  "dev": "Engineering profile. Scrubs AWS keys, JWTs, GCP keys, Stripe keys, database connection strings, and internal IP addresses.",
+  "engineering": "Engineering profile. Scrubs AWS keys, JWTs, GCP keys, Stripe keys, database connection strings, internal IPs, Docker paths, and K8s internal endpoints.",
+  "tech": "Technology profile. Scrubs cloud instance IDs, node/cluster IDs, environment tags, kubeconfig, and terraform states.",
+  "medical": "HIPAA compliance profile. Scrubs ICD-10 codes, medical record numbers (MRN), DEA numbers, NPI, patient names, and health conditions.",
+  "finance": "PCI/Finance profile. Scrubs IBAN, SWIFT codes, credit cards, routing numbers, and financial transaction IDs.",
+  "wealthmgmt": "Wealth Management profile. Scrubs ABA/Routing numbers, trust names, portfolio values, net worth, RMDs, and account numbers.",
+  "insurance": "Insurance profile. Scrubs claim numbers, policy numbers, settlement amounts, NAIC, adjustor IDs, and insured names.",
+  "accounting": "Accounting profile. Scrubs EIN, FEIN, Tax IDs, AGI, tax forms (1040, W-2, 1099), refund amounts, and PTINs.",
+  "legal": "Legal profile. Scrubs case numbers, matter numbers, attorney-client privilege markers, and litigation IDs.",
+  "hr": "Human Resources profile. Scrubs employee IDs (EEID), resumes, DOBs, tenant IDs, and home addresses.",
+  "security": "Security profile. Scrubs secrets, AWS keys, JWTs, Stripe keys, incident IDs, and breach reports.",
+  "marketing": "Marketing profile. Scrubs lead IDs, prospect IDs, GCLID/FBCLID, LTV/CAC amounts, cohort IDs, and segment IDs.",
+  "bizops": "BizOps profile. Scrubs deals, KPIs, vendor IDs, EBITDA/Revenue figures, NDAs, and M&A identifiers.",
+  "sales": "Sales profile. Scrubs opportunity IDs, DocuSign hashes, ARR/MRR/Quota amounts, and SFDC/HubSpot IDs.",
+  "support": "Support profile. Scrubs Zendesk/Jira ticket numbers, RMA/Return IDs, and loyalty/rewards numbers.",
+  "realestate": "Real Estate profile. Scrubs MLS numbers, LIS IDs, parcel numbers, rent/escrow amounts, and gate/lobby codes.",
+  "compliance": "Compliance profile. Scrubs GDPR/HIPAA/SOC2 audit IDs, DPA policy numbers, and SAR/DSAR request IDs.",
+  "ccpa": "CCPA profile. Scrubs driver licenses, precise geolocation (Lat/Long), CCPA/CPRA opt-out markers, and account numbers.",
+  "agents": "AI Agents profile. Scrubs agent IDs, vector IDs, task IDs, system prompts, and OpenAI API keys.",
+  "academic": "Academic profile. Scrubs student/alumni IDs, course numbers, FERPA/IRB IDs, and academic grades.",
+  "creative": "Creative profile. Scrubs project IDs, script drafts, spoiler/embargo tags, and ghostwriter names.",
+  "personal": "Personal profile. Scrubs birthdays, passwords, PINs, and emergency contacts/family phone numbers.",
+  "pharma": "Pharma/Clinical profile. Scrubs patient IDs, study protocols, IND/NDA numbers, IRB IDs, batch/lot serials, and dosages.",
+  "underwriting": "Loan Underwriting & Mortgage profile. Scrubs borrower names, SSNs, EINs, addresses while preserving wages and YTD figures.",
+  "automotive": "Automotive & EV profile. Scrubs VINs, ECU IDs, telematics, and repair orders while preserving DTCs and ASIL-D standards.",
+  "energy": "Energy & Utilities profile. Scrubs ESI IDs, meter serials, SCADA points, PLC tags, and substation circuits.",
+  "hospitality": "Hospitality & Travel profile. Scrubs PNRs, e-tickets, boarding pass barcodes, and guest folios.",
+  "biotech": "Biotech & Genomics profile. Scrubs accessions, patient phenotypes, HGVS variants, DNA/RNA samples, and flowcell IDs.",
+  "telecom": "Call Centers & Telephony profile. Scrubs CTI interaction IDs, Amazon Connect/Genesys sessions, agent extensions, ANI/DNIS, IVR DTMF, and audio transcript diarization headers."
+};
+
+// List Resources
+server.setRequestHandler(ListResourcesRequestSchema, async () => {
+  const featuredProfiles = ["general", "dev", "medical", "finance", "legal", "security", "compliance", "hr", "agents"];
+  return {
+    resources: [
+      {
+        uri: "mcp://privacyscrubber/profiles/catalog",
+        name: "ZTDS 30 Industry Profiles Catalog",
+        description: "Complete directory of all 30 specialized PrivacyScrubber PII & secrets detection profiles and regulatory coverage.",
+        mimeType: "text/markdown"
+      },
+      ...featuredProfiles.map((name) => ({
+        uri: `mcp://privacyscrubber/profiles/${name}`,
+        name: `Profile: ${name.charAt(0).toUpperCase() + name.slice(1)}`,
+        description: PROFILE_RESOURCE_DESCRIPTIONS[name],
+        mimeType: "text/markdown"
+      }))
+    ]
+  };
+});
+
 // List Resource Templates
 server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
   return {
@@ -2268,42 +2323,24 @@ server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
 // Read Resource
 server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
   const uri = request.params.uri;
+  if (uri === "mcp://privacyscrubber/profiles/catalog") {
+    const lines = Object.entries(PROFILE_RESOURCE_DESCRIPTIONS).map(
+      ([k, v]) => `- **\`${k}\`**: ${v}`
+    );
+    return {
+      contents: [
+        {
+          uri,
+          mimeType: "text/markdown",
+          text: `# PrivacyScrubber ZTDS Profiles Catalog (30 Specialized Industry Profiles)\n\n${lines.join("\n")}\n\n*Usage: Pass \`"profile": "<name>"\` or \`"sector": "<name>"\` to \`sanitize_text\`, \`sanitize_file\`, or \`guard_read_file\`.*`
+        }
+      ]
+    };
+  }
   const match = uri.match(/^mcp:\/\/privacyscrubber\/profiles\/(.+)$/);
   if (match) {
     const profileName = match[1];
-    const descriptions = {
-      "general": "Scrubs basic PII: Names, Emails, Phone Numbers, Credit Cards, SSN, IPv4/IPv6, and standard API Keys.",
-      "dev": "Engineering profile. Scrubs AWS keys, JWTs, GCP keys, Stripe keys, database connection strings, and internal IP addresses.",
-      "engineering": "Engineering profile. Scrubs AWS keys, JWTs, GCP keys, Stripe keys, database connection strings, internal IPs, Docker paths, and K8s internal endpoints.",
-      "tech": "Technology profile. Scrubs cloud instance IDs, node/cluster IDs, environment tags, kubeconfig, and terraform states.",
-      "medical": "HIPAA compliance profile. Scrubs ICD-10 codes, medical record numbers (MRN), DEA numbers, NPI, patient names, and health conditions.",
-      "finance": "PCI/Finance profile. Scrubs IBAN, SWIFT codes, credit cards, routing numbers, and financial transaction IDs.",
-      "wealthmgmt": "Wealth Management profile. Scrubs ABA/Routing numbers, trust names, portfolio values, net worth, RMDs, and account numbers.",
-      "insurance": "Insurance profile. Scrubs claim numbers, policy numbers, settlement amounts, NAIC, adjustor IDs, and insured names.",
-      "accounting": "Accounting profile. Scrubs EIN, FEIN, Tax IDs, AGI, tax forms (1040, W-2, 1099), refund amounts, and PTINs.",
-      "legal": "Legal profile. Scrubs case numbers, matter numbers, attorney-client privilege markers, and litigation IDs.",
-      "hr": "Human Resources profile. Scrubs employee IDs (EEID), resumes, DOBs, tenant IDs, and home addresses.",
-      "security": "Security profile. Scrubs secrets, AWS keys, JWTs, Stripe keys, incident IDs, and breach reports.",
-      "marketing": "Marketing profile. Scrubs lead IDs, prospect IDs, GCLID/FBCLID, LTV/CAC amounts, cohort IDs, and segment IDs.",
-      "bizops": "BizOps profile. Scrubs deals, KPIs, vendor IDs, EBITDA/Revenue figures, NDAs, and M&A identifiers.",
-      "sales": "Sales profile. Scrubs opportunity IDs, DocuSign hashes, ARR/MRR/Quota amounts, and SFDC/HubSpot IDs.",
-      "support": "Support profile. Scrubs Zendesk/Jira ticket numbers, RMA/Return IDs, and loyalty/rewards numbers.",
-      "realestate": "Real Estate profile. Scrubs MLS numbers, LIS IDs, parcel numbers, rent/escrow amounts, and gate/lobby codes.",
-      "compliance": "Compliance profile. Scrubs GDPR/HIPAA/SOC2 audit IDs, DPA policy numbers, and SAR/DSAR request IDs.",
-      "ccpa": "CCPA profile. Scrubs driver licenses, precise geolocation (Lat/Long), CCPA/CPRA opt-out markers, and account numbers.",
-      "agents": "AI Agents profile. Scrubs agent IDs, vector IDs, task IDs, system prompts, and OpenAI API keys.",
-      "academic": "Academic profile. Scrubs student/alumni IDs, course numbers, FERPA/IRB IDs, and academic grades.",
-      "creative": "Creative profile. Scrubs project IDs, script drafts, spoiler/embargo tags, and ghostwriter names.",
-      "personal": "Personal profile. Scrubs birthdays, passwords, PINs, and emergency contacts/family phone numbers.",
-      "pharma": "Pharma/Clinical profile. Scrubs patient IDs, study protocols, IND/NDA numbers, IRB IDs, batch/lot serials, and dosages.",
-      "underwriting": "Loan Underwriting & Mortgage profile. Scrubs borrower names, SSNs, EINs, addresses while preserving wages and YTD figures.",
-      "automotive": "Automotive & EV profile. Scrubs VINs, ECU IDs, telematics, and repair orders while preserving DTCs and ASIL-D standards.",
-      "energy": "Energy & Utilities profile. Scrubs ESI IDs, meter serials, SCADA points, PLC tags, and substation circuits.",
-      "hospitality": "Hospitality & Travel profile. Scrubs PNRs, e-tickets, boarding pass barcodes, and guest folios.",
-      "biotech": "Biotech & Genomics profile. Scrubs accessions, patient phenotypes, HGVS variants, DNA/RNA samples, and flowcell IDs.",
-      "telecom": "Call Centers & Telephony profile. Scrubs CTI interaction IDs, Amazon Connect/Genesys sessions, agent extensions, ANI/DNIS, IVR DTMF, and audio transcript diarization headers."
-    };
-    const desc = descriptions[profileName.toLowerCase()] || `The '${profileName}' profile is a specialized detection ruleset tuned for specific industry compliance. It detects and sanitizes domain-specific identifiers.`;
+    const desc = PROFILE_RESOURCE_DESCRIPTIONS[profileName.toLowerCase()] || `The '${profileName}' profile is a specialized detection ruleset tuned for specific industry compliance. It detects and sanitizes domain-specific identifiers.`;
     
     return {
       contents: [
