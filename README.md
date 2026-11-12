@@ -1,5 +1,7 @@
 # @privacyscrubber/mcp-server
 
+<!-- mcp-name: io.github.moxno/privacyscrubber-mcp -->
+
 [![NPM Version](https://img.shields.io/npm/v/@privacyscrubber/mcp-server?color=blue)](https://www.npmjs.com/package/@privacyscrubber/mcp-server)
 [![NPM Downloads](https://img.shields.io/npm/dm/@privacyscrubber/mcp-server?color=3b82f6)](https://www.npmjs.com/package/@privacyscrubber/mcp-server)
 [![PyPI Version](https://img.shields.io/pypi/v/privacyscrubber-mcp.svg?color=blue)](https://pypi.org/project/privacyscrubber-mcp/)
