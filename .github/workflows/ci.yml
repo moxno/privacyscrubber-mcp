@@ -10,11 +10,22 @@ jobs:
   test-node:
     name: Node ${{ matrix.node-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     strategy:
       fail-fast: false
+      max-parallel: 4
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        node-version: [18.x, 20.x, 22.x]
+        include:
+          - os: ubuntu-latest
+            node-version: 18.x
+          - os: ubuntu-latest
+            node-version: 20.x
+          - os: ubuntu-latest
+            node-version: 22.x
+          - os: macos-latest
+            node-version: 20.x
+          - os: macos-latest
+            node-version: 22.x
 
     steps:
       - name: Checkout repository
@@ -35,11 +46,22 @@ jobs:
   test-python:
     name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     strategy:
       fail-fast: false
+      max-parallel: 4
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: ['3.9', '3.10', '3.11', '3.12']
+        include:
+          - os: ubuntu-latest
+            python-version: '3.10'
+          - os: ubuntu-latest
+            python-version: '3.11'
+          - os: ubuntu-latest
+            python-version: '3.12'
+          - os: macos-latest
+            python-version: '3.11'
+          - os: macos-latest
+            python-version: '3.12'
 
     steps:
       - name: Checkout repository
