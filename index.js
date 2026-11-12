@@ -170,18 +170,41 @@ const agentSessions = new Map();
 const MAX_CONCURRENT_SESSIONS = 200;
 const MAX_SESSION_TOKENS = parseInt(process.env.PRIVACYSCRUBBER_MAX_SESSION_TOKENS || '5000', 10);
 
+function zeroizeSessionEntry(sess) {
+  if (!sess || typeof sess !== 'object') return;
+  if (sess.map && typeof sess.map === 'object') {
+    for (const k of Object.keys(sess.map)) {
+      delete sess.map[k];
+    }
+  }
+  if (sess.ignoreList && typeof sess.ignoreList.clear === 'function') {
+    sess.ignoreList.clear();
+  }
+  if (sess.streamDetokenizer) {
+    sess.streamDetokenizer.reset();
+    if (sess.map) sess.streamDetokenizer.updateTokenMap(sess.map);
+  }
+}
+
 function getSession(sessionId = 'default') {
   const sid = (sessionId || 'default').toString().trim() || 'default';
   let session = agentSessions.get(sid);
   const now = Date.now();
   if (!session) {
     if (agentSessions.size >= MAX_CONCURRENT_SESSIONS) {
-      const oldestKey = agentSessions.keys().next().value;
-      const oldestSession = agentSessions.get(oldestKey);
-      if (oldestSession && oldestSession.streamDetokenizer) {
-        oldestSession.streamDetokenizer.reset();
+      let oldestKey = null;
+      for (const k of agentSessions.keys()) {
+        if (k !== 'default') {
+          oldestKey = k;
+          break;
+        }
       }
-      agentSessions.delete(oldestKey);
+      if (!oldestKey) oldestKey = agentSessions.keys().next().value;
+      const oldestSession = agentSessions.get(oldestKey);
+      zeroizeSessionEntry(oldestSession);
+      if (oldestKey !== 'default') {
+        agentSessions.delete(oldestKey);
+      }
     }
     session = { map: {}, ignoreList: new Set(), streamDetokenizer: null, createdAt: now, lastActive: now };
     agentSessions.set(sid, session);
@@ -228,10 +251,10 @@ export function buildStreamReplacer(tokenMap = {}, options = {}) {
     const match = inner.match(/^([A-Za-z_0-9]+?)[-_ ]?(\d+)$/);
 
     if (match) {
-      const label = escapeRegex(match[1]);
+      const label = escapeRegex(match[1]).replace(/[_-]/g, '\\\\?[_-]');
       const idx = match[2];
-      const corePat = '[*`_~\\s]*' + label + '[*`_~]*[-_\\s]*0*' + idx + '[*`_~.,;:!?\\s]*';
-      const patternStr = '(?:\\[' + corePat + '\\]|<' + corePat + '>|\\{\\{' + corePat + '\\}\\}|\\{' + corePat + '\\}|__' + corePat + '__|[【［〔「『]' + corePat + '[】］〕」』]|%5B' + corePat + '%5D|&#(?:91|091|x5[bB]);' + corePat + '&#(?:93|093|x5[dD]);|&(?:lbrack|lsqb);' + corePat + '&(?:rbrack|rsqb);|\\\\u005[bB]' + corePat + '\\\\u005[dD]|\\b' + label + '[-_\\s]+0*' + idx + '\\b)';
+      const corePat = '[*`_~\\s]*' + label + '[*`_~]*[-_\\\\\\s]*0*' + idx + '[*`_~.,;:!?\\s]*';
+      const patternStr = '(?:(?:\\[|\\\\u005[Bb]|%5[Bb]|&(?:amp;)?#0*91;|&(?:amp;)?#[xX]0*5[Bb];|&(?:amp;)?(?:lbrack|lsqb);|【|［|〔|「|『)' + corePat + '(?:\\]|\\\\u005[Dd]|%5[Dd]|&(?:amp;)?#0*93;|&(?:amp;)?#[xX]0*5[Dd];|&(?:amp;)?(?:rbrack|rsqb);|】|］|〕|」|』)|<' + corePat + '>|\\{\\{' + corePat + '\\}\\}|\\{' + corePat + '\\}|__' + corePat + '__|\\b' + label + '[-_\\s]+0*' + idx + '\\b)';
       patterns.push(patternStr);
       const normKey = (match[1] + '_' + parseInt(idx, 10)).toUpperCase();
       lookup.set(normKey, val);
@@ -261,13 +284,13 @@ export function buildStreamReplacer(tokenMap = {}, options = {}) {
         restored = lookup.get(coreMatch.toUpperCase());
       } else {
         const inner = coreMatch
-          .replace(/^(?:%5B|&#(?:91|091|x5[bB]);|&(?:lbrack|lsqb);|\\u005[bB]|\[|<|\{\{?|__|【|［|〔|「|『)/i, '')
-          .replace(/(?:%5D|&#(?:93|093|x5[dD]);|&(?:rbrack|rsqb);|\\u005[dD]|\]|>|\}\}?|__|】|］|〕|」|』)$/i, '')
-          .replace(/[*`_~.,;:!?\s]+/g, ' ')
+          .replace(/^(?:\[|\\u005[Bb]|%5[Bb]|&(?:amp;)?#0*91;|&(?:amp;)?#[xX]0*5[Bb];|&(?:amp;)?(?:lbrack|lsqb);|【|［|〔|「|『|<|\{\{?|__)|(?:\]|\\u005[Dd]|%5[Dd]|&(?:amp;)?#0*93;|&(?:amp;)?#[xX]0*5[Dd];|&(?:amp;)?(?:rbrack|rsqb);|】|］|〕|」|』|>|\}\}?|__)$/gi, '')
+          .replace(/^[*`_~\s]+|[.,;:!?*`_~\s]+$/g, '')
           .trim();
-        const m = inner.match(/^([A-Za-z_0-9]+?)[-_ ]?(\d+)$/);
+        const m = inner.match(/^([A-Za-z_0-9]+?)[-_\\\s]*(\d+)$/);
         if (m) {
-          const normKey = (m[1] + '_' + parseInt(m[2], 10)).toUpperCase();
+          const cleanLabel = m[1].replace(/\\([_-])/g, '$1');
+          const normKey = (cleanLabel + '_' + parseInt(m[2], 10)).toUpperCase();
           if (lookup.has(normKey)) {
             restored = lookup.get(normKey);
           }
@@ -356,17 +379,36 @@ export class StreamingDetokenizer {
     this.pendingBuffer += text;
 
     const tailLen = 160;
-    const tail = this.pendingBuffer.length > tailLen ? this.pendingBuffer.slice(-tailLen) : this.pendingBuffer;
-    const offset = this.pendingBuffer.length > tailLen ? this.pendingBuffer.length - tailLen : 0;
-    const m = tail.match(/(?:(?:\[|【|［|〔|「|『|<|\{\{?|__?|%5[Bb]|\\u005[Bb]|&(?:amp;)?(?:#0*91;|#[xX]0*5[Bb];|lbrack;))[A-Za-z0-9_\-\u0410-\u044F\u0401\u0451 *`~.\\]{0,128}(?:%5?|&(?:a(?:m(?:p(?:;)?)?)?)?(?:#(?:0*9?3?|[xX]0*5?[Dd]?)?|r(?:b(?:r(?:a(?:c(?:k)?)?)?)?)?)?)?|%[0-9A-Fa-f]?|\\(?:u(?:0(?:0(?:5)?)?)?)?|&(?:a(?:m(?:p(?:;)?)?)?)?(?:#(?:0*9?1?|[xX]0*5?)?|l(?:b(?:r(?:a(?:c(?:k)?)?)?)?)?)?)$/);
+    const tailRegex = /(?:(?:\[|【|［|〔|「|『|<|\{\{?|__|%5[Bb]|\\u005[Bb]|&(?:amp;)?(?:#0*91;|#[xX]0*5[Bb];|lbrack;))[A-Za-z0-9_\-\u0410-\u044F\u0401\u0451 *`~.\\]{0,128}(?:%5?|&(?:a(?:m(?:p(?:;)?)?)?)?(?:#(?:0*9?3?|[xX]0*5?[Dd]?)?|r(?:b(?:r(?:a(?:c(?:k)?)?)?)?)?)?)?|%[0-9A-Fa-f]?|\\(?:u(?:0(?:0(?:5)?)?)?)?|&(?:a(?:m(?:p(?:;)?)?)?)?(?:#(?:0*9?1?|[xX]0*5?)?|l(?:b(?:r(?:a(?:c(?:k)?)?)?)?)?)?|_)$/;
+    let tail = this.pendingBuffer.length > tailLen ? this.pendingBuffer.slice(-tailLen) : this.pendingBuffer;
+    let offset = this.pendingBuffer.length > tailLen ? this.pendingBuffer.length - tailLen : 0;
+    let m = tail.match(tailRegex);
 
     if (m) {
       const candidate = m[0];
-      const isClosedUnderscoreOrUnicode = (candidate.length >= 4 && candidate.startsWith('__') && candidate.endsWith('__')) || /\\u005[Dd]/.test(candidate);
-      if (isClosedUnderscoreOrUnicode && this.replacer(candidate) !== candidate) {
-        const toEmit = this.pendingBuffer;
-        this.pendingBuffer = '';
-        return this.replacer(toEmit);
+      const uClose = candidate.startsWith('__') ? candidate.indexOf('__', 2) : -1;
+      const uniMatch = candidate.match(/\\u005[Dd]/);
+      const closeLen = uClose !== -1 ? uClose + 2 : (uniMatch ? uniMatch.index + 6 : -1);
+      if (closeLen !== -1) {
+        const closedToken = candidate.slice(0, closeLen);
+        if (this.replacer(closedToken) !== closedToken) {
+          const splitAfterToken = offset + m.index + closeLen;
+          const prefixEmitted = this.replacer(this.pendingBuffer.slice(0, splitAfterToken));
+          this.pendingBuffer = this.pendingBuffer.slice(splitAfterToken);
+          if (!this.pendingBuffer) return prefixEmitted;
+          tail = this.pendingBuffer.length > tailLen ? this.pendingBuffer.slice(-tailLen) : this.pendingBuffer;
+          offset = this.pendingBuffer.length > tailLen ? this.pendingBuffer.length - tailLen : 0;
+          m = tail.match(tailRegex);
+          if (!m) {
+            const rest = this.replacer(this.pendingBuffer);
+            this.pendingBuffer = '';
+            return prefixEmitted + rest;
+          }
+          const sIdx = offset + m.index;
+          const safe = this.pendingBuffer.slice(0, sIdx);
+          this.pendingBuffer = this.pendingBuffer.slice(sIdx);
+          return prefixEmitted + (safe ? this.replacer(safe) : '');
+        }
       }
       const splitIdx = offset + m.index;
       const safeToEmit = this.pendingBuffer.slice(0, splitIdx);
@@ -430,19 +472,72 @@ export class StreamingDetokenizer {
   }
 
   async* wrapStream(asyncIterable) {
+    let lastOpenAIChunk = null;
+    let lastResponsesDeltaChunk = null;
+    let lastAnthropicDeltaChunk = null;
     for await (const chunk of asyncIterable) {
       if (chunk === null || chunk === undefined) continue;
       if (chunk.choices && Array.isArray(chunk.choices) && chunk.choices[0]?.delta?.content !== undefined) {
+        lastOpenAIChunk = chunk;
         const delta = chunk.choices[0].delta.content;
         if (typeof delta === 'string') {
           const restored = this.feed(delta);
           if (restored) {
-            chunk.choices[0].delta.content = restored;
-            yield chunk;
+            const clonedChoices = chunk.choices.map((c, idx) =>
+              idx === 0 ? { ...c, delta: { ...c.delta, content: restored } } : c
+            );
+            yield { ...chunk, choices: clonedChoices };
           }
         } else {
           yield chunk;
         }
+        continue;
+      }
+
+      if (chunk && typeof chunk === 'object' && typeof chunk.type === 'string' && chunk.type.startsWith('response.')) {
+        if (chunk.type === 'response.output_text.delta' && typeof chunk.delta === 'string') {
+          lastResponsesDeltaChunk = chunk;
+          const restored = this.feed(chunk.delta);
+          if (restored) {
+            yield { ...chunk, delta: restored };
+          }
+          continue;
+        }
+        if (chunk.type === 'response.output_text.done' && typeof chunk.text === 'string') {
+          const remaining = this.flush();
+          if (remaining && lastResponsesDeltaChunk) {
+            yield { ...lastResponsesDeltaChunk, delta: remaining };
+          }
+          yield { ...chunk, text: this.replacer(chunk.text) };
+          continue;
+        }
+        yield chunk;
+        continue;
+      }
+
+      if (chunk && typeof chunk === 'object' && typeof chunk.type === 'string' && (
+        chunk.type === 'content_block_delta' ||
+        chunk.type === 'content_block_start' ||
+        chunk.type === 'content_block_stop' ||
+        chunk.type === 'message_start' ||
+        chunk.type === 'message_delta' ||
+        chunk.type === 'message_stop'
+      )) {
+        if (chunk.type === 'content_block_delta' && chunk.delta && chunk.delta.type === 'text_delta' && typeof chunk.delta.text === 'string') {
+          lastAnthropicDeltaChunk = chunk;
+          const restored = this.feed(chunk.delta.text);
+          if (restored) {
+            yield { ...chunk, delta: { ...chunk.delta, text: restored } };
+          }
+          continue;
+        }
+        if ((chunk.type === 'content_block_stop' || chunk.type === 'message_stop') && this.pendingBuffer) {
+          const remaining = this.flush();
+          if (remaining && lastAnthropicDeltaChunk) {
+            yield { ...lastAnthropicDeltaChunk, delta: { ...lastAnthropicDeltaChunk.delta, text: remaining } };
+          }
+        }
+        yield chunk;
         continue;
       }
 
@@ -464,7 +559,20 @@ export class StreamingDetokenizer {
     }
 
     const finalChunk = this.flush();
-    if (finalChunk) yield finalChunk;
+    if (finalChunk) {
+      if (lastOpenAIChunk) {
+        const clonedChoices = lastOpenAIChunk.choices.map((c, idx) =>
+          idx === 0 ? { ...c, delta: { ...c.delta, content: finalChunk } } : c
+        );
+        yield { ...lastOpenAIChunk, choices: clonedChoices };
+      } else if (lastResponsesDeltaChunk) {
+        yield { ...lastResponsesDeltaChunk, delta: finalChunk };
+      } else if (lastAnthropicDeltaChunk) {
+        yield { ...lastAnthropicDeltaChunk, delta: { ...lastAnthropicDeltaChunk.delta, text: finalChunk } };
+      } else {
+        yield finalChunk;
+      }
+    }
   }
 }
 
@@ -689,7 +797,7 @@ function buildDailyLimitBlockedResponse() {
   };
 }
 
-function buildCisoAuditTelemetry(currentTokenMap = {}) {
+function buildCisoAuditTelemetry(currentTokenMap = {}, extraStats = {}) {
     const entities = {};
     let totalCount = 0;
 
@@ -698,8 +806,9 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
         for (const t of keys) {
             const tokenStr = typeof t === 'string' ? t : (t && (t.token || t.mask)) ? String(t.token || t.mask) : '';
             if (!tokenStr) continue;
-            const match = tokenStr.match(/\[([A-Z_]+)_\d+\]/);
-            const baseType = match ? match[1] : (tokenStr.replace(/\[|\]/g, '').replace(/_[0-9]+$/, '') || 'CUSTOM');
+            const match = tokenStr.match(/\[([A-Za-z0-9_]+)_\d+\]/);
+            const rawBase = match ? match[1] : tokenStr.replace(/\[|\]|<|>|\{|\}|__/g, '').replace(/_[0-9]+$/, '');
+            const baseType = (rawBase.replace(/[^A-Za-z0-9_]/g, '') || 'CUSTOM').toUpperCase();
             entities[baseType] = (entities[baseType] || 0) + 1;
             totalCount++;
         }
@@ -709,7 +818,7 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
     let riskLevel = 'LOW EXPOSURE';
 
     if (totalCount > 0) {
-        const hasHighRiskEntities = types.some(t => ['ID', 'SSN', 'CREDIT_CARD', 'PASSPORT', 'BANK', 'API_KEY', 'SECRET', 'PASSWORD', 'MRN', 'KEY'].includes(t));
+        const hasHighRiskEntities = types.some(t => ['ID', 'SSN', 'CREDIT_CARD', 'PASSPORT', 'BANK', 'API_KEY', 'SECRET', 'PASSWORD', 'MRN', 'KEY', 'PHI', 'PRIVILEGE', 'AWS_KEY', 'STRIPE_KEY', 'JWT_TOKEN', 'API_TOKEN'].includes(t));
         if (hasHighRiskEntities || types.length >= 3 || totalCount >= 10) {
             riskLevel = 'CRITICAL (HIGH EXPOSURE)';
         } else if (types.length >= 2 || totalCount >= 3) {
@@ -734,10 +843,10 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
         frameworksSet.add('PCI DSS v4.0');
         frameworksSet.add('IRC § 7216 & GLBA');
     }
-    if (types.some(t => ['MRN', 'HEALTH', 'MEDICAL', 'PATIENT', 'DIAGNOSIS', 'NPI', 'DEA'].includes(t))) {
+    if (types.some(t => ['PHI', 'MRN', 'HEALTH', 'MEDICAL', 'PATIENT', 'DIAGNOSIS', 'NPI', 'DEA'].includes(t))) {
         frameworksSet.add('HIPAA §164.514');
     }
-    if (types.some(t => ['CASE_NUMBER', 'DOCKET', 'PRIVILEGED', 'LEGAL', 'ATTORNEY', 'COURT', 'CONTRACT', 'NDA'].includes(t))) {
+    if (types.some(t => ['PRIVILEGE', 'CASE_NUMBER', 'DOCKET', 'PRIVILEGED', 'LEGAL', 'ATTORNEY', 'COURT', 'CONTRACT', 'NDA'].includes(t))) {
         frameworksSet.add('FRE 502 (Privilege)');
     }
     if (types.some(t => ['API_KEY', 'SECRET', 'PASSWORD', 'TOKEN', 'KEY', 'AWS_KEY', 'JWT_TOKEN', 'API_TOKEN', 'CREDENTIAL'].includes(t))) {
@@ -746,6 +855,26 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
     if (totalCount > 0) {
         frameworksSet.add('EU AI Act (Art. 50)');
     }
+
+    const frameworksList = Array.from(frameworksSet);
+    const getFrameworkSlug = (name) => {
+        const lower = name.toLowerCase();
+        if (lower.includes('gdpr')) return 'gdpr';
+        if (lower.includes('ccpa')) return 'ccpa';
+        if (lower.includes('soc')) return 'soc2';
+        if (lower.includes('iso')) return 'iso27001';
+        if (lower.includes('pci')) return 'pci';
+        if (lower.includes('hipaa')) return 'hipaa';
+        if (lower.includes('nist')) return 'nist';
+        if (lower.includes('irc') || lower.includes('7216')) return 'irc7216';
+        if (lower.includes('fre') || lower.includes('502')) return 'fre502';
+        if (lower.includes('ai act')) return 'euaiact';
+        return lower.replace(/[^a-z0-9]/g, '');
+    };
+    const triggeredFrameworks = frameworksList.map(name => ({
+        name,
+        id: getFrameworkSlug(name)
+    }));
 
     const ipHoldings = {
         standard: 'IETF draft-sibiryakov-ztds-protocol-01',
@@ -798,12 +927,33 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
         }
     ];
 
+    const rawLicenseTier = String(extraStats?.licenseTier || '').trim().toUpperCase();
+    const isOrganizationalScope = ['TEAMS', 'SDK', 'OEM', 'ENTERPRISE', 'ENTERPRISE_AIRGAP'].includes(rawLicenseTier);
+    const auditScope = isOrganizationalScope ? {
+        tier: rawLicenseTier,
+        isOrganizational: true,
+        badge: 'ORGANIZATIONAL MULTI-SEAT COMPLIANCE SCOPE',
+        coverage: 'Covers department, clinic, or firm personnel under unified ZTDS policy governance.',
+        upgradeRecommended: false,
+        upgradeUrl: null
+    } : {
+        tier: rawLicenseTier || 'SINGLE_OPERATOR',
+        isOrganizational: false,
+        badge: 'SINGLE-OPERATOR PERSONAL SCOPE',
+        coverage: 'Valid for individual workstation only. Multi-employee clinics, CPA firms, and departments require TEAMS ($99/mo flat, unlimited seats) for organizational audit coverage.',
+        upgradeRecommended: true,
+        upgradeUrl: 'https://privacyscrubber.com/pricing/?tier=teams&utm_source=audit_receipt&utm_medium=scope_upsell'
+    };
+
     return {
         totalCount,
+        totalDetected: totalCount,
         entities,
         types,
         riskLevel,
-        frameworksList: Array.from(frameworksSet),
+        frameworksList,
+        triggeredFrameworks,
+        auditScope,
         statutoryCitations,
         ipHoldings,
         agenticProtocol,
@@ -2460,6 +2610,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         riskLevel: telemetry.riskLevel,
         totalDetected: telemetry.totalDetected,
         entities: telemetry.entities,
+        frameworksList: telemetry.frameworksList,
         triggeredFrameworks: telemetry.triggeredFrameworks,
         profile: targetProfile,
         executionEngine: "ZTDS Client-Side RAM"
@@ -2479,14 +2630,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       report += `* **Status / Risk Level:** \`${telemetry.riskLevel}\`\n`;
       report += `* **Total Entities Detected:** \`${telemetry.totalDetected}\`\n`;
       report += `* **Active Profile:** \`${targetProfile}\` (Engine: ZTDS Client-Side RAM)\n`;
-      report += `* **Triggered Compliance Frameworks:** ${telemetry.triggeredFrameworks.map(f => `\`${f}\``).join(', ')}\n\n`;
+      report += `* **Triggered Compliance Frameworks:** ${(telemetry.frameworksList || []).map(f => `\`${f}\``).join(', ')}\n\n`;
 
       if (telemetry.totalDetected > 0) {
         report += `#### Entity Breakdown\n`;
         report += `| Entity Type | Occurrences | Exposure Severity |\n`;
         report += `| :--- | :--- | :--- |\n`;
         for (const [entityType, count] of Object.entries(telemetry.entities)) {
-          const isHigh = ['ID', 'SSN', 'CREDIT_CARD', 'API_KEY', 'SECRET', 'PASSWORD', 'MRN', 'KEY'].includes(entityType);
+          const isHigh = ['ID', 'SSN', 'CREDIT_CARD', 'PASSPORT', 'BANK', 'API_KEY', 'SECRET', 'PASSWORD', 'MRN', 'KEY', 'PHI', 'PRIVILEGE', 'AWS_KEY', 'STRIPE_KEY', 'JWT_TOKEN', 'API_TOKEN'].includes(entityType);
           report += `| \`${entityType}\` | ${count} | ${isHigh ? 'High Risk' : 'Standard'} |\n`;
         }
         report += `\n> [!CAUTION]\n> **Action Recommended:** This context contains sensitive data. Call \`sanitize_text\` before transmitting to any external LLM model.\n`;
@@ -4256,14 +4407,19 @@ Before reading sensitive files, running terminal commands that may print credent
       const { session_id, all = false, reset_all = false } = args || {};
       if (all || reset_all) {
         const count = agentSessions.size;
+        const defaultSess = agentSessions.get('default');
         for (const sess of agentSessions.values()) {
-          if (sess.streamDetokenizer) {
-            sess.streamDetokenizer.reset();
-          }
+          zeroizeSessionEntry(sess);
         }
         agentSessions.clear();
-        getSessionMap('default');
-        sessionIgnoreList.clear();
+        const now = Date.now();
+        if (defaultSess) {
+          defaultSess.createdAt = now;
+          defaultSess.lastActive = now;
+          agentSessions.set('default', defaultSess);
+        } else {
+          getSession('default');
+        }
         return {
           content: [{
             type: "text",
@@ -4272,14 +4428,20 @@ Before reading sensitive files, running terminal commands that may print credent
         };
       }
 
-      const sid = (session_id || 'default').toString().trim();
+      const sid = (session_id || 'default').toString().trim() || 'default';
       const sess = agentSessions.get(sid);
-      if (sess && sess.streamDetokenizer) {
-        sess.streamDetokenizer.reset();
+      const existed = Boolean(sess);
+      if (sess) {
+        zeroizeSessionEntry(sess);
       }
-      const existed = agentSessions.delete(sid);
       if (sid === 'default') {
-        getSessionMap('default');
+        if (sess) {
+          sess.lastActive = Date.now();
+        } else {
+          getSession('default');
+        }
+      } else {
+        agentSessions.delete(sid);
       }
       return {
         content: [{
