@@ -3,7 +3,7 @@ name: privacyscrubber-guard
 description: Pre-ingestion zero-trust PII, secret, and regulated data sanitization skill for AI coding agents (Claude Code, Cursor, Codex, Gemini CLI, Windsurf) via @privacyscrubber/mcp-server. Intercepts files, shell commands, and prompts in local RAM with 30 specialized industry profiles and SHA-256 compliance receipts.
 metadata:
   author: moxno
-  version: "2.3.8"
+  version: "2.5.0"
   mcp_server: "npx -y @privacyscrubber/mcp-server"
 ---
 
