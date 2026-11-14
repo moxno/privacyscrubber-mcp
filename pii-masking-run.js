@@ -216,6 +216,8 @@ const colors = {
 };
 
 const DEVOPS_SECRETS_DETECTOR = [
+    { name: 'Private Cryptographic Key (PEM Block)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----[\s\S]{10,8192}?-----END (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g, label: 'SECRET' },
+    { name: 'Private Cryptographic Key (Header)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g, label: 'SECRET' },
     { name: 'AWS Credentials', regex: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA)[A-Z0-9]{12,28}\b/g, label: 'AWS_KEY' },
     { name: 'Google Cloud / Gemini API Key', regex: /\bAIza[0-9A-Za-z_-]{35}\b/g, label: 'API_TOKEN' },
     { name: 'Anthropic API Key', regex: /\bsk-ant-(?:api\d{2}|admin\d{2}|sid\d{2})-[a-zA-Z0-9_-]{16,128}\b/g, label: 'API_TOKEN' },
@@ -226,7 +228,7 @@ const DEVOPS_SECRETS_DETECTOR = [
     { name: 'Slack Enterprise / Refresh Token', regex: /\bxoxe\.xox[baprs]-\d-[a-zA-Z0-9-]{10,}\b|\bxox[eapbrs]-[a-zA-Z0-9-]{10,}\b/g, label: 'API_TOKEN' },
     { name: 'Telegram Bot API Token', regex: /\b\d{8,10}:AA[A-Za-z0-9_-]{33}\b/g, label: 'API_TOKEN' },
     { name: 'Age Encryption Secret Key', regex: /\bAGE-SECRET-KEY-1[A-Z0-9]{58}\b/g, label: 'SECRET' },
-    { name: 'Modern Cloud & AI Platform Key', regex: /\b(?:sbp_[a-fA-F0-9]{40}|dop_v1_[a-fA-F0-9]{64}|doo_v1_[a-fA-F0-9]{64}|dp\.(?:st|pt|ct|sa)\.[a-zA-Z0-9_-]{20,}|lin_api_[a-zA-Z0-9]{32,64}|ntn_[a-zA-Z0-9]{32,64}|secret_[a-zA-Z0-9]{32,64}|gsk_[a-zA-Z0-9]{32,64}|r8_[a-zA-Z0-9]{24,64}|tvly-[a-zA-Z0-9_-]{20,64}|fc-[a-fA-F0-9]{32}|dapi[a-fA-F0-9]{32}(?:-\d)?|re_[a-zA-Z0-9_]{20,64}|napi_[a-zA-Z0-9]{32,64}|[a-zA-Z0-9]{14}\.atlasv1\.[a-zA-Z0-9]{50,80}|pypi-[A-Za-z0-9_-]{16,128}|whsec_[A-Za-z0-9+/=_-]{24,128}|shpat_[a-fA-F0-9]{32}|shpss_[a-fA-F0-9]{32}|shpca_[a-fA-F0-9]{32}|shppa_[a-fA-F0-9]{32}|hvs\.[A-Za-z0-9_-]{24,128}|hvb\.[A-Za-z0-9_-]{24,128}|glsa_[A-Za-z0-9]{32}_[A-Fa-f0-9]{8}|glc_[A-Za-z0-9+/=_-]{20,128}|pscale_tkn_[A-Za-z0-9_.-]{20,64}|pscale_pw_[A-Za-z0-9_.-]{20,64}|pat[A-Za-z0-9]{14}\.[a-fA-F0-9]{64}|pat-(?:na1|eu1)-[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}|sq0atp-[A-Za-z0-9_-]{22,64}|sq0csp-[A-Za-z0-9_-]{32,64}|NRAK-[A-Z0-9]{27}|v1\.0-[a-fA-F0-9]{24}-[a-fA-F0-9]{16,160}|ATATT3xFfGF0[A-Za-z0-9+/=_-]{24,128}|tskey-(?:auth|api|client)-[A-Za-z0-9_-]{20,96}|sntry[su]_[A-Za-z0-9+/=_-]{32,160}|(?:pk|sk)\.eyJ1[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{16,}|key-[a-f0-9]{32}|[a-f0-9]{32}-us\d{1,2})\b/g, label: 'API_TOKEN' },
+    { name: 'Modern Cloud & AI Platform Key', regex: /\b(?:sbp_[a-fA-F0-9]{40}|dop_v1_[a-fA-F0-9]{64}|doo_v1_[a-fA-F0-9]{64}|dp\.(?:st|pt|ct|sa)\.[a-zA-Z0-9_-]{20,}|lin_api_[a-zA-Z0-9]{32,64}|ntn_[a-zA-Z0-9]{32,64}|secret_[a-zA-Z0-9]{32,64}|gsk_[a-zA-Z0-9]{32,64}|r8_[a-zA-Z0-9]{24,64}|tvly-[a-zA-Z0-9_-]{20,64}|fc-[a-fA-F0-9]{32}|dapi[a-fA-F0-9]{32}(?:-\d)?|re_[a-zA-Z0-9_]{20,64}|napi_[a-zA-Z0-9]{32,64}|[a-zA-Z0-9]{14}\.atlasv1\.[a-zA-Z0-9]{50,80}|pypi-[A-Za-z0-9_-]{16,128}|whsec_[A-Za-z0-9+/=_-]{24,128}|shpat_[a-fA-F0-9]{32}|shpss_[a-fA-F0-9]{32}|shpca_[a-fA-F0-9]{32}|shppa_[a-fA-F0-9]{32}|hvs\.[A-Za-z0-9_-]{24,128}|hvb\.[A-Za-z0-9_-]{24,128}|glsa_[A-Za-z0-9]{32}_[A-Fa-f0-9]{8}|glc_[A-Za-z0-9+/=_-]{20,128}|pscale_tkn_[A-Za-z0-9_.-]{20,64}|pscale_pw_[A-Za-z0-9_.-]{20,64}|pat[A-Za-z0-9]{14}\.[a-fA-F0-9]{64}|pat-(?:na1|eu1)-[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}|sq0atp-[A-Za-z0-9_-]{22,64}|sq0csp-[A-Za-z0-9_-]{32,64}|NRAK-[A-Z0-9]{27}|v1\.0-[a-fA-F0-9]{24}-[a-fA-F0-9]{16,160}|ATATT3xFfGF0[A-Za-z0-9+/=_-]{24,128}|tskey-(?:auth|api|client)-[A-Za-z0-9_-]{20,96}|sntry[su]_[A-Za-z0-9+/=_-]{32,160}|(?:pk|sk)\.eyJ1[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{16,}|key-[a-f0-9]{32}|[a-fA-F0-9]{32}-us\d{1,2})\b/g, label: 'API_TOKEN' },
     { name: 'Twilio Account SID / API Key', regex: /\b(?:AC|SK)[a-fA-F0-9]{32}\b/g, label: 'API_TOKEN' },
     { name: 'Bcrypt / Argon2 Password Hash', regex: /(?<![A-Za-z0-9])(?:\$2[aby]\$\d{2}\$[./A-Za-z0-9=]{20,60}|\$argon2(?:id|i|d)\$[^\s"']{15,120})/g, label: 'SECRET' },
     { name: 'JSON Web Token (JWT)', regex: /\beyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b/g, label: 'JWT_TOKEN' },
@@ -236,15 +238,13 @@ const DEVOPS_SECRETS_DETECTOR = [
     { name: 'Slack / Discord Incoming Webhook URL', regex: /\bhttps:\/\/(?:hooks\.slack\.com\/services\/T[A-Z0-9_]+\/B[A-Z0-9_]+\/[A-Za-z0-9_-]+|(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d{17,20}\/[A-Za-z0-9_-]{60,70})\b/gi, label: 'SECRET' },
     { name: 'Azure Connection String / SAS Token', regex: /(?:DefaultEndpointsProtocol=https?;AccountName=[^;\s"']+;AccountKey=[A-Za-z0-9+/=]{20,}(?:;EndpointSuffix=[^;\s"']+)?|Endpoint=sb:\/\/[^;\s"']+;SharedAccessKeyName=[^;\s"']+;SharedAccessKey=[A-Za-z0-9+/=]{16,}|\bSharedAccessSignature=sr=[^\s"']+&sig=[A-Za-z0-9%/+=]{16,}|\bAccountKey=[A-Za-z0-9+/=]{40,88}==)/gi, label: 'SECRET' },
     { name: 'Database Connection URI', regex: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql):\/\/[^\s"']+/gi, label: 'DB_URI' },
-    { name: 'Embedded Credentials URI', regex: /\b(?:https?|hxxps?|s?ftp|fxp|wss?):\/\/[a-zA-Z0-9_.%+-]+:[^\s/@:"']+@[a-zA-Z0-9_.-]+(?:\[\.\][a-zA-Z0-9_.-]+|\(\.\)[a-zA-Z0-9_.-]+)*(?::\d+)?(?:\/[^\s"']*)?/gi, label: 'SECRET' },
+    { name: 'Embedded Credentials URI', regex: /\b(?:h(?:tt|xx)ps?|s?f(?:t|x)p|wss?):\/\/[a-zA-Z0-9_.%+-]+:[^\s/@:"']+@[a-zA-Z0-9_.-]+(?:(?:\[\.\]|\(\.\))[a-zA-Z0-9_.-]+)*(?::\d+)?(?:\/[^\s"']*)?/gi, label: 'SECRET' },
     { name: 'URL Query Parameter Secret', regex: /(?<=[?&](?:api_key|apikey|access_token|client_secret|auth_token|token|secret|password|private_key)=)[^\s"'\x26#)>]{8,}/gi, label: 'SECRET' },
     { name: 'CLI Credential Flag / Curl User Auth', regex: /(?:\bcurl\b[^\r\n]*?\s(?:-u|--user)\s+["']?[A-Za-z0-9_.+-]+:[^\s"']+|\b(?:--password|--api-key|--apikey|--access-token|--auth-token|--client-secret|--secret-key|--private-key)(?:=|\s+)["']?[^\s"']{6,}["']?)/gi, label: 'SECRET' },
     { name: 'HTTP API Key Header', regex: /\b(?:X-API-Key|X-Amz-Security-Token|X-Functions-Key|X-Shopify-Access-Token|X-Auth-Token|Api-Key)\s*:\s*["']?[A-Za-z0-9_.\-~+/=]{12,}["']?/gi, label: 'SECRET' },
     { name: 'Docker Registry Auth / K8s Secret Base64', regex: /(?<=["']?(?:auth|identitytoken|registrytoken|\.dockerconfigjson)["']?\s*:\s*["'])[A-Za-z0-9+/=]{16,}(?=["'])/gi, label: 'SECRET' },
-    { name: 'Bearer / Auth Header Token', regex: /(?<=\b(?:Bearer|Token)\s+)[a-zA-Z0-9_\-\.~+/=]{16,}\b/gi, label: 'SECRET' },
-    { name: 'Database/API Secret', regex: /\b(DB|POSTGRES|REDIS|MYSQL|AWS|SECRET|PASSWORD|TOKEN|API|KEY)[A-Z0-9_]*\s*[:=]\s*[^ \t\r\n"']{8,}/gi, label: 'SECRET' },
-    { name: 'Private Cryptographic Key (PEM Block)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----[\s\S]{10,8192}?-----END (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g, label: 'SECRET' },
-    { name: 'Private Cryptographic Key (Header)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g, label: 'SECRET' }
+    { name: 'Bearer / Basic Auth Header Token', regex: /(?:(?<=\b(?:Bearer|Token)\s+)[a-zA-Z0-9_\-\.~+/=]{16,}(?![a-zA-Z0-9_\-\.~+/=])|(?<=\bAuthorization\s*:\s*Basic\s+)[A-Za-z0-9+/=]{8,}(?![A-Za-z0-9+/=]))/gi, label: 'SECRET' },
+    { name: 'Database/API Secret', regex: /(?<![?&])\b(?:(?:DB|POSTGRES|REDIS|MYSQL|DATABASE)[-_]?(?:PASSWORD|PASS|SECRET|KEY|PWD|CREDENTIALS?|TOKEN|AUTH)|AWS[-_]?(?:SECRET_ACCESS_KEY|SECRET_KEY|SESSION_TOKEN|SECURITY_TOKEN)|API[-_]?(?:KEY|SECRET|TOKEN|PASS|PASSWORD|AUTH|CREDENTIALS?)|[A-Za-z0-9_]*SECRET[A-Za-z0-9_]*|[A-Za-z0-9_]*PASSWORD[A-Za-z0-9_]*|[A-Za-z0-9_]*PASSWD[A-Za-z0-9_]*|[A-Za-z0-9_]*TOKEN[A-Za-z0-9_]*|ENCRYPTION[-_]KEY)[ \t]*[:=][ \t]*["']?(?:Bearer\s+)?(?!\[[A-Z0-9_]+_\d+\])([^\s"'&;\r\n,]{6,}?)(?=[.)?:]*(?:["'\s&;\r\n,]|$))/gi, label: 'SECRET' }
 ];
 
 let LicenseManager;
@@ -393,14 +393,27 @@ function performSanitization(text) {
 }
 
 function buildCisoAuditTelemetry(currentTokenMap = {}) {
+  // Cross-plane classification SSOT (keep identical in src/modules/audit-telemetry.js, mcp-server/index.js,
+  // mcp-server/pii-masking-run.js, npm-sdk/index.js, npm-sdk/browser.js; parity: tests/test-swarm-v1-engine-parity.js)
+  const TELEMETRY_TYPE_SETS = {
+    highRisk: ['ID', 'SSN', 'CREDIT_CARD', 'PASSPORT', 'BANK', 'IBAN', 'FINANCIAL', 'TAX_ID', 'API_KEY', 'SECRET', 'PASSWORD', 'PRIVATE_KEY', 'MRN', 'MEDICAL_ID', 'KEY', 'PHI', 'PRIVILEGE', 'LEGAL', 'AWS_KEY', 'STRIPE_KEY', 'OPENAI_KEY', 'JWT_TOKEN', 'API_TOKEN', 'DB_URI'],
+    gdpr: ['NAME', 'EMAIL', 'PHONE', 'ADDRESS', 'LOCATION', 'IP', 'USER'],
+    soc2: ['ID', 'SSN', 'PASSPORT', 'NATIONAL_ID', 'TFN', 'ABN'],
+    pci: ['CREDIT_CARD', 'BANK', 'IBAN', 'FINANCIAL', 'CARD', 'STRIPE_KEY', 'TAX_ID', 'EIN', 'W2', '1099', 'SALARY', 'WAGE', 'BSB', 'ATO', 'GST', 'PAYG', 'SEPA', 'SWIFT'],
+    hipaa: ['PHI', 'MRN', 'MEDICAL_ID', 'HEALTH', 'MEDICAL', 'PATIENT', 'DIAGNOSIS', 'NPI', 'DEA'],
+    fre502: ['PRIVILEGE', 'CASE_NUMBER', 'DOCKET', 'PRIVILEGED', 'LEGAL', 'ATTORNEY', 'COURT', 'CONTRACT', 'NDA'],
+    nist: ['API_KEY', 'SECRET', 'PASSWORD', 'PRIVATE_KEY', 'TOKEN', 'KEY', 'AWS_KEY', 'STRIPE_KEY', 'OPENAI_KEY', 'JWT_TOKEN', 'API_TOKEN', 'DB_URI', 'CREDENTIAL']
+  };
   const entities = {};
   let totalCount = 0;
   if (currentTokenMap && typeof currentTokenMap === 'object') {
     const keys = Array.isArray(currentTokenMap) ? currentTokenMap : Object.keys(currentTokenMap);
     for (const t of keys) {
-      const tokenStr = typeof t === 'string' ? t : (t.token || t.mask || '');
-      const match = tokenStr.match(/\[([A-Z0-9_]+)_\d+\]/);
-      const baseType = match ? match[1] : (tokenStr.replace(/\[|\]/g, '').replace(/_[0-9]+$/, '') || 'CUSTOM');
+      const tokenStr = typeof t === 'string' ? t : (t && (t.token || t.mask)) ? String(t.token || t.mask) : '';
+      if (!tokenStr) continue;
+      const match = tokenStr.match(/\[([A-Za-z0-9_]+)_\d+\]/);
+      const rawBase = match ? match[1] : tokenStr.replace(/\[|\]|<|>|\{|\}|__/g, '').replace(/_[0-9]+$/, '');
+      const baseType = (rawBase.replace(/[^A-Za-z0-9_]/g, '') || 'CUSTOM').toUpperCase();
       entities[baseType] = (entities[baseType] || 0) + 1;
       totalCount++;
     }
@@ -408,7 +421,7 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
   const types = Object.keys(entities);
   let riskLevel = 'LOW EXPOSURE';
   if (totalCount > 0) {
-    const hasHighRisk = types.some(t => ['ID', 'SSN', 'CREDIT_CARD', 'PASSPORT', 'BANK', 'API_KEY', 'SECRET', 'PASSWORD', 'MRN', 'KEY', 'AWS_KEY', 'STRIPE_KEY', 'JWT_TOKEN', 'API_TOKEN'].includes(t));
+    const hasHighRisk = types.some(t => TELEMETRY_TYPE_SETS.highRisk.includes(t));
     if (hasHighRisk || types.length >= 3 || totalCount >= 10) {
       riskLevel = 'CRITICAL (HIGH EXPOSURE)';
     } else if (types.length >= 2 || totalCount >= 3) {
@@ -420,25 +433,25 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
     riskLevel = 'CLEAN (ZERO PII)';
   }
   const frameworksSet = new Set(['ZTDS Standard']);
-  if (types.includes('NAME') || types.includes('EMAIL') || types.includes('PHONE')) {
+  if (types.some(t => TELEMETRY_TYPE_SETS.gdpr.includes(t))) {
     frameworksSet.add('GDPR (Art. 4)');
     frameworksSet.add('CCPA/CPRA');
   }
-  if (types.includes('ID') || types.includes('SSN') || types.includes('PASSPORT') || types.includes('NATIONAL_ID')) {
+  if (types.some(t => TELEMETRY_TYPE_SETS.soc2.includes(t))) {
     frameworksSet.add('SOC 2 controls');
     frameworksSet.add('ISO 27001 A.8.11 controls');
   }
-  if (types.some(t => ['CREDIT_CARD', 'BANK', 'IBAN', 'FINANCIAL', 'CARD', 'STRIPE_KEY', 'TAX_ID', 'EIN', 'W2', '1099', 'SALARY', 'WAGE'].includes(t))) {
+  if (types.some(t => TELEMETRY_TYPE_SETS.pci.includes(t))) {
     frameworksSet.add('PCI DSS v4.0');
     frameworksSet.add('IRC § 7216 & GLBA');
   }
-  if (types.some(t => ['MRN', 'HEALTH', 'MEDICAL', 'PATIENT', 'DIAGNOSIS', 'NPI', 'DEA'].includes(t))) {
+  if (types.some(t => TELEMETRY_TYPE_SETS.hipaa.includes(t))) {
     frameworksSet.add('HIPAA §164.514');
   }
-  if (types.some(t => ['CASE_NUMBER', 'DOCKET', 'PRIVILEGED', 'LEGAL', 'ATTORNEY', 'COURT', 'CONTRACT', 'NDA'].includes(t))) {
+  if (types.some(t => TELEMETRY_TYPE_SETS.fre502.includes(t))) {
     frameworksSet.add('FRE 502 (Privilege)');
   }
-  if (types.some(t => ['API_KEY', 'SECRET', 'PASSWORD', 'TOKEN', 'KEY', 'AWS_KEY', 'JWT_TOKEN', 'API_TOKEN', 'CREDENTIAL'].includes(t))) {
+  if (types.some(t => TELEMETRY_TYPE_SETS.nist.includes(t))) {
     frameworksSet.add('NIST SP 800-53');
   }
   if (totalCount > 0) {
@@ -496,12 +509,30 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
     }
   ];
 
+  const frameworksList = Array.from(frameworksSet);
+  const frameworkSlug = (name) => {
+    const lower = name.toLowerCase();
+    if (lower.includes('gdpr')) return 'gdpr';
+    if (lower.includes('ccpa')) return 'ccpa';
+    if (lower.includes('soc')) return 'soc2';
+    if (lower.includes('iso')) return 'iso27001';
+    if (lower.includes('pci')) return 'pci';
+    if (lower.includes('hipaa')) return 'hipaa';
+    if (lower.includes('nist')) return 'nist';
+    if (lower.includes('irc') || lower.includes('7216')) return 'irc7216';
+    if (lower.includes('fre') || lower.includes('502')) return 'fre502';
+    if (lower.includes('ai act')) return 'euaiact';
+    return lower.replace(/[^a-z0-9]/g, '');
+  };
+
   return {
     totalCount,
+    totalDetected: totalCount,
     entities,
     types,
     riskLevel,
-    frameworksList: Array.from(frameworksSet),
+    frameworksList,
+    triggeredFrameworks: frameworksList.map(name => ({ name, id: frameworkSlug(name) })),
     statutoryCitations,
     ipHoldings,
     agenticProtocol,
@@ -569,7 +600,7 @@ function emitProofFeedback() {
   if (totalMasked > 0) {
     process.stderr.write(`\x1b[36m[ps-guard] ${totalMasked} item(s) masked · 0 bytes egress · Zero-Trust RAM verified\x1b[0m\n`);
     const telemetry = buildCisoAuditTelemetry(localSessionMap);
-    const hasSecrets = (telemetry.types || []).some(t => ['API_KEY', 'SECRET', 'PASSWORD', 'TOKEN', 'KEY', 'CREDIT_CARD', 'BANK', 'ID', 'SSN'].includes(t));
+    const hasSecrets = (telemetry.types || []).some(t => ['API_KEY', 'SECRET', 'PASSWORD', 'TOKEN', 'KEY', 'CREDIT_CARD', 'BANK', 'ID', 'SSN', 'AWS_KEY', 'API_TOKEN', 'JWT_TOKEN', 'STRIPE_KEY', 'OPENAI_KEY', 'DB_URI', 'PRIVATE_KEY', 'TAX_ID', 'MEDICAL_ID'].includes(t));
     if (hasSecrets || totalMasked >= 3) {
       process.stderr.write(`\x1b[33m[ps-guard] Saved credentials/PII from model egress. Star the project: https://github.com/moxno/privacyscrubber-mcp\x1b[0m\n`);
       process.stderr.write(`\x1b[90m           One-click CLI: gh repo star moxno/privacyscrubber-mcp | Feedback: https://privacyscrubber.com/uninstall/?mode=feedback&src=cli\x1b[0m\n`);

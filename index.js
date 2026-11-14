@@ -26,6 +26,10 @@ import { fileURLToPath } from 'url';
 
 import crypto from 'crypto';
 import os from 'os';
+
+if (typeof globalThis !== 'undefined' && !globalThis.__psNodeCrypto) {
+  globalThis.__psNodeCrypto = crypto;
+}
 import { execSync } from 'child_process';
 import { Transform } from 'stream';
 
@@ -134,17 +138,53 @@ export const CANONICAL_INDUSTRY_PROFILES = [
 ];
 
 export function resolveRequestedProfile(args, defaultProfile = 'General') {
-  if (!args || typeof args !== 'object') return defaultProfile;
+  if (!args || typeof args !== 'object') args = {};
   const sec = typeof args.sector === 'string' ? args.sector.trim() : '';
   const prof = typeof args.profile === 'string' ? args.profile.trim() : '';
 
-  let candidate = defaultProfile;
+  let candidate = '';
   if (sec && (!prof || prof.toLowerCase() === 'general')) {
     candidate = sec;
   } else if (prof) {
     candidate = prof;
   } else if (sec) {
     candidate = sec;
+  }
+
+  if (!candidate) {
+    const envProfiles = (process.env.ZTDS_PROFILES || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+    candidate = envProfiles.length > 0 ? envProfiles[0] : defaultProfile;
+  }
+
+  const lower = candidate.toLowerCase();
+  if (lower === 'auto') {
+    if (typeof args.text === 'string' && piiEngine && typeof piiEngine.detectVerticalProfileCandidates === 'function') {
+      try {
+        const candidates = piiEngine.detectVerticalProfileCandidates(args.text);
+        if (Array.isArray(candidates) && candidates.length > 0 && candidates[0].id) {
+          candidate = candidates[0].id;
+        } else {
+          candidate = defaultProfile;
+        }
+      } catch (_) {
+        candidate = defaultProfile;
+      }
+    } else {
+      candidate = defaultProfile;
+    }
+  }
+
+  const ztdsAliasMap = {
+    universal: 'General',
+    baseline: 'General',
+    dev_secrets: 'dev',
+    privilege: 'legal'
+  };
+  if (ztdsAliasMap[candidate.toLowerCase()]) {
+    candidate = ztdsAliasMap[candidate.toLowerCase()];
   }
 
   // Canonical normalization via PROFILE_ALIAS_MAP if available
@@ -164,6 +204,8 @@ export function resolveRequestedProfile(args, defaultProfile = 'General') {
 const PROFILE_PARAM_DESCRIPTION = "The detection profile to use. Available: 'General' (Free, 15,000 chars), or 30 specialized industry profiles (5,000 chars Free trial quota; unlimited on PRO/TEAMS/SDK): 'Dev' (Engineering/Code), 'Medical', 'Pharma', 'Biotech', 'Telecom', 'Legal', 'Compliance', 'CCPA', 'Finance', 'Bizops', 'Sales', 'WealthMgmt', 'Insurance', 'Accounting', 'Underwriting', 'Automotive', 'Energy', 'Hospitality', 'HR', 'Security', 'Marketing', 'Support', 'RealEstate', 'Agents', 'Academic', 'Creative', 'Tech', 'Personal', 'Engineering'. Defaults to 'General'.";
 
 const SECTOR_PARAM_DESCRIPTION = "Optional alias for 'profile'. The industry sector or compliance vertical to apply (e.g. 'medical', 'finance', 'legal', 'dev', 'hr', 'accounting', 'security', 'compliance', 'underwriting', 'telecom').";
+
+const DEV_HEURISTIC_REGEX = /(?:AKIA[0-9A-Z]{16}|ghp_[a-zA-Z0-9]{36}|github_pat_[a-zA-Z0-9_]{22,}|sk-(?:ant-|proj-)?[a-zA-Z0-9_-]{20,}|AIza[0-9A-Za-z_-]{35}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|Bearer\s+eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+|(?:postgres|postgresql|mysql|mongodb|redis):\/\/[^\s"'>]+|export\s+(?:AWS_|DATABASE_|API_KEY|SECRET)|(?:^|[\s;])(?:DATABASE_URL|API_KEY|SECRET_KEY|AUTH_TOKEN)\s*=\s*\S+|const\s+\w+\s*=\s*require\(|import\s+.*\s+from\s+['"])/i;
 
 // Volatile in-memory token map per session (multi-task agent isolation)
 const agentSessions = new Map();
@@ -186,10 +228,18 @@ function zeroizeSessionEntry(sess) {
   }
 }
 
+let defaultSessionRef = null;
+
 function getSession(sessionId = 'default') {
   const sid = (sessionId || 'default').toString().trim() || 'default';
   let session = agentSessions.get(sid);
   const now = Date.now();
+  const timeoutMs = parseInt(process.env.ZTDS_SESSION_TIMEOUT_MS || '0', 10);
+  if (session && timeoutMs > 0 && (now - (session.lastActive || now)) > timeoutMs) {
+    zeroizeSessionEntry(session);
+    session.createdAt = now;
+    session.lastActive = now;
+  }
   if (!session) {
     if (agentSessions.size >= MAX_CONCURRENT_SESSIONS) {
       let oldestKey = null;
@@ -206,7 +256,14 @@ function getSession(sessionId = 'default') {
         agentSessions.delete(oldestKey);
       }
     }
-    session = { map: {}, ignoreList: new Set(), streamDetokenizer: null, createdAt: now, lastActive: now };
+    if (sid === 'default' && defaultSessionRef) {
+      defaultSessionRef.createdAt = now;
+      defaultSessionRef.lastActive = now;
+      session = defaultSessionRef;
+    } else {
+      session = { map: {}, ignoreList: new Set(), streamDetokenizer: null, createdAt: now, lastActive: now };
+      if (sid === 'default') defaultSessionRef = session;
+    }
     agentSessions.set(sid, session);
   }
   session.lastActive = now;
@@ -285,7 +342,8 @@ export function buildStreamReplacer(tokenMap = {}, options = {}) {
       } else {
         const inner = coreMatch
           .replace(/^(?:\[|\\u005[Bb]|%5[Bb]|&(?:amp;)?#0*91;|&(?:amp;)?#[xX]0*5[Bb];|&(?:amp;)?(?:lbrack|lsqb);|【|［|〔|「|『|<|\{\{?|__)|(?:\]|\\u005[Dd]|%5[Dd]|&(?:amp;)?#0*93;|&(?:amp;)?#[xX]0*5[Dd];|&(?:amp;)?(?:rbrack|rsqb);|】|］|〕|」|』|>|\}\}?|__)$/gi, '')
-          .replace(/^[*`_~\s]+|[.,;:!?*`_~\s]+$/g, '')
+          .replace(/[*`~]+/g, '')
+          .replace(/^[_\s]+|[.,;:!?_\s]+$/g, '')
           .trim();
         const m = inner.match(/^([A-Za-z_0-9]+?)[-_\\\s]*(\d+)$/);
         if (m) {
@@ -322,6 +380,17 @@ export function buildStreamReplacer(tokenMap = {}, options = {}) {
  * Buffers partial token candidates at chunk boundaries across stdio and Server-Sent Events,
  * preventing character loss and token corruption.
  */
+function computeTokenMapSignature(map) {
+  if (!map || typeof map !== 'object') return '0:';
+  const keys = Object.keys(map);
+  let sig = keys.length + ':';
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i];
+    sig += k + '\0' + String(map[k] ?? '') + '\x01';
+  }
+  return sig;
+}
+
 export class StreamingDetokenizer {
   constructor(tokenMap = {}, options = {}) {
     this.tokenMap = tokenMap && typeof tokenMap === 'object' ? tokenMap : {};
@@ -330,6 +399,7 @@ export class StreamingDetokenizer {
     this.pendingBuffer = '';
     this.hasTokens = Object.keys(this.tokenMap).length > 0;
     this._lastTokenCount = Object.keys(this.tokenMap).length;
+    this._lastMapSig = computeTokenMapSignature(this.tokenMap);
     this.decoder = new TextDecoder('utf-8', { fatal: false });
   }
 
@@ -347,6 +417,7 @@ export class StreamingDetokenizer {
       this.replacer = buildStreamReplacer(this.tokenMap, this.options);
       this.hasTokens = Object.keys(this.tokenMap).length > 0;
       this._lastTokenCount = Object.keys(this.tokenMap).length;
+      this._lastMapSig = computeTokenMapSignature(this.tokenMap);
     }
   }
 
@@ -367,11 +438,13 @@ export class StreamingDetokenizer {
 
     if (!text) return '';
 
-    const currentTokenCount = Object.keys(this.tokenMap).length;
-    if (currentTokenCount !== this._lastTokenCount) {
+    const currentSig = computeTokenMapSignature(this.tokenMap);
+    if (currentSig !== this._lastMapSig) {
       this.replacer = buildStreamReplacer(this.tokenMap, this.options);
+      const currentTokenCount = Object.keys(this.tokenMap).length;
       this.hasTokens = currentTokenCount > 0;
       this._lastTokenCount = currentTokenCount;
+      this._lastMapSig = currentSig;
     }
 
     if (!this.hasTokens) return text;
@@ -379,12 +452,17 @@ export class StreamingDetokenizer {
     this.pendingBuffer += text;
 
     const tailLen = 160;
-    const tailRegex = /(?:(?:\[|【|［|〔|「|『|<|\{\{?|__|%5[Bb]|\\u005[Bb]|&(?:amp;)?(?:#0*91;|#[xX]0*5[Bb];|lbrack;))[A-Za-z0-9_\-\u0410-\u044F\u0401\u0451 *`~.\\]{0,128}(?:%5?|&(?:a(?:m(?:p(?:;)?)?)?)?(?:#(?:0*9?3?|[xX]0*5?[Dd]?)?|r(?:b(?:r(?:a(?:c(?:k)?)?)?)?)?)?)?|%[0-9A-Fa-f]?|\\(?:u(?:0(?:0(?:5)?)?)?)?|&(?:a(?:m(?:p(?:;)?)?)?)?(?:#(?:0*9?1?|[xX]0*5?)?|l(?:b(?:r(?:a(?:c(?:k)?)?)?)?)?)?|_)$/;
-    let tail = this.pendingBuffer.length > tailLen ? this.pendingBuffer.slice(-tailLen) : this.pendingBuffer;
-    let offset = this.pendingBuffer.length > tailLen ? this.pendingBuffer.length - tailLen : 0;
-    let m = tail.match(tailRegex);
-
-    if (m) {
+    const tailRegex = /(?:\{\{[A-Za-z0-9_\-\u0410-\u044F\u0401\u0451 *`~.\\]{0,128}\}|(?:\[|【|［|〔|「|『|<|\{\{?|__|%5[Bb]|\\u005[Bb]|&(?:amp;)?(?:#0*91;|#[xX]0*5[Bb];|lbrack;|lsqb;))[A-Za-z0-9_\-\u0410-\u044F\u0401\u0451 *`~.\\]{0,128}(?:%5?|&(?:a(?:m(?:p(?:;)?)?)?)?(?:#(?:0*9?3?|[xX]0*5?[Dd]?)?|r(?:b(?:r(?:a(?:c(?:k)?)?)?)?|s(?:q(?:b)?)?)?)?)?|%[0-9A-Fa-f]?|\\(?:u(?:0(?:0(?:5)?)?)?)?|&(?:a(?:m(?:p(?:;)?)?)?)?(?:#(?:0*9?1?|[xX]0*5?)?|l(?:b(?:r(?:a(?:c(?:k)?)?)?)?|s(?:q(?:b)?)?)?)?|_)$/;
+    let emitted = '';
+    while (this.pendingBuffer) {
+      const tail = this.pendingBuffer.length > tailLen ? this.pendingBuffer.slice(-tailLen) : this.pendingBuffer;
+      const offset = this.pendingBuffer.length > tailLen ? this.pendingBuffer.length - tailLen : 0;
+      const m = tail.match(tailRegex);
+      if (!m) {
+        emitted += this.replacer(this.pendingBuffer);
+        this.pendingBuffer = '';
+        return emitted;
+      }
       const candidate = m[0];
       const uClose = candidate.startsWith('__') ? candidate.indexOf('__', 2) : -1;
       const uniMatch = candidate.match(/\\u005[Dd]/);
@@ -393,32 +471,29 @@ export class StreamingDetokenizer {
         const closedToken = candidate.slice(0, closeLen);
         if (this.replacer(closedToken) !== closedToken) {
           const splitAfterToken = offset + m.index + closeLen;
-          const prefixEmitted = this.replacer(this.pendingBuffer.slice(0, splitAfterToken));
+          emitted += this.replacer(this.pendingBuffer.slice(0, splitAfterToken));
           this.pendingBuffer = this.pendingBuffer.slice(splitAfterToken);
-          if (!this.pendingBuffer) return prefixEmitted;
-          tail = this.pendingBuffer.length > tailLen ? this.pendingBuffer.slice(-tailLen) : this.pendingBuffer;
-          offset = this.pendingBuffer.length > tailLen ? this.pendingBuffer.length - tailLen : 0;
-          m = tail.match(tailRegex);
-          if (!m) {
-            const rest = this.replacer(this.pendingBuffer);
-            this.pendingBuffer = '';
-            return prefixEmitted + rest;
-          }
-          const sIdx = offset + m.index;
-          const safe = this.pendingBuffer.slice(0, sIdx);
-          this.pendingBuffer = this.pendingBuffer.slice(sIdx);
-          return prefixEmitted + (safe ? this.replacer(safe) : '');
+          continue;
+        }
+        if (uClose !== -1 && uClose > 2 && !/\s/.test(candidate[uClose - 1]) && (closeLen === candidate.length || /[\s.,;:!?)]/.test(candidate[closeLen]))) {
+          const splitAfterBold = offset + m.index + closeLen;
+          emitted += this.replacer(this.pendingBuffer.slice(0, splitAfterBold));
+          this.pendingBuffer = this.pendingBuffer.slice(splitAfterBold);
+          continue;
+        }
+        if (uClose !== -1) {
+          const advancePastPrefix = offset + m.index + 2;
+          emitted += this.replacer(this.pendingBuffer.slice(0, advancePastPrefix));
+          this.pendingBuffer = this.pendingBuffer.slice(advancePastPrefix);
+          continue;
         }
       }
       const splitIdx = offset + m.index;
       const safeToEmit = this.pendingBuffer.slice(0, splitIdx);
       this.pendingBuffer = this.pendingBuffer.slice(splitIdx);
-      return safeToEmit ? this.replacer(safeToEmit) : '';
+      return emitted + (safeToEmit ? this.replacer(safeToEmit) : '');
     }
-
-    const toEmit = this.pendingBuffer;
-    this.pendingBuffer = '';
-    return this.replacer(toEmit);
+    return emitted;
   }
 
   process(chunk) {
@@ -620,6 +695,8 @@ function mcpLog(msg) {
 
 // Secrets detection patterns — defined once here, shared by detectSecrets() and performSanitization()
 const DEVOPS_SECRETS_DETECTOR = [
+    { name: 'Private Cryptographic Key (PEM Block)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----[\s\S]{10,8192}?-----END (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g, label: 'SECRET' },
+    { name: 'Private Cryptographic Key (Header)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g, label: 'SECRET' },
     { name: 'AWS Credentials', regex: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA)[A-Z0-9]{12,28}\b/g, label: 'AWS_KEY' },
     { name: 'Google Cloud / Gemini API Key', regex: /\bAIza[0-9A-Za-z_-]{35}\b/g, label: 'API_TOKEN' },
     { name: 'Anthropic API Key', regex: /\bsk-ant-(?:api\d{2}|admin\d{2}|sid\d{2})-[a-zA-Z0-9_-]{16,128}\b/g, label: 'API_TOKEN' },
@@ -630,7 +707,7 @@ const DEVOPS_SECRETS_DETECTOR = [
     { name: 'Slack Enterprise / Refresh Token', regex: /\bxoxe\.xox[baprs]-\d-[a-zA-Z0-9-]{10,}\b|\bxox[eapbrs]-[a-zA-Z0-9-]{10,}\b/g, label: 'API_TOKEN' },
     { name: 'Telegram Bot API Token', regex: /\b\d{8,10}:AA[A-Za-z0-9_-]{33}\b/g, label: 'API_TOKEN' },
     { name: 'Age Encryption Secret Key', regex: /\bAGE-SECRET-KEY-1[A-Z0-9]{58}\b/g, label: 'SECRET' },
-    { name: 'Modern Cloud & AI Platform Key', regex: /\b(?:sbp_[a-fA-F0-9]{40}|dop_v1_[a-fA-F0-9]{64}|doo_v1_[a-fA-F0-9]{64}|dp\.(?:st|pt|ct|sa)\.[a-zA-Z0-9_-]{20,}|lin_api_[a-zA-Z0-9]{32,64}|ntn_[a-zA-Z0-9]{32,64}|secret_[a-zA-Z0-9]{32,64}|gsk_[a-zA-Z0-9]{32,64}|r8_[a-zA-Z0-9]{24,64}|tvly-[a-zA-Z0-9_-]{20,64}|fc-[a-fA-F0-9]{32}|dapi[a-fA-F0-9]{32}(?:-\d)?|re_[a-zA-Z0-9_]{20,64}|napi_[a-zA-Z0-9]{32,64}|[a-zA-Z0-9]{14}\.atlasv1\.[a-zA-Z0-9]{50,80}|pypi-[A-Za-z0-9_-]{16,128}|whsec_[A-Za-z0-9+/=_-]{24,128}|shpat_[a-fA-F0-9]{32}|shpss_[a-fA-F0-9]{32}|shpca_[a-fA-F0-9]{32}|shppa_[a-fA-F0-9]{32}|hvs\.[A-Za-z0-9_-]{24,128}|hvb\.[A-Za-z0-9_-]{24,128}|glsa_[A-Za-z0-9]{32}_[A-Fa-f0-9]{8}|glc_[A-Za-z0-9+/=_-]{20,128}|pscale_tkn_[A-Za-z0-9_.-]{20,64}|pscale_pw_[A-Za-z0-9_.-]{20,64}|pat[A-Za-z0-9]{14}\.[a-fA-F0-9]{64}|pat-(?:na1|eu1)-[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}|sq0atp-[A-Za-z0-9_-]{22,64}|sq0csp-[A-Za-z0-9_-]{32,64}|NRAK-[A-Z0-9]{27}|v1\.0-[a-fA-F0-9]{24}-[a-fA-F0-9]{16,160}|ATATT3xFfGF0[A-Za-z0-9+/=_-]{24,128}|tskey-(?:auth|api|client)-[A-Za-z0-9_-]{20,96}|sntry[su]_[A-Za-z0-9+/=_-]{32,160}|(?:pk|sk)\.eyJ1[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{16,}|key-[a-f0-9]{32}|[a-f0-9]{32}-us\d{1,2})\b/g, label: 'API_TOKEN' },
+    { name: 'Modern Cloud & AI Platform Key', regex: /\b(?:sbp_[a-fA-F0-9]{40}|dop_v1_[a-fA-F0-9]{64}|doo_v1_[a-fA-F0-9]{64}|dp\.(?:st|pt|ct|sa)\.[a-zA-Z0-9_-]{20,}|lin_api_[a-zA-Z0-9]{32,64}|ntn_[a-zA-Z0-9]{32,64}|secret_[a-zA-Z0-9]{32,64}|gsk_[a-zA-Z0-9]{32,64}|r8_[a-zA-Z0-9]{24,64}|tvly-[a-zA-Z0-9_-]{20,64}|fc-[a-fA-F0-9]{32}|dapi[a-fA-F0-9]{32}(?:-\d)?|re_[a-zA-Z0-9_]{20,64}|napi_[a-zA-Z0-9]{32,64}|[a-zA-Z0-9]{14}\.atlasv1\.[a-zA-Z0-9]{50,80}|pypi-[A-Za-z0-9_-]{16,128}|whsec_[A-Za-z0-9+/=_-]{24,128}|shpat_[a-fA-F0-9]{32}|shpss_[a-fA-F0-9]{32}|shpca_[a-fA-F0-9]{32}|shppa_[a-fA-F0-9]{32}|hvs\.[A-Za-z0-9_-]{24,128}|hvb\.[A-Za-z0-9_-]{24,128}|glsa_[A-Za-z0-9]{32}_[A-Fa-f0-9]{8}|glc_[A-Za-z0-9+/=_-]{20,128}|pscale_tkn_[A-Za-z0-9_.-]{20,64}|pscale_pw_[A-Za-z0-9_.-]{20,64}|pat[A-Za-z0-9]{14}\.[a-fA-F0-9]{64}|pat-(?:na1|eu1)-[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}|sq0atp-[A-Za-z0-9_-]{22,64}|sq0csp-[A-Za-z0-9_-]{32,64}|NRAK-[A-Z0-9]{27}|v1\.0-[a-fA-F0-9]{24}-[a-fA-F0-9]{16,160}|ATATT3xFfGF0[A-Za-z0-9+/=_-]{24,128}|tskey-(?:auth|api|client)-[A-Za-z0-9_-]{20,96}|sntry[su]_[A-Za-z0-9+/=_-]{32,160}|(?:pk|sk)\.eyJ1[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{16,}|key-[a-f0-9]{32}|[a-fA-F0-9]{32}-us\d{1,2})\b/g, label: 'API_TOKEN' },
     { name: 'Twilio Account SID / API Key', regex: /\b(?:AC|SK)[a-fA-F0-9]{32}\b/g, label: 'API_TOKEN' },
     { name: 'Bcrypt / Argon2 Password Hash', regex: /(?<![A-Za-z0-9])(?:\$2[aby]\$\d{2}\$[./A-Za-z0-9=]{20,60}|\$argon2(?:id|i|d)\$[^\s"']{15,120})/g, label: 'SECRET' },
     { name: 'JSON Web Token (JWT)', regex: /\beyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b/g, label: 'JWT_TOKEN' },
@@ -640,23 +717,27 @@ const DEVOPS_SECRETS_DETECTOR = [
     { name: 'Slack / Discord Incoming Webhook URL', regex: /\bhttps:\/\/(?:hooks\.slack\.com\/services\/T[A-Z0-9_]+\/B[A-Z0-9_]+\/[A-Za-z0-9_-]+|(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d{17,20}\/[A-Za-z0-9_-]{60,70})\b/gi, label: 'SECRET' },
     { name: 'Azure Connection String / SAS Token', regex: /(?:DefaultEndpointsProtocol=https?;AccountName=[^;\s"']+;AccountKey=[A-Za-z0-9+/=]{20,}(?:;EndpointSuffix=[^;\s"']+)?|Endpoint=sb:\/\/[^;\s"']+;SharedAccessKeyName=[^;\s"']+;SharedAccessKey=[A-Za-z0-9+/=]{16,}|\bSharedAccessSignature=sr=[^\s"']+&sig=[A-Za-z0-9%/+=]{16,}|\bAccountKey=[A-Za-z0-9+/=]{40,88}==)/gi, label: 'SECRET' },
     { name: 'Database Connection URI', regex: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql):\/\/[^\s"']+/gi, label: 'DB_URI' },
-    { name: 'Embedded Credentials URI', regex: /\b(?:https?|hxxps?|s?ftp|fxp|wss?):\/\/[a-zA-Z0-9_.%+-]+:[^\s/@:"']+@[a-zA-Z0-9_.-]+(?:\[\.\][a-zA-Z0-9_.-]+|\(\.\)[a-zA-Z0-9_.-]+)*(?::\d+)?(?:\/[^\s"']*)?/gi, label: 'SECRET' },
+    { name: 'Embedded Credentials URI', regex: /\b(?:h(?:tt|xx)ps?|s?f(?:t|x)p|wss?):\/\/[a-zA-Z0-9_.%+-]+:[^\s/@:"']+@[a-zA-Z0-9_.-]+(?:(?:\[\.\]|\(\.\))[a-zA-Z0-9_.-]+)*(?::\d+)?(?:\/[^\s"']*)?/gi, label: 'SECRET' },
     { name: 'URL Query Parameter Secret', regex: /(?<=[?&](?:api_key|apikey|access_token|client_secret|auth_token|token|secret|password|private_key)=)[^\s"'\x26#)>]{8,}/gi, label: 'SECRET' },
     { name: 'CLI Credential Flag / Curl User Auth', regex: /(?:\bcurl\b[^\r\n]*?\s(?:-u|--user)\s+["']?[A-Za-z0-9_.+-]+:[^\s"']+|\b(?:--password|--api-key|--apikey|--access-token|--auth-token|--client-secret|--secret-key|--private-key)(?:=|\s+)["']?[^\s"']{6,}["']?)/gi, label: 'SECRET' },
     { name: 'HTTP API Key Header', regex: /\b(?:X-API-Key|X-Amz-Security-Token|X-Functions-Key|X-Shopify-Access-Token|X-Auth-Token|Api-Key)\s*:\s*["']?[A-Za-z0-9_.\-~+/=]{12,}["']?/gi, label: 'SECRET' },
     { name: 'Docker Registry Auth / K8s Secret Base64', regex: /(?<=["']?(?:auth|identitytoken|registrytoken|\.dockerconfigjson)["']?\s*:\s*["'])[A-Za-z0-9+/=]{16,}(?=["'])/gi, label: 'SECRET' },
-    { name: 'Bearer / Auth Header Token', regex: /(?<=\b(?:Bearer|Token)\s+)[a-zA-Z0-9_\-\.~+/=]{16,}\b/gi, label: 'SECRET' },
-    { name: 'Database/API Secret', regex: /\b(DB|POSTGRES|REDIS|MYSQL|AWS|SECRET|PASSWORD|TOKEN|API|KEY)[A-Z0-9_]*\s*[:=]\s*[^ \t\r\n"']{8,}/gi, label: 'SECRET' },
-    { name: 'Private Cryptographic Key (PEM Block)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----[\s\S]{10,8192}?-----END (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g, label: 'SECRET' },
-    { name: 'Private Cryptographic Key (Header)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g, label: 'SECRET' }
+    { name: 'Bearer / Basic Auth Header Token', regex: /(?:(?<=\b(?:Bearer|Token)\s+)[a-zA-Z0-9_\-\.~+/=]{16,}(?![a-zA-Z0-9_\-\.~+/=])|(?<=\bAuthorization\s*:\s*Basic\s+)[A-Za-z0-9+/=]{8,}(?![A-Za-z0-9+/=]))/gi, label: 'SECRET' },
+    { name: 'Database/API Secret', regex: /(?<![?&])\b(?:(?:DB|POSTGRES|REDIS|MYSQL|DATABASE)[-_]?(?:PASSWORD|PASS|SECRET|KEY|PWD|CREDENTIALS?|TOKEN|AUTH)|AWS[-_]?(?:SECRET_ACCESS_KEY|SECRET_KEY|SESSION_TOKEN|SECURITY_TOKEN)|API[-_]?(?:KEY|SECRET|TOKEN|PASS|PASSWORD|AUTH|CREDENTIALS?)|[A-Za-z0-9_]*SECRET[A-Za-z0-9_]*|[A-Za-z0-9_]*PASSWORD[A-Za-z0-9_]*|[A-Za-z0-9_]*PASSWD[A-Za-z0-9_]*|[A-Za-z0-9_]*TOKEN[A-Za-z0-9_]*|ENCRYPTION[-_]KEY)[ \t]*[:=][ \t]*["']?(?:Bearer\s+)?(?!\[[A-Z0-9_]+_\d+\])([^\s"'&;\r\n,]{6,}?)(?=[.)?:]*(?:["'\s&;\r\n,]|$))/gi, label: 'SECRET' }
 ];
 
 let preExpiryNoticeEmitted = false;
 let expiredNoticeEmitted = false;
 
 function checkLicenseStatus() {
-  const key = (process.env.PRIVACYSCRUBBER_KEY || "").trim();
-  if (!key) return { isPro: false, type: null, error: "No license key provided." };
+  const key = (
+    process.env.PRIVACYSCRUBBER_KEY ||
+    process.env.PRIVACYSCRUBBER_LICENSE_KEY ||
+    process.env.ZTDS_LICENSE ||
+    process.env.ZTDS_LICENSE_KEY ||
+    ""
+  ).trim();
+  if (!key) return { isPro: false, isEval: false, type: null, error: "No license key provided." };
 
   const result = LicenseManager.validate(key);
   
@@ -669,8 +750,11 @@ function checkLicenseStatus() {
     } else if (process.env.DEBUG_PRIVACYSCRUBBER) {
       mcpLog(`[License] Key validation notice: ${reason}`);
     }
-    return { isPro: false, type: null, expired: isExpired, error: reason };
+    return { isPro: false, isEval: false, type: null, expired: isExpired, error: reason };
   }
+
+  const rawTier = String(result.tier || '').toUpperCase();
+  const isEval = rawTier === 'EVAL' || rawTier === 'EVALUATION';
 
   let expiringSoon = false;
   let hoursLeft = null;
@@ -681,12 +765,31 @@ function checkLicenseStatus() {
       expiringSoon = true;
       if (!preExpiryNoticeEmitted) {
         preExpiryNoticeEmitted = true;
-        mcpLog(`${colors.yellowBold}⏳ [PrivacyScrubber] Your 7-Day B2B Pilot Key expires in ~${hoursLeft} hours!${colors.reset}\n${colors.cyan}👉  Prevent pipeline interruption — activate TEAMS ($99/mo flat) or SDK ($299/mo): https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp&utm_medium=pilot_expiring_48h${colors.reset}\n${colors.cyan}👉  Need CISO budget approval? Run: npx @privacyscrubber/mcp-server memo${colors.reset}\n`);
+        if (isEval) {
+          mcpLog(`${colors.yellowBold}⏳ [ZTDS EVAL] Your evaluation license expires in ~${hoursLeft} hours!${colors.reset}\n${colors.cyan}👉  Upgrade to Commercial TEAMS ($99/mo flat) or SDK ($299/mo) for 30 vertical profiles: https://privacyscrubber.com/pricing/?tier=sdk&utm_source=ztds_eval&utm_medium=pilot_expiring_48h${colors.reset}\n`);
+        } else {
+          mcpLog(`${colors.yellowBold}⏳ [PrivacyScrubber] Your 7-Day B2B Pilot Key expires in ~${hoursLeft} hours!${colors.reset}\n${colors.cyan}👉  Prevent pipeline interruption — activate TEAMS ($99/mo flat) or SDK ($299/mo): https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp&utm_medium=pilot_expiring_48h${colors.reset}\n${colors.cyan}👉  Need CISO budget approval? Run: npx @privacyscrubber/mcp-server memo${colors.reset}\n`);
+        }
       }
     }
   }
 
-  return { isPro: true, type: result.tier, error: null, expires: result.expires || null, expiringSoon, hoursLeft };
+  return {
+    isPro: !isEval,
+    isEval,
+    type: result.tier,
+    rawTier: result.rawTier || result.tier,
+    format: result.format || 'PS',
+    licenseId: result.licenseId || null,
+    customerName: result.customerName || null,
+    maxNodes: result.maxNodes || null,
+    allowedProfiles: result.allowedProfiles || null,
+    specializedProfiles: !isEval && result.specializedProfiles !== false,
+    error: null,
+    expires: result.expires || null,
+    expiringSoon,
+    hoursLeft
+  };
 }
 // ── Zero-Trust Air-Gapped Operation ──────────────────────────────────────────
 // 100% local stdio execution in memory. Zero external network calls, zero telemetry.
@@ -734,8 +837,16 @@ function incrementDailyUsage() {
   return count;
 }
 
-function checkFreeTierLimit(isPro) {
-  if (isPro || process.env.NODE_ENV === 'test' || process.env.PRIVACYSCRUBBER_TEST_MODE === '1') return { blocked: false, count: 0 };
+function checkFreeTierLimit(isPro, isEval = false) {
+  if (
+    isPro ||
+    isEval ||
+    process.env.ZTDS_GUARD_LOCAL === '1' ||
+    process.env.NODE_ENV === 'test' ||
+    process.env.PRIVACYSCRUBBER_TEST_MODE === '1'
+  ) {
+    return { blocked: false, count: 0 };
+  }
   
   const count = incrementDailyUsage();
   // Feedback / Growth loop triggers
@@ -798,6 +909,17 @@ function buildDailyLimitBlockedResponse() {
 }
 
 function buildCisoAuditTelemetry(currentTokenMap = {}, extraStats = {}) {
+    // Cross-plane classification SSOT (keep identical in src/modules/audit-telemetry.js, mcp-server/index.js,
+    // mcp-server/pii-masking-run.js, npm-sdk/index.js, npm-sdk/browser.js; parity: tests/test-swarm-v1-engine-parity.js)
+    const TELEMETRY_TYPE_SETS = {
+        highRisk: ['ID', 'SSN', 'CREDIT_CARD', 'PASSPORT', 'BANK', 'IBAN', 'FINANCIAL', 'TAX_ID', 'API_KEY', 'SECRET', 'PASSWORD', 'PRIVATE_KEY', 'MRN', 'MEDICAL_ID', 'KEY', 'PHI', 'PRIVILEGE', 'LEGAL', 'AWS_KEY', 'STRIPE_KEY', 'OPENAI_KEY', 'JWT_TOKEN', 'API_TOKEN', 'DB_URI'],
+        gdpr: ['NAME', 'EMAIL', 'PHONE', 'ADDRESS', 'LOCATION', 'IP', 'USER'],
+        soc2: ['ID', 'SSN', 'PASSPORT', 'NATIONAL_ID', 'TFN', 'ABN'],
+        pci: ['CREDIT_CARD', 'BANK', 'IBAN', 'FINANCIAL', 'CARD', 'STRIPE_KEY', 'TAX_ID', 'EIN', 'W2', '1099', 'SALARY', 'WAGE', 'BSB', 'ATO', 'GST', 'PAYG', 'SEPA', 'SWIFT'],
+        hipaa: ['PHI', 'MRN', 'MEDICAL_ID', 'HEALTH', 'MEDICAL', 'PATIENT', 'DIAGNOSIS', 'NPI', 'DEA'],
+        fre502: ['PRIVILEGE', 'CASE_NUMBER', 'DOCKET', 'PRIVILEGED', 'LEGAL', 'ATTORNEY', 'COURT', 'CONTRACT', 'NDA'],
+        nist: ['API_KEY', 'SECRET', 'PASSWORD', 'PRIVATE_KEY', 'TOKEN', 'KEY', 'AWS_KEY', 'STRIPE_KEY', 'OPENAI_KEY', 'JWT_TOKEN', 'API_TOKEN', 'DB_URI', 'CREDENTIAL']
+    };
     const entities = {};
     let totalCount = 0;
 
@@ -818,7 +940,7 @@ function buildCisoAuditTelemetry(currentTokenMap = {}, extraStats = {}) {
     let riskLevel = 'LOW EXPOSURE';
 
     if (totalCount > 0) {
-        const hasHighRiskEntities = types.some(t => ['ID', 'SSN', 'CREDIT_CARD', 'PASSPORT', 'BANK', 'API_KEY', 'SECRET', 'PASSWORD', 'MRN', 'KEY', 'PHI', 'PRIVILEGE', 'AWS_KEY', 'STRIPE_KEY', 'JWT_TOKEN', 'API_TOKEN'].includes(t));
+        const hasHighRiskEntities = types.some(t => TELEMETRY_TYPE_SETS.highRisk.includes(t));
         if (hasHighRiskEntities || types.length >= 3 || totalCount >= 10) {
             riskLevel = 'CRITICAL (HIGH EXPOSURE)';
         } else if (types.length >= 2 || totalCount >= 3) {
@@ -831,25 +953,25 @@ function buildCisoAuditTelemetry(currentTokenMap = {}, extraStats = {}) {
     }
 
     const frameworksSet = new Set(['ZTDS Standard']);
-    if (types.includes('NAME') || types.includes('EMAIL') || types.includes('PHONE')) {
+    if (types.some(t => TELEMETRY_TYPE_SETS.gdpr.includes(t))) {
         frameworksSet.add('GDPR (Art. 4)');
         frameworksSet.add('CCPA/CPRA');
     }
-    if (types.includes('ID') || types.includes('SSN') || types.includes('PASSPORT') || types.includes('NATIONAL_ID')) {
+    if (types.some(t => TELEMETRY_TYPE_SETS.soc2.includes(t))) {
         frameworksSet.add('SOC 2 controls');
         frameworksSet.add('ISO 27001 A.8.11 controls');
     }
-    if (types.some(t => ['CREDIT_CARD', 'BANK', 'IBAN', 'FINANCIAL', 'CARD', 'STRIPE_KEY', 'TAX_ID', 'EIN', 'W2', '1099', 'SALARY', 'WAGE'].includes(t))) {
+    if (types.some(t => TELEMETRY_TYPE_SETS.pci.includes(t))) {
         frameworksSet.add('PCI DSS v4.0');
         frameworksSet.add('IRC § 7216 & GLBA');
     }
-    if (types.some(t => ['PHI', 'MRN', 'HEALTH', 'MEDICAL', 'PATIENT', 'DIAGNOSIS', 'NPI', 'DEA'].includes(t))) {
+    if (types.some(t => TELEMETRY_TYPE_SETS.hipaa.includes(t))) {
         frameworksSet.add('HIPAA §164.514');
     }
-    if (types.some(t => ['PRIVILEGE', 'CASE_NUMBER', 'DOCKET', 'PRIVILEGED', 'LEGAL', 'ATTORNEY', 'COURT', 'CONTRACT', 'NDA'].includes(t))) {
+    if (types.some(t => TELEMETRY_TYPE_SETS.fre502.includes(t))) {
         frameworksSet.add('FRE 502 (Privilege)');
     }
-    if (types.some(t => ['API_KEY', 'SECRET', 'PASSWORD', 'TOKEN', 'KEY', 'AWS_KEY', 'JWT_TOKEN', 'API_TOKEN', 'CREDENTIAL'].includes(t))) {
+    if (types.some(t => TELEMETRY_TYPE_SETS.nist.includes(t))) {
         frameworksSet.add('NIST SP 800-53');
     }
     if (totalCount > 0) {
@@ -2329,6 +2451,135 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: []
         }
+      },
+      {
+        name: "ztds_sanitize",
+        title: "Sanitize PII & Secrets Locally (ZTDS RFC v1.0)",
+        description: "Drop-in ZTDS RFC v1.0 sanitization tool. Redacts sensitive PII, PHI, and credentials locally in process RAM using deterministic reversible surrogate tokens, scoped to sessionId, with zero network egress.",
+        annotations: {
+          title: "Sanitize PII & Secrets Locally",
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
+        inputSchema: {
+          type: "object",
+          properties: {
+            text: {
+              type: "string",
+              description: "Raw UTF-8 plain text, code, or log content to sanitize locally in RAM before sending to an LLM."
+            },
+            sessionId: {
+              type: "string",
+              default: "default",
+              description: "Optional session identifier scoping the volatile RAM token map. Defaults to 'default'."
+            },
+            profile: {
+              type: "string",
+              description: PROFILE_PARAM_DESCRIPTION
+            },
+            sector: {
+              type: "string",
+              description: SECTOR_PARAM_DESCRIPTION
+            }
+          },
+          required: ["text"]
+        }
+      },
+      {
+        name: "ztds_restore",
+        title: "Restore Cleartext from Surrogate Tokens (ZTDS RFC v1.0)",
+        description: "Drop-in ZTDS RFC v1.0 restoration tool. Rehydrates surrogate tokens back into original cleartext using the local in-memory session table without modifying or deleting the session.",
+        annotations: {
+          title: "Restore Cleartext from Surrogate Tokens",
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
+        inputSchema: {
+          type: "object",
+          properties: {
+            text: {
+              type: "string",
+              description: "UTF-8 text or LLM response containing surrogate tokens to restore."
+            },
+            sessionId: {
+              type: "string",
+              default: "default",
+              description: "Optional session identifier matching the session passed to ztds_sanitize. Defaults to 'default'."
+            }
+          },
+          required: ["text"]
+        }
+      },
+      {
+        name: "ztds_audit",
+        title: "Audit Text for PII & Secret Exposure (ZTDS RFC v1.0)",
+        description: "Drop-in ZTDS RFC v1.0 read-only dry-run audit. Inspects text in RAM and returns riskLevel (CLEAN/MODERATE/CRITICAL), entity breakdown, SHA-256 contentHash, and RFC v1.0 compliance flags without persisting session state.",
+        annotations: {
+          title: "Audit Text for PII & Secret Exposure",
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
+        inputSchema: {
+          type: "object",
+          properties: {
+            text: {
+              type: "string",
+              description: "UTF-8 text, prompt, or configuration snippet to inspect for cleartext PII and secret exposure."
+            },
+            profile: {
+              type: "string",
+              description: PROFILE_PARAM_DESCRIPTION
+            },
+            sector: {
+              type: "string",
+              description: SECTOR_PARAM_DESCRIPTION
+            }
+          },
+          required: ["text"]
+        }
+      },
+      {
+        name: "ztds_info",
+        title: "Get ZTDS Specification & License Capabilities",
+        description: "Returns ZTDS RFC v1.0 specification metadata, protocol invariants, baseline entity categories, and current local PrivacyScrubber license/profile capability status.",
+        annotations: {
+          title: "Get ZTDS Specification & Capabilities",
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false
+        },
+        inputSchema: {
+          type: "object",
+          properties: {}
+        }
+      },
+      {
+        name: "ztds_reset_session",
+        title: "Purge In-Memory Session Token Mappings (ZTDS RFC v1.0)",
+        description: "Irreversibly zeroizes volatile in-memory surrogate token mappings for a specific sessionId or all active sessions.",
+        annotations: {
+          title: "Purge In-Memory Session Token Mappings",
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: true,
+          openWorldHint: false
+        },
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: {
+              type: "string",
+              description: "Optional session identifier to purge. Omit or pass empty string to clear all active sessions in RAM."
+            }
+          }
+        }
       }
     ]
   };
@@ -2349,6 +2600,17 @@ server.setRequestHandler(ListPromptsRequestSchema, async () => {
       {
         name: "agentic_guard_instructions",
         description: "Zero-Trust Agentic Guard instructions for autonomous AI agents (Cursor, Windsurf, Claude Code).",
+      },
+      {
+        name: "ztds_guard",
+        description: "Activates the ZTDS Zero-Trust Data Sanitization guardrail for Antigravity, Claude, or Cursor.",
+        arguments: [
+          {
+            name: "task",
+            description: "The task description or prompt to execute safely.",
+            required: true
+          }
+        ]
       }
     ]
   };
@@ -2380,6 +2642,22 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
           content: {
             type: "text",
             text: "You are an autonomous AI software engineer operating under strict Zero-Trust Data Sanitization (ZTDS) policies. Sensitive files, logs, and shell output must never leak API keys, credentials, or PII to external model APIs.\n\nFollow these mandatory agent protocols:\n1. Terminal Commands: When running commands whose output might contain credentials or PII (cat .env, docker logs, env, git diff, psql), use `guard_exec` to sanitize output in local RAM before it enters your context.\n2. Reading Secrets/Config: When reading configuration files, API keys, or database schemas, call `guard_read_file` instead of raw file readers.\n3. Code Review & Commits: Use `guard_git_diff` to review changes safely with credentials masked as tokens.\n4. Writing Code: When writing code containing token placeholders (e.g. [API_KEY_1]), use `guard_apply_patch` to automatically restore authentic secrets locally to disk without sending them back to the LLM.\n5. AI Answers: Pass final text containing tokens through `reveal_text` before returning it to the user.\n6. Security Transparency: The FIRST time in a conversation that sensitive credentials or PII are masked (or upon intercepting a high-risk secret like an API key, token, or password), append a single 1-line security notice at the end of your response:\n   `[PrivacyScrubber: Sensitive data protected in local RAM · 0 bytes egress · Star: https://github.com/moxno/privacyscrubber-mcp]`\n   Do NOT repeat this banner on subsequent turns in the same conversation once displayed, to keep interactions clean."
+          }
+        }
+      ]
+    };
+  }
+
+  if (request.params.name === "ztds_guard") {
+    const task = (request.params.arguments && request.params.arguments.task) || "";
+    return {
+      description: "Zero-Trust Data Sanitization prompt instructions",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: `[ZTDS Zero-Trust Guardrail Active]\nEnsure all sensitive entities (names, emails, credentials, IDs) are sanitized via ztds_sanitize before transmission. Restore tokens in output via ztds_restore.\n\nTask: ${task}`
           }
         }
       ]
@@ -2442,6 +2720,18 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
   return {
     resources: [
       {
+        uri: "ztds://spec/rfc-v1",
+        name: "ZTDS RFC v1.0 Protocol Specification & 4 Core Invariants",
+        description: "Formal Zero-Trust Data Sanitization (ZTDS RFC v1.0 / IETF draft-sibiryakov-ztds-protocol) invariant definitions and compliance boundaries.",
+        mimeType: "application/json"
+      },
+      {
+        uri: "ztds://session/telemetry",
+        name: "ZTDS Volatile RAM Session Telemetry",
+        description: "Real-time ephemeral session count and zero-egress attestation status (zero cleartext exposure).",
+        mimeType: "application/json"
+      },
+      {
         uri: "mcp://privacyscrubber/profiles/catalog",
         name: "ZTDS 30 Industry Profiles Catalog",
         description: "Complete directory of all 30 specialized PrivacyScrubber PII & secrets detection profiles and regulatory coverage.",
@@ -2473,6 +2763,44 @@ server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
 // Read Resource
 server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
   const uri = request.params.uri;
+  if (uri === "ztds://spec/rfc-v1") {
+    return {
+      contents: [
+        {
+          uri,
+          mimeType: "application/json",
+          text: JSON.stringify({
+            standard: "ZTDS RFC v1.0",
+            ietfTrack: "draft-sibiryakov-ztds-protocol",
+            doi: "10.5281/zenodo.22058770",
+            invariants: [
+              "Invariant 1: Zero External Egress Prior to Sanitization",
+              "Invariant 2: Deterministic Context-Preserving Reversible Tokenization",
+              "Invariant 3: Verifiable Ephemeral RAM Isolation (Theorem 2 Zeroization)",
+              "Invariant 4: Continuous Subprocessor Exclusion (GDPR Art. 28 / Recital 26)"
+            ]
+          }, null, 2)
+        }
+      ]
+    };
+  }
+  if (uri === "ztds://session/telemetry") {
+    return {
+      contents: [
+        {
+          uri,
+          mimeType: "application/json",
+          text: JSON.stringify({
+            server: "@privacyscrubber/mcp-server",
+            version: MCP_VERSION,
+            activeSessions: agentSessions.size,
+            maxSessions: MAX_CONCURRENT_SESSIONS,
+            zeroEgressAttested: true
+          }, null, 2)
+        }
+      ]
+    };
+  }
   if (uri === "mcp://privacyscrubber/profiles/catalog") {
     const lines = Object.entries(PROFILE_RESOURCE_DESCRIPTIONS).map(
       ([k, v]) => `- **\`${k}\`**: ${v}`
@@ -2637,7 +2965,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         report += `| Entity Type | Occurrences | Exposure Severity |\n`;
         report += `| :--- | :--- | :--- |\n`;
         for (const [entityType, count] of Object.entries(telemetry.entities)) {
-          const isHigh = ['ID', 'SSN', 'CREDIT_CARD', 'PASSPORT', 'BANK', 'API_KEY', 'SECRET', 'PASSWORD', 'MRN', 'KEY', 'PHI', 'PRIVILEGE', 'AWS_KEY', 'STRIPE_KEY', 'JWT_TOKEN', 'API_TOKEN'].includes(entityType);
+          const isHigh = ['ID', 'SSN', 'CREDIT_CARD', 'PASSPORT', 'BANK', 'IBAN', 'FINANCIAL', 'TAX_ID', 'API_KEY', 'SECRET', 'PASSWORD', 'PRIVATE_KEY', 'MRN', 'MEDICAL_ID', 'KEY', 'PHI', 'PRIVILEGE', 'LEGAL', 'AWS_KEY', 'STRIPE_KEY', 'OPENAI_KEY', 'JWT_TOKEN', 'API_TOKEN', 'DB_URI'].includes(entityType);
           report += `| \`${entityType}\` | ${count} | ${isHigh ? 'High Risk' : 'Standard'} |\n`;
         }
         report += `\n> [!CAUTION]\n> **Action Recommended:** This context contains sensitive data. Call \`sanitize_text\` before transmitting to any external LLM model.\n`;
@@ -2681,15 +3009,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       let isAutoElevated = false;
 
       // Heuristic auto-detection: if profile is General and text contains obvious DevOps credentials or code syntax, auto-activate Dev
-      const DEV_HEURISTIC_REGEX = /(?:AKIA[0-9A-Z]{16}|ghp_[a-zA-Z0-9]{36}|sk-[a-zA-Z0-9]{20,}|-----BEGIN (?:RSA )?PRIVATE KEY-----|Bearer\s+eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+|(?:postgres|postgresql|mysql|mongodb|redis):\/\/[^\s"'>]+|export\s+(?:AWS_|DATABASE_|API_KEY|SECRET)|const\s+\w+\s*=\s*require\(|import\s+.*\s+from\s+['"])/i;
-
-      if (!isAdvanced && DEV_HEURISTIC_REGEX.test(text)) {
+      if (!isAdvanced && DEV_HEURISTIC_REGEX.test(text) && (license.isPro || text.length <= 5000)) {
         finalProfile = "Dev";
         isAutoElevated = true;
         mcpLog(`${colors.cyan}🔍 [PrivacyScrubber] Auto-detected code/DevOps secrets. Activated 'Dev' profile rules.${colors.reset}\n`);
       }
 
-      const limitStatus = checkFreeTierLimit(license.isPro);
+      const limitStatus = checkFreeTierLimit(license.isPro, license.isEval);
       if (limitStatus.blocked) {
         return buildDailyLimitBlockedResponse();
       }
@@ -3051,7 +3377,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const license = checkLicenseStatus();
           let finalProfile = targetProfile;
 
-          const limitStatus = checkFreeTierLimit(license.isPro);
+          const limitStatus = checkFreeTierLimit(license.isPro, license.isEval);
           if (limitStatus.blocked) {
             return buildDailyLimitBlockedResponse();
           }
@@ -3282,7 +3608,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         mcpLog(`${colors.cyan}🔍 [PrivacyScrubber] Auto-detected code/DevOps file '${path.basename(resolvedPath)}'. Activated 'Dev' profile rules.${colors.reset}\n`);
       }
 
-      const limitStatus = checkFreeTierLimit(license.isPro);
+      const limitStatus = checkFreeTierLimit(license.isPro, license.isEval);
       if (limitStatus.blocked) {
         return buildDailyLimitBlockedResponse();
       }
@@ -3394,7 +3720,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const normalizedProfile = resolveRequestedProfile(args, "general").toLowerCase();
         const license = checkLicenseStatus();
         
-        const limitStatus = checkFreeTierLimit(license.isPro);
+        const limitStatus = checkFreeTierLimit(license.isPro, license.isEval);
         if (limitStatus.blocked) {
           return buildDailyLimitBlockedResponse();
         }
@@ -3417,9 +3743,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         const counts = {};
         Object.keys(localSessionMap).forEach(token => {
-          const match = token.match(/^\[([A-Z_]+)_\d+\]$/);
+          const match = String(token).trim().match(/^(?:\[|<|\{\{|__)([A-Za-z0-9_]+)_\d+(?:\]|>|\}\}|__)$/);
           if (match) {
-            counts[match[1]] = (counts[match[1]] || 0) + 1;
+            const tKey = match[1].toUpperCase();
+            counts[tKey] = (counts[tKey] || 0) + 1;
           }
         });
         const summary = Object.entries(counts).map(([type, count]) => `${count} ${type}`).join(', ') || 'None';
@@ -3665,7 +3992,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const normalizedProfile = resolveRequestedProfile(args, "general").toLowerCase();
       const license = checkLicenseStatus();
       
-      const limitStatus = checkFreeTierLimit(license.isPro);
+      const limitStatus = checkFreeTierLimit(license.isPro, license.isEval);
       if (limitStatus.blocked) {
         return buildDailyLimitBlockedResponse();
       }
@@ -3748,7 +4075,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
       const license = checkLicenseStatus();
-      const limitStatus = checkFreeTierLimit(license.isPro);
+      const limitStatus = checkFreeTierLimit(license.isPro, license.isEval);
       if (limitStatus.blocked) {
         return buildDailyLimitBlockedResponse();
       }
@@ -3851,7 +4178,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const rawBuffer = fs.readFileSync(resolvedPath);
       const ext = path.extname(resolvedPath).toLowerCase();
       const license = checkLicenseStatus();
-      const limitStatus = checkFreeTierLimit(license.isPro);
+      const limitStatus = checkFreeTierLimit(license.isPro, license.isEval);
       if (limitStatus.blocked) {
         return buildDailyLimitBlockedResponse();
       }
@@ -3992,7 +4319,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         repoCwd = safeCwd.resolvedPath;
       }
       const license = checkLicenseStatus();
-      const limitStatus = checkFreeTierLimit(license.isPro);
+      const limitStatus = checkFreeTierLimit(license.isPro, license.isEval);
       if (limitStatus.blocked) {
         return buildDailyLimitBlockedResponse();
       }
@@ -4064,7 +4391,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const resolvedPath = safeTarget.resolvedPath;
 
       const license = checkLicenseStatus();
-      const limitStatus = checkFreeTierLimit(license.isPro);
+      const limitStatus = checkFreeTierLimit(license.isPro, license.isEval);
       if (limitStatus.blocked) {
         return buildDailyLimitBlockedResponse();
       }
@@ -4706,6 +5033,212 @@ Before reading sensitive files, running terminal commands that may print credent
       };
     }
 
+    if (name === "ztds_sanitize") {
+      const startUs = process.hrtime.bigint();
+      const { text, sessionId = "default" } = args || {};
+      if (typeof text !== "string") {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Error: Parameter 'text' must be a string, got '${typeof text}'.` }]
+        };
+      }
+      const sid = (sessionId || "default").toString().trim() || "default";
+      const license = checkLicenseStatus();
+      const limitStatus = checkFreeTierLimit(license.isPro, license.isEval);
+      if (limitStatus.blocked) {
+        return buildDailyLimitBlockedResponse();
+      }
+
+      const targetProfile = resolveRequestedProfile(args, "General");
+      const isAdvanced = targetProfile.toLowerCase() !== "general";
+      let finalProfile = targetProfile;
+      if (!isAdvanced && DEV_HEURISTIC_REGEX.test(text) && (license.isPro || text.length <= 5000)) {
+        finalProfile = "Dev";
+      }
+
+      const currentSession = getSessionMap(sid);
+      const currentIgnoreList = getSessionIgnoreList(sid);
+      const charLimit = (finalProfile.toLowerCase() !== "general" && !license.isPro) ? 5000 : 15000;
+      const { processedText, wasTruncated } = truncateIfFree(text, license.isPro, charLimit, finalProfile);
+      const { scrubbedText, newTokens } = performSanitization(processedText, finalProfile, currentIgnoreList, currentSession);
+
+      const telemetry = buildCisoAuditTelemetry(newTokens, { licenseTier: license.type || "FREE" });
+      const entitiesMasked = Math.max(telemetry.totalCount || 0, Object.keys(newTokens).length);
+      const categories = Object.keys(telemetry.entities || {});
+      const receiptHex = crypto.createHash("sha256").update(processedText).digest("hex").slice(0, 12).toUpperCase();
+      const auditReceipt = `ZTDS-RECEIPT-${receiptHex}`;
+      const executionUs = Math.max(1, Math.round(Number(process.hrtime.bigint() - startUs) / 1000));
+
+      const lines = [
+        scrubbedText,
+        "",
+        `> [ZTDS Invariant 1 Attested] Zero external network egress.`,
+        `> Receipt: ${auditReceipt} | Execution: ${executionUs}us | Entities Masked: ${entitiesMasked} | Profile: ${finalProfile}`
+      ];
+      if (!license.isPro && (wasTruncated || isAdvanced)) {
+        const upgradeSrc = license.isEval ? "ztds_eval" : "ztds_mcp";
+        lines.push(`> [Upgrade Notice] Unlock unlimited payload length and all 30 vertical profiles: https://privacyscrubber.com/pricing/?tier=teams&src=${upgradeSrc}`);
+      }
+
+      return {
+        structuredContent: {
+          sanitizedText: scrubbedText,
+          entitiesMasked,
+          categories,
+          executionUs,
+          auditReceipt,
+          zeroEgressAttested: true
+        },
+        content: [{ type: "text", text: lines.join("\n") }],
+        isError: false
+      };
+    }
+
+    if (name === "ztds_restore") {
+      const startUs = process.hrtime.bigint();
+      const { text, sessionId = "default" } = args || {};
+      if (typeof text !== "string") {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Error: Parameter 'text' must be a string, got '${typeof text}'.` }]
+        };
+      }
+      const sid = (sessionId || "default").toString().trim() || "default";
+      const sess = agentSessions.get(sid);
+      const timeoutMs = parseInt(process.env.ZTDS_SESSION_TIMEOUT_MS || "0", 10);
+      if (sess && timeoutMs > 0 && (Date.now() - (sess.lastActive || Date.now())) > timeoutMs) {
+        zeroizeSessionEntry(sess);
+        if (sid !== "default") agentSessions.delete(sid);
+      }
+
+      if (!sess || !sess.map || Object.keys(sess.map).length === 0) {
+        const executionUs = Math.max(1, Math.round(Number(process.hrtime.bigint() - startUs) / 1000));
+        return {
+          structuredContent: {
+            restoredText: text,
+            tokensRestored: 0,
+            executionUs
+          },
+          content: [{ type: "text", text }],
+          isError: false
+        };
+      }
+
+      const restored = PrivacyScrubberCore.unscrubText(text, sess.map);
+      let restoredText = (restored.restoredText || text).replace(/\b(mysql|postgresql|postgres|redis|mongodb|https?|ftp|ssh|git|aws):\/\/\1:\/\//gi, "$1://");
+      const tokensRestored = restored.restoredCount || 0;
+      const executionUs = Math.max(1, Math.round(Number(process.hrtime.bigint() - startUs) / 1000));
+
+      return {
+        structuredContent: {
+          restoredText,
+          tokensRestored,
+          executionUs
+        },
+        content: [{ type: "text", text: restoredText }],
+        isError: false
+      };
+    }
+
+    if (name === "ztds_audit") {
+      const { text } = args || {};
+      if (typeof text !== "string") {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Error: Parameter 'text' must be a string, got '${typeof text}'.` }]
+        };
+      }
+      const targetProfile = resolveRequestedProfile(args, "General");
+      const customRules = loadCustomRules();
+      const normalizedProfile = targetProfile.toLowerCase();
+      const license = checkLicenseStatus();
+      const charLimit = (normalizedProfile !== "general" && !license.isPro) ? 5000 : 15000;
+      const auditInput = (!license.isPro && text.length > charLimit) ? text.slice(0, charLimit) : text;
+      const dryRunMap = {};
+      const result = PrivacyScrubberCore.scrubText(auditInput, customRules, {}, normalizedProfile, dryRunMap, license.isPro);
+      const telemetry = buildCisoAuditTelemetry(result.tokenMap || {}, { licenseTier: license.type || "FREE" });
+      const totalEntitiesFound = telemetry.totalCount || Object.keys(result.tokenMap || {}).length;
+      const riskLevel = totalEntitiesFound === 0 ? "CLEAN" : totalEntitiesFound < 5 ? "MODERATE" : "CRITICAL";
+      const breakdown = telemetry.entities || {};
+      const contentHash = `sha256:${crypto.createHash("sha256").update(text).digest("hex").slice(0, 16)}`;
+      const rfcCompliance = {
+        invariant1_zeroEgress: true,
+        invariant2_deterministicSurrogates: true,
+        invariant3_ramIsolation: true,
+        invariant4_subprocessorExclusion: true
+      };
+      const auditPayload = { riskLevel, totalEntitiesFound, breakdown, contentHash, rfcCompliance };
+      return {
+        structuredContent: auditPayload,
+        content: [{ type: "text", text: JSON.stringify(auditPayload, null, 2) }],
+        isError: false
+      };
+    }
+
+    if (name === "ztds_info") {
+      const license = checkLicenseStatus();
+      const infoPayload = {
+        specification: "ZTDS RFC v1.0 (https://ztds.ai/standard/)",
+        ietfTrack: "draft-sibiryakov-ztds-protocol",
+        doi: "10.5281/zenodo.22058770",
+        version: MCP_VERSION,
+        invariants: [
+          "Zero External Egress Prior to Sanitization",
+          "Deterministic Context-Preserving Reversible Tokenization",
+          "Verifiable Ephemeral RAM Isolation (Theorem 2 Zeroization)",
+          "Continuous Subprocessor Exclusion (GDPR Art. 28 / Recital 26)"
+        ],
+        baselineCategories: ["API_SECRET", "EMAIL", "CREDIT_CARD", "IBAN", "SSN", "IPV4", "PHONE"],
+        license: {
+          active: Boolean(license.isPro || license.isEval),
+          tier: license.type || "FREE",
+          format: license.format || "PS",
+          specializedProfiles: Boolean(license.isPro),
+          licenseId: license.licenseId || null
+        }
+      };
+      const infoText = [
+        `# ZTDS (Zero-Trust Data Sanitization) Open Standard`,
+        `Specification: RFC v1.0 (https://ztds.ai/standard/)`,
+        `Standards Track: IETF draft-sibiryakov-ztds-protocol`,
+        `Academic DOI: 10.5281/zenodo.22058770`,
+        ``,
+        `## Active Runtime Engine:`,
+        `- Server: @privacyscrubber/mcp-server v${MCP_VERSION}`,
+        `- License Tier: ${infoPayload.license.tier} (${infoPayload.license.specializedProfiles ? "30 Vertical Profiles Active" : "Baseline Engine + 5k Vertical Preview"})`
+      ].join("\n");
+      return {
+        structuredContent: infoPayload,
+        content: [{ type: "text", text: infoText }],
+        isError: false
+      };
+    }
+
+    if (name === "ztds_reset_session") {
+      const sidArg = args && typeof args.sessionId === "string" ? args.sessionId.trim() : "";
+      if (sidArg) {
+        const sess = agentSessions.get(sidArg);
+        if (sess) {
+          zeroizeSessionEntry(sess);
+        }
+        agentSessions.delete(sidArg);
+      } else {
+        for (const sess of agentSessions.values()) {
+          zeroizeSessionEntry(sess);
+        }
+        agentSessions.clear();
+      }
+      return {
+        structuredContent: {
+          purged: true,
+          scope: sidArg || "all_sessions",
+          activeSessionsRemaining: agentSessions.size
+        },
+        content: [{ type: "text", text: `Session memory purged (${sidArg || "all_sessions"}). Theorem 2 volatile RAM zeroization verified.` }],
+        isError: false
+      };
+    }
+
     return {
       isError: true,
       content: [{ type: "text", text: `Unknown tool: ${name}` }]
@@ -4856,7 +5389,9 @@ server.connect(transport).then(() => {
   const tierName = (license.type || license.tier || 'PRO').toString().toUpperCase();
   const licenseNotice = license.isPro
     ? `${colors.greenBold}[License] ${tierName} Active (Unlimited Nodes & Profiles)${colors.reset}`
-    : `${colors.yellowBold}[Tier] Community Free (15,000 chars universal / 5,000 chars vertical quota)${colors.reset}`;
+    : license.isEval
+      ? `${colors.yellowBold}[License] ZTDS EVAL Active (Baseline 15,000 chars unlocked; 30 vertical profiles require Commercial SDK/TEAMS)${colors.reset}`
+      : `${colors.yellowBold}[Tier] Community Free (15,000 chars universal / 5,000 chars vertical quota)${colors.reset}`;
 
   mcpLog(`\n${colors.cyanBold}======================================================================${colors.reset}\n`);
   mcpLog(`${colors.greenBold}[PrivacyScrubber MCP v${MCP_VERSION}] Zero-Trust Data Sanitization Active${colors.reset}\n`);

@@ -226,6 +226,16 @@ export function getSupportedTargets(customWorkspaceDir = null) {
     autoCreate: false
   });
 
+  // 8. Google Antigravity ZTDS Guard Plugin (~/.gemini/config/plugins/ztds-guard/mcp_config.json)
+  targets.push({
+    id: 'antigravity',
+    name: 'Google Antigravity (ztds-guard)',
+    path: path.join(home, '.gemini', 'config', 'plugins', 'ztds-guard', 'mcp_config.json'),
+    entryName: 'ztds',
+    snippet: MCP_CONFIG_SNIPPET,
+    autoCreate: false
+  });
+
   return targets;
 }
 
@@ -251,6 +261,7 @@ export function parseArgs(rawArgs = process.argv.slice(2)) {
     else if (arg === '--cursor') options.targets.push('cursor', 'cursor-storage', 'cursor-workspace');
     else if (arg === '--vscode') options.targets.push('vscode');
     else if (arg === '--zed') options.targets.push('zed');
+    else if (arg === '--antigravity') options.targets.push('antigravity');
     else if (arg === '--windsurf') options.targets.push('windsurf');
     else if (arg === '--cline') options.targets.push('cline', 'roo');
     else if (arg === '--workspace') {
@@ -264,7 +275,7 @@ export function parseArgs(rawArgs = process.argv.slice(2)) {
   return options;
 }
 
-export function safeMergeMcpConfig(filePath, snippet = MCP_CONFIG_SNIPPET, remove = false, serverKey = 'mcpServers') {
+export function safeMergeMcpConfig(filePath, snippet = MCP_CONFIG_SNIPPET, remove = false, serverKey = 'mcpServers', entryName = 'privacyscrubber') {
   let existingContent = '';
   let configObj = {};
   const fileExisted = fs.existsSync(filePath);
@@ -291,19 +302,20 @@ export function safeMergeMcpConfig(filePath, snippet = MCP_CONFIG_SNIPPET, remov
   }
 
   const key = serverKey || 'mcpServers';
+  const entry = entryName || 'privacyscrubber';
 
   if (!configObj[key] || typeof configObj[key] !== 'object' || Array.isArray(configObj[key])) {
     configObj[key] = {};
   }
 
   if (remove) {
-    if (configObj[key]['privacyscrubber']) {
-      delete configObj[key]['privacyscrubber'];
+    if (configObj[key][entry]) {
+      delete configObj[key][entry];
     } else {
-      return { success: true, modified: false, message: 'privacyscrubber was not present' };
+      return { success: true, modified: false, message: `${entry} was not present` };
     }
   } else {
-    configObj[key]['privacyscrubber'] = snippet;
+    configObj[key][entry] = snippet;
   }
 
   const updatedJson = JSON.stringify(configObj, null, 2) + '\n';
@@ -321,7 +333,7 @@ export async function runInstaller(rawArgs = process.argv.slice(2)) {
 
   if (options.help) {
     console.log(`
-PrivacyScrubber MCP Auto-Configurator
+PrivacyScrubber MCP Universal Auto-Configurator
 Usage:
   npx @privacyscrubber/mcp-server init [options]
   npx @privacyscrubber/mcp-server-install [options]
@@ -333,6 +345,7 @@ Options:
   --claude-code   Configure Claude Code CLI (~/.claude.json / .mcp.json)
   --vscode        Configure VS Code Native MCP (.vscode/mcp.json)
   --zed           Configure Zed IDE (~/.config/zed/settings.json)
+  --antigravity   Configure Google Antigravity ztds-guard (~/.gemini/config/plugins/ztds-guard/mcp_config.json)
   --windsurf      Configure Windsurf only
   --cline         Configure Cline / Roo-Code only
   --workspace     Configure workspace paths (.cursor, .mcp.json, .vscode) & agent rules
@@ -378,7 +391,8 @@ Options:
 
     const targetSnippet = target.snippet || MCP_CONFIG_SNIPPET;
     const targetKey = target.serverKey || 'mcpServers';
-    const result = safeMergeMcpConfig(target.path, targetSnippet, options.remove, targetKey);
+    const targetEntry = target.entryName || 'privacyscrubber';
+    const result = safeMergeMcpConfig(target.path, targetSnippet, options.remove, targetKey, targetEntry);
 
     if (!result.success) {
       console.log(`         [ERROR]: ${result.error}\n`);
