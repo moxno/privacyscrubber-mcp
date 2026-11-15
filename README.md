@@ -487,7 +487,7 @@ Returns a visual dashboard showing your current tier, session request count, act
 *   **Response Example (Free Tier):**
     ```
     ╔══════════════════════════════════════════════════╗
-    ║       PrivacyScrubber MCP Server v2.5.0          ║
+    ║       PrivacyScrubber MCP Server v2.5.1          ║
     ╠══════════════════════════════════════════════════╣
     ║  🔓 Tier: FREE                                   ║
     ║  📊 Session requests: 5                          ║
