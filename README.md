@@ -9,7 +9,7 @@
 [![NPM SDK](https://img.shields.io/npm/v/@privacyscrubber/sdk?label=%40privacyscrubber%2Fsdk&color=10b981)](https://www.npmjs.com/package/@privacyscrubber/sdk)
 [![Presidio Alternative](https://img.shields.io/badge/Presidio%20Alternative-Node.js%20%26%20TS-0078D4.svg)](https://www.npmjs.com/package/@privacyscrubber/sdk)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](https://www.npmjs.com/package/@privacyscrubber/sdk)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Community & Commercial](https://img.shields.io/badge/License-Community_%26_Commercial-0f172a.svg)](./LICENSE)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22058770.svg)](https://zenodo.org/records/22058770)
 [![OSF DOI](https://img.shields.io/badge/OSF%20DOI-10.17605%2FOSF.IO%2F5BYJF-blue.svg)](https://osf.io/5byjf/)
 [![SSRN](https://img.shields.io/badge/SSRN-7335581-darkred.svg)](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7335581)

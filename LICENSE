@@ -9,7 +9,8 @@ Subject to the terms and conditions of this Agreement, BrandMeWeb grants you a p
 Use of this software within commercial organizations, production automated pipelines, CI/CD gates, high-volume batch processing, multi-seat corporate teams, or the invocation of the 30 Specialized Industry Profiles (HIPAA PHI, Financial PAN/IBAN, Legal Privilege, DevSecOps Cloud Secrets, Automotive, Telecom, Biotech) requires a valid commercial license key:
 - **PrivacyScrubber PRO**: Individual professional use ($15/mo or $110 Lifetime).
 - **PrivacyScrubber TEAMS**: Team and small enterprise seats ($99/mo flat).
-- **PrivacyScrubber Enterprise / Air-Gapped**: Dedicated corporate VPC clusters, Nitro Enclaves, and custom profile calibration ($12,000/yr).
+- **PrivacyScrubber Developer SDK**: Headless Node.js/WASM runtime for internal backend nodes and RAG pipelines ($299/mo or $2,990/yr).
+- **PrivacyScrubber Enterprise / Air-Gapped**: Dedicated corporate VPC clusters, Nitro Enclaves, and custom profile calibration (Custom Enterprise Licensing).
 
 Licensing and key activation: https://privacyscrubber.com/pricing
 

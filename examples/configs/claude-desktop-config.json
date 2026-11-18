@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "privacyscrubber": {
+      "command": "npx",
+      "args": ["-y", "@privacyscrubber/mcp-server"],
+      "env": {
+        "ZTDS_PROFILES": "general",
+        "PRIVACYSCRUBBER_KEY": ""
+      }
+    }
+  }
+}
