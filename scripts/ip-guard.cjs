@@ -1,101 +1,130 @@
 #!/usr/bin/env node
+"use strict";
 
 /**
- * PrivacyScrubber & ZTDS Automated IP Leak Barrier (Pre-Commit / Pre-Push Guard)
- * 
- * Physically prevents un-obfuscated commercial rules, proprietary taxonomies, 
- * or sensitive license salts from being committed or pushed to any repository.
+ * PrivacyScrubber Public Repository IP & Security Hygiene Guard
+ * Verifies obfuscated core engines, minified/watermarked Antigravity runtime,
+ * and zero leakage of private repository references, developer paths, test keys, or salts.
  */
 
-const fs = require('fs');
-const path = require('path');
-const { execSync } = require('child_process');
+const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
+const { execSync } = require("child_process");
 
-console.log('🛡️ [IP Guard] Scanning repository for Intellectual Property leaks...');
+const REPO_ROOT = path.resolve(__dirname, "..");
+const OBFUSCATED_ENGINES = [
+  "ps-pii-engine.cjs",
+  "ps-pii-engine.js",
+  "ps-license-manager.cjs",
+  "ps-license-manager.js",
+  "scrubber-core.cjs",
+];
+const ANTIGRAVITY_RUNTIME = "scripts/antigravity-mcp-server.cjs";
+const EXPECTED_WATERMARK = "PS_CANARY_AGY_WM_9F4C2E7A1B8D";
+const FORBIDDEN_SALT_SHA256 = "af4301c0f8b52504c37d952edf2cd098f1db66a21cbc10b45e1928d0d5efee7c";
 
-const FORBIDDEN_SIGNATURES = [
-    // Triggers on raw PROFILE_RULES assignment with cleartext rule objects (type+regex readable).
-    // Obfuscated files show PROFILE_RULES={'general':[],'legal':[{'type':_0x...}]} — keys visible but regex values hidden.
-    // We allow the obfuscated form: value objects must contain _0x vars. Flag only cleartext { type: 'NAME', regex: ... }.
-    { pattern: /PROFILE_RULES\s*=\s*\{[^}]{0,200}type\s*:\s*'[A-Z]/, name: 'Raw Commercial Profile Taxonomies (PROFILE_RULES with cleartext type)' },
-    { pattern: /"ZTDS_SALT_2026_!@#"/, name: 'Plaintext License Validation Salt' },
-    { pattern: /'ZTDS_SALT_2026_!@#'/, name: 'Plaintext License Validation Salt' },
-    { pattern: /isContextName:\s*true/, name: 'Raw Contextual Lookaround Rule Definitions' }
+const FORBIDDEN_PATTERNS = [
+  { pattern: /moxno\/PrivacyScrubber(?![-a-z0-9])/i, name: "Private upstream repository URL reference" },
+  { pattern: /\/Users\/[a-zA-Z0-9_-]+/, name: "Local developer filesystem path (/Users/...)" },
+  { pattern: /\bPS-(?:PRO|TEAMS|SDK|ENTERPRISE)-[A-Z0-9]{6,12}-\d{4}\b/, name: "Static license key literal" },
+  { pattern: /\blook(?:around|ahead|behind)\b/i, name: "Internal regex heuristic terminology" },
+  { pattern: /IL\s*331905|14\/09\/2026|\bB17B\b/i, name: "Internal unpublished patent metadata" },
+  { pattern: /ZTDS[_]SALT[_]/, name: "Legacy salt identifier prefix" },
 ];
 
-// Whitelisted files where definitions are legitimately maintained
-const WHITELIST = [
-    'src/core/pii-engine-core.js',
-    'scripts/sync-pii-engine.js',
-    'scripts/ip-guard.cjs',
-    'scripts/ps-license-manager.js',
-    'api/paddle-webhook.js',
-    'api/upgrade-key.js',
-    'api/send-welcome-email.js',
-    'api/request-pilot.js',
-    'tests/unit-micro.js',
-    'tests/run-e2e-audit.js',
-    'tests/test-license-settings.js',
-    '.agents/AGENTS.md',
-    '.agent/learnings.md'
-];
+const TEXT_ALLOW_EXT_RX = /\.(?:js|cjs|mjs|ts|py|md|json|yml|yaml|toml|cff|svg|txt)$/i;
 
-function isWhitelisted(filePath) {
-    const normalized = filePath.replace(/\\/g, '/');
-    return WHITELIST.some(allowed => normalized.endsWith(allowed));
+function resolveTargetFiles(scanAll) {
+  if (scanAll) {
+    return execSync("git ls-files", { cwd: REPO_ROOT, encoding: "utf8" })
+      .split("\n")
+      .map((f) => f.trim())
+      .filter(Boolean);
+  }
+  const staged = execSync("git diff --cached --name-only", { cwd: REPO_ROOT, encoding: "utf8" })
+    .split("\n")
+    .map((f) => f.trim())
+    .filter(Boolean);
+  if (staged.length > 0) return staged;
+  return execSync("git diff --name-only", { cwd: REPO_ROOT, encoding: "utf8" })
+    .split("\n")
+    .map((f) => f.trim())
+    .filter(Boolean);
 }
 
-let violations = [];
+function hasForbiddenLiteralDigest(content) {
+  const stringLiterals = content.matchAll(/(["'])([^"'\\\r\n]{6,64})\1/g);
+  for (const m of stringLiterals) {
+    const digest = crypto.createHash("sha256").update(m[2]).digest("hex");
+    if (digest === FORBIDDEN_SALT_SHA256) return true;
+  }
+  return false;
+}
 
-try {
-    // Get staged files from git
-    const stagedFiles = execSync('git diff --cached --name-only', { encoding: 'utf8' })
-        .split('\n')
-        .map(f => f.trim())
-        .filter(Boolean);
+function main() {
+  const scanAll = process.argv.includes("--all");
+  const violations = [];
 
-    // If nothing staged, check modified files
-    const targetFiles = stagedFiles.length > 0 
-        ? stagedFiles 
-        : execSync('git diff --name-only', { encoding: 'utf8' })
-            .split('\n')
-            .map(f => f.trim())
-            .filter(Boolean);
-
-    for (const relPath of targetFiles) {
-        if (!fs.existsSync(relPath)) continue;
-        if (isWhitelisted(relPath)) continue;
-        if (relPath.endsWith('.png') || relPath.endsWith('.jpg') || relPath.endsWith('.webp') || relPath.endsWith('.mp4') || relPath.endsWith('.pdf')) continue;
-
-        const content = fs.readFileSync(relPath, 'utf8');
-
-        for (const sig of FORBIDDEN_SIGNATURES) {
-            if (sig.pattern.test(content)) {
-                violations.push({
-                    file: relPath,
-                    signature: sig.name
-                });
-            }
-        }
+  for (const engineRel of OBFUSCATED_ENGINES) {
+    const abs = path.join(REPO_ROOT, engineRel);
+    if (!fs.existsSync(abs)) {
+      violations.push({ file: engineRel, issue: "Missing required obfuscated engine artifact" });
+      continue;
     }
-} catch (err) {
-    console.error('❌ [IP Guard] Failed to inspect git status:', err.message);
+    const content = fs.readFileSync(abs, "utf8");
+    const lineCount = content.split("\n").length;
+    if (!content.includes("_0x") || lineCount > 25) {
+      violations.push({ file: engineRel, issue: `Unobfuscated or unminified engine detected (lines=${lineCount})` });
+    }
+  }
+
+  const runtimeAbs = path.join(REPO_ROOT, ANTIGRAVITY_RUNTIME);
+  if (!fs.existsSync(runtimeAbs)) {
+    violations.push({ file: ANTIGRAVITY_RUNTIME, issue: "Missing compiled Antigravity MCP runtime bundle" });
+  } else {
+    const runtimeSrc = fs.readFileSync(runtimeAbs, "utf8");
+    const runtimeLines = runtimeSrc.split("\n").length;
+    if (!runtimeSrc.includes(EXPECTED_WATERMARK) || runtimeSrc.length > 460 * 1024 || runtimeSrc.length / runtimeLines < 300) {
+      violations.push({
+        file: ANTIGRAVITY_RUNTIME,
+        issue: `Runtime bundle missing integrity watermark or minification (size=${runtimeSrc.length}, lines=${runtimeLines})`,
+      });
+    }
+  }
+
+  const skipTextScan = new Set(["package-lock.json", ANTIGRAVITY_RUNTIME, ...OBFUSCATED_ENGINES]);
+  const targetFiles = resolveTargetFiles(scanAll);
+
+  for (const relPath of targetFiles) {
+    const norm = relPath.replace(/\\/g, "/");
+    if (skipTextScan.has(norm)) continue;
+    if (!TEXT_ALLOW_EXT_RX.test(norm) && path.basename(norm) !== "LICENSE") continue;
+    const abs = path.join(REPO_ROOT, norm);
+    if (!fs.existsSync(abs) || fs.statSync(abs).isDirectory()) continue;
+
+    const content = fs.readFileSync(abs, "utf8");
+    for (const rule of FORBIDDEN_PATTERNS) {
+      if (rule.pattern.test(content)) {
+        violations.push({ file: norm, issue: rule.name });
+      }
+    }
+    if (hasForbiddenLiteralDigest(content)) {
+      violations.push({ file: norm, issue: "Prohibited secret digest match in string literal" });
+    }
+  }
+
+  if (violations.length > 0) {
+    console.error("[IP Guard] FAILED — detected repository hygiene or IP protection violations:");
+    for (const v of violations) {
+      console.error(`  - ${v.file}: ${v.issue}`);
+    }
     process.exit(1);
+  }
+
+  console.log(
+    `[IP Guard] PASS (${scanAll ? "full repository" : "changed files"}): obfuscation, bundle minification, watermark, and hygiene verified.`
+  );
 }
 
-if (violations.length > 0) {
-    console.error('\n🚨 =========================================================');
-    console.error('🚨 CRITICAL ERROR: INTELLECTUAL PROPERTY LEAK DETECTED!');
-    console.error('🚨 The following files contain un-obfuscated proprietary code:');
-    violations.forEach(v => {
-        console.error(`   ❌ ${v.file} -> Found: ${v.signature}`);
-    });
-    console.error('\n🚨 COMMIT / PUSH BLOCKED PHYSICALLY BY IP-GUARD.');
-    console.error('🚨 You must run the build pipeline (e.g. build-mcp.js or build-sdk.js)');
-    console.error('🚨 to obfuscate these files before committing.');
-    console.error('🚨 =========================================================\n');
-    process.exit(1);
-}
-
-console.log('✅ [IP Guard] 0 leaks detected. Intellectual Property is protected.\n');
-process.exit(0);
+main();

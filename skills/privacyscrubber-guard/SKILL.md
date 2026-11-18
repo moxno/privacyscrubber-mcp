@@ -4,7 +4,7 @@ description: >-
   Zero-Trust Data Sanitization (ZTDS) firewall and PII/secret masking skill for Google Antigravity.
   Use when sanitizing customer PII, PHI, or credentials in local RAM, inspecting sensitive files
   or diffs safely, restoring masked tokens locally, or generating GDPR/HIPAA/SOC 2 SHA-256 audit receipts.
-license: MIT
+license: SEE LICENSE IN LICENSE
 ---
 
 # PrivacyScrubber Guard — Google Antigravity Skill

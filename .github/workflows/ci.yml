@@ -43,6 +43,12 @@ jobs:
       - name: Run test suite
         run: npm test
 
+      - name: Validate Antigravity plugin & cold-room runtime
+        run: node scripts/validate-antigravity-plugin.cjs
+
+      - name: Run IP & security hygiene guard
+        run: node scripts/ip-guard.cjs --all
+
   test-python:
     name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}

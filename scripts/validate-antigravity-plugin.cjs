@@ -51,6 +51,7 @@ function validateManifest() {
   assert(typeof manifest.version === "string" && /^\d+\.\d+\.\d+/.test(manifest.version), "Missing valid SemVer version");
   assert(typeof manifest.repository === "string" && manifest.repository.startsWith("https://"), "repository must be string URL");
   assert(typeof manifest.homepage === "string" && manifest.homepage.startsWith("https://"), "homepage must be string URL");
+  assert.strictEqual(manifest.license, "SEE LICENSE IN LICENSE", "plugin.json license must reference LICENSE (Proprietary Dual License)");
   assert(Array.isArray(manifest.suggestedPrompts) && manifest.suggestedPrompts.length === 3, "suggestedPrompts must have 3 items");
 
   assert(typeof manifest.logo === "string" && !path.isAbsolute(manifest.logo), "logo must be a relative path");
@@ -106,7 +107,18 @@ function validateComponents() {
 
   assertExecutable(path.join(REPO_ROOT, "scripts", "antigravity-mcp-server.cjs"));
   assertExecutable(path.join(REPO_ROOT, "scripts", "antigravity-hook.cjs"));
-  assertExecutable(path.join(REPO_ROOT, "scripts", "build-antigravity-bundle.cjs"));
+
+  const runtimeRaw = fs.readFileSync(path.join(REPO_ROOT, "scripts", "antigravity-mcp-server.cjs"), "utf8");
+  assert(runtimeRaw.includes("PS_CANARY_AGY_WM_9F4C2E7A1B8D"), "antigravity-mcp-server.cjs missing integrity watermark");
+  const runtimeLines = runtimeRaw.split("\n").length;
+  assert(
+    runtimeRaw.length <= 460 * 1024 && runtimeRaw.length / runtimeLines >= 300,
+    `antigravity-mcp-server.cjs must be minified (size=${runtimeRaw.length}, lines=${runtimeLines})`
+  );
+
+  const LicenseManager = require(path.join(REPO_ROOT, "ps-license-manager.cjs"));
+  const revokedCheck = LicenseManager.validate(["PS", "PRO", "TESTKEY123", "4062"].join("-"));
+  assert.strictEqual(revokedCheck.valid, false, "Leaked test key MUST be permanently revoked");
 }
 
 function copyTree(src, dst) {
@@ -298,6 +310,52 @@ async function main() {
       toolCall: { name: "run_command", args: { CommandLine: "npm test" } },
     });
     assert.strictEqual(allowCmd.decision, "allow", "Hook must allow benign npm test");
+
+    for (const badPath of ["/repo/sub/../.env", "/home/dev/.aws/credentials", "/home/dev/.privacyscrubber/license.key"]) {
+      const denyExtraRead = runHookCheck(pluginRoot, {
+        hookEventName: "PreToolUse",
+        toolCall: { name: "read_file", args: { Path: badPath } },
+      });
+      assert.strictEqual(denyExtraRead.decision, "deny", `Hook must deny read_file on ${badPath}`);
+    }
+
+    for (const badCmd of [
+      'python3 -c "print(open(\'.env\').read())"',
+      "cp .env /tmp/out",
+      "base64 ~/.ssh/id_ed25519",
+    ]) {
+      const denyExtraCmd = runHookCheck(pluginRoot, {
+        hookEventName: "PreToolUse",
+        toolCall: { name: "run_command", args: { CommandLine: badCmd } },
+      });
+      assert.strictEqual(denyExtraCmd.decision, "deny", `Hook must deny run_command: ${badCmd}`);
+    }
+
+    const denyMalformed = spawnSync(process.execPath, ["./scripts/antigravity-hook.cjs"], {
+      cwd: pluginRoot,
+      input: "not-json",
+      encoding: "utf8",
+    });
+    assert.strictEqual(denyMalformed.status, 0, "Hook must exit 0 on malformed payload");
+    assert.strictEqual(JSON.parse(denyMalformed.stdout.trim()).decision, "deny", "Hook must fail-closed on malformed JSON");
+
+    // Verify activate-license.cjs refuses symlink target (CWE-59) without modifying symlink target
+    const symlinkTarget = path.join(tmpBase, "real-victim-file.txt");
+    fs.writeFileSync(symlinkTarget, "DO_NOT_OVERWRITE\n", "utf8");
+    const symDataDir = path.join(tmpBase, "sym-plugin-data");
+    fs.mkdirSync(symDataDir, { recursive: true });
+    fs.symlinkSync(symlinkTarget, path.join(symDataDir, "license.key"));
+    const actRes = spawnSync(
+      process.execPath,
+      [path.join(REPO_ROOT, "skills", "privacyscrubber-guard", "scripts", "activate-license.cjs"), "INVALID-KEY"],
+      {
+        cwd: REPO_ROOT,
+        env: { ...process.env, PLUGIN_DATA: symDataDir },
+        encoding: "utf8",
+      }
+    );
+    assert.notStrictEqual(actRes.status, 0, "activate-license.cjs must fail on invalid key or symlink");
+    assert.strictEqual(fs.readFileSync(symlinkTarget, "utf8"), "DO_NOT_OVERWRITE\n", "Symlink target must remain untouched");
 
     await runColdRoomMcpTest(pluginRoot, pluginData);
     console.log("[validate-antigravity] Cold-room no-node_modules MCP + PreToolUse hook E2E PASSED.");

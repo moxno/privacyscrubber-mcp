@@ -278,8 +278,8 @@ function getSessionIgnoreList(sessionId = 'default') {
   return getSession(sessionId).ignoreList;
 }
 
-// Global default sessionMap maintains 100% backward compatibility
-const sessionMap = getSessionMap('default');
+// Global default token map maintains 100% backward compatibility
+const activeTokenMap = getSessionMap('default');
 const sessionIgnoreList = getSessionIgnoreList('default');
 
 function escapeRegex(s) {
@@ -2929,7 +2929,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const normalizedProfile = targetProfile.toLowerCase();
       const license = checkLicenseStatus();
 
-      // Read-only dry-run map: NEVER mutates global sessionMap
+      // Read-only dry-run map: NEVER mutates global token map
       const dryRunMap = {};
       const result = PrivacyScrubberCore.scrubText(text, customRules, {}, normalizedProfile, dryRunMap, license.isPro);
       const telemetry = buildCisoAuditTelemetry(result.tokenMap || {});
@@ -5264,7 +5264,7 @@ function resolveConfigPath() {
 
 function getSessionMetricsSummary() {
   const counts = {};
-  Object.keys(sessionMap).forEach(token => {
+  Object.keys(activeTokenMap).forEach(token => {
     const match = token.match(/^\[([A-Z_]+)_\d+\]$/);
     if (match) {
       const type = match[1];
@@ -5344,11 +5344,11 @@ function detectSecrets(text) {
   return detected;
 }
 
-export function performSanitization(text, profile, ignoreList = null, customSessionMap = null) {
+export function performSanitization(text, profile, ignoreList = null, customTokenMap = null) {
   const customRules = loadCustomRules();
   const normalizedProfile = (profile || "general").trim().toLowerCase();
   const license = checkLicenseStatus();
-  const targetMap = customSessionMap || sessionMap;
+  const targetMap = customTokenMap || activeTokenMap;
   const result = PrivacyScrubberCore.scrubText(text, customRules, {}, normalizedProfile, targetMap, license.isPro, ignoreList);
 
   const newTokens = {};

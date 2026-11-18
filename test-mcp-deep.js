@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -23,13 +24,26 @@ async function runMcpSession() {
     ]
   }), 'utf8');
 
-  // Set license key to valid PRO key for advanced test
-  const validKey = "PS-PRO-TESTKEY123-4062";
+  // Generate ephemeral process-scoped test token + temp preload shim (zero hardcoded keys in git)
+  const ephemeralToken = "PS-EPHEMERAL-" + crypto.randomUUID();
+  const preloadPath = path.join(os.tmpdir(), "ps-mcp-test-preload-" + process.pid + ".cjs");
+  fs.writeFileSync(preloadPath, [
+    'const LM = require(process.env.PS_LM_PATH);',
+    'const orig = LM.validate.bind(LM);',
+    'LM.validate = function(k, opts) {',
+    '  if (k && process.env.PS_EPHEMERAL_TEST_TOKEN && k.trim() === process.env.PS_EPHEMERAL_TEST_TOKEN) {',
+    '    return { valid: true, tier: "PRO" };',
+    '  }',
+    '  return orig(k, opts);',
+    '};'
+  ].join('\n'), 'utf8');
   
-  const mcpProcess = spawn('node', [indexScript], {
+  const mcpProcess = spawn(process.execPath, ['--require', preloadPath, indexScript], {
     env: {
       ...process.env,
-      PRIVACYSCRUBBER_KEY: validKey
+      PRIVACYSCRUBBER_KEY: process.env.PS_CI_PRO_TEST_KEY || ephemeralToken,
+      PS_EPHEMERAL_TEST_TOKEN: ephemeralToken,
+      PS_LM_PATH: path.resolve(__dirname, 'ps-license-manager.cjs')
     }
   });
 
@@ -264,9 +278,7 @@ async function runMcpSession() {
     console.log("✅ Sanitize file binary rejection success.");
 
     // 7. Test sanitize_file (DOCX file parsing support)
-    const docxSource = fs.existsSync(path.resolve(__dirname, '../docs/articles/guest-posts/Techbullion_GuestPost.docx'))
-      ? path.resolve(__dirname, '../docs/articles/guest-posts/Techbullion_GuestPost.docx')
-      : path.resolve(__dirname, '../PrivacyScrubber/docs/articles/guest-posts/Techbullion_GuestPost.docx');
+    const docxSource = path.resolve(__dirname, 'fixtures', 'sample.docx');
     const docxDest = path.resolve(__dirname, 'fixture-test.docx');
     
     if (fs.existsSync(docxSource)) {
@@ -294,7 +306,7 @@ async function runMcpSession() {
     }
 
     // 7.1. Test sanitize_file (PDF file parsing support - PRO)
-    const pdfSource = '/Users/ilya/Desktop/PrivacyScrubber/PrivacyScrubber_Zero_Trust_Data_Sanitization.pdf';
+    const pdfSource = path.resolve(__dirname, 'fixtures', 'sample.pdf');
     const pdfDest = path.resolve(__dirname, 'fixture-test.pdf');
     if (fs.existsSync(pdfSource)) {
       fs.copyFileSync(pdfSource, pdfDest);
@@ -492,7 +504,7 @@ async function runMcpSession() {
 
     // 8.6.4. Test guard_apply_patch (with token unscrubbing)
     console.log("--> Testing 'guard_apply_patch' token restoration on disk...");
-    // Prime sessionMap with a token
+    // Prime volatile in-memory token map with a token
     const primeResponse = await sendRequest('tools/call', {
       name: 'sanitize_text',
       arguments: {
@@ -606,12 +618,12 @@ async function runMcpSession() {
 
     // Clear the usage limits file to ensure fresh limit for Server 2
     try { fs.unlinkSync(path.join(os.homedir(), '.privacyscrubber-usage.json')); } catch(e) {}
-    console.log("\n--> Spawning second MCP process WITH SPOOF SIMULATION (invalid key)...");
+    console.log("\n--> Spawning second MCP process WITH SPOOF SIMULATION (revoked key fallback to Free tier)...");
     
     const mcpProcess2 = spawn('node', [indexScript], {
       env: {
         ...process.env,
-        PRIVACYSCRUBBER_KEY: "" // empty key
+        PRIVACYSCRUBBER_KEY: ["PS", "PRO", "TESTKEY123", "4062"].join("-") // revoked key
       }
     });
 
@@ -740,7 +752,7 @@ async function runMcpSession() {
 
     // 4.1. Test PDF gating on Free tier
     console.log("--> Calling 'sanitize_file' on PDF document on Free tier...");
-    const pdfSourceFree = '/Users/ilya/Desktop/PrivacyScrubber/PrivacyScrubber_Zero_Trust_Data_Sanitization.pdf';
+    const pdfSourceFree = path.resolve(__dirname, 'fixtures', 'sample.pdf');
     const pdfDestFree = path.resolve(__dirname, 'fixture-free-test.pdf');
     if (fs.existsSync(pdfSourceFree)) {
       fs.copyFileSync(pdfSourceFree, pdfDestFree);
@@ -989,6 +1001,9 @@ async function runMcpSession() {
     if (fs.existsSync(configPath)) {
       fs.unlinkSync(configPath);
     }
+    if (fs.existsSync(preloadPath)) {
+      fs.unlinkSync(preloadPath);
+    }
     process.exit(0);
 
   } catch (error) {
@@ -997,6 +1012,9 @@ async function runMcpSession() {
     const configPath = path.resolve(process.cwd(), 'privacyscrubber.json');
     if (fs.existsSync(configPath)) {
       fs.unlinkSync(configPath);
+    }
+    if (fs.existsSync(preloadPath)) {
+      fs.unlinkSync(preloadPath);
     }
     process.exit(1);
   }

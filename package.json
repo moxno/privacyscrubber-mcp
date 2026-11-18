@@ -19,6 +19,7 @@
     "smithery.yaml",
     "server.json",
     "manifest.json",
+    "LICENSE",
     ".well-known"
   ],
   "bin": {
@@ -35,7 +36,7 @@
     "build": "node -e \"const fs=require('fs'); if(fs.existsSync('../scripts/build-mcp.js')) require('child_process').execSync('node ../scripts/build-mcp.js --keep-obfuscated', {stdio:'inherit'}); else console.log('MCP assets are pre-built.');\"",
     "test": "node test-mcp.js && node test-mcp-deep.js && node test-mcp-streaming.js",
     "test:stream": "node test-mcp-streaming.js",
-    "prepublishOnly": "npm run build && node -e \"const fs=require('fs'); for(const f of ['ps-license-manager.js','ps-license-manager.cjs','ps-pii-engine.js','ps-pii-engine.cjs','scrubber-core.cjs']){const c=fs.readFileSync(f,'utf8'); if(c.includes('OFFLINE_KEY_SALT')||c.includes('computeV2Signature')||!c.includes('_0x')){console.error('FATAL: Unobfuscated '+f+' detected!'); process.exit(1);}}\" && npm test"
+    "prepublishOnly": "npm run build && node -e \"const fs=require('fs'); for(const f of ['ps-license-manager.js','ps-license-manager.cjs','ps-pii-engine.js','ps-pii-engine.cjs','scrubber-core.cjs']){const c=fs.readFileSync(f,'utf8'); if(!c.includes('_0x')||c.split('\\n').length>25){console.error('FATAL: Unobfuscated '+f+' detected!'); process.exit(1);}}\" && npm test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -67,10 +68,12 @@
     "ciso",
     "presidio",
     "presidio-alternative",
-    "langchain"
+    "langchain",
+    "google-antigravity",
+    "antigravity-plugin"
   ],
   "author": "Ilya Sibiryakov (BrandMeWeb)",
-  "license": "SEE LICENSE IN LICENSE.md",
+  "license": "SEE LICENSE IN LICENSE",
   "homepage": "https://privacyscrubber.com/pii-mcp/?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server",
   "repository": {
     "type": "git",

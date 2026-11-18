@@ -66,7 +66,7 @@ PrivacyScrubber MCP is an **application-layer, defense-in-depth data sanitizatio
   2. **Minimal Tool Scoping:** If an organization requires PII masking without shell execution capabilities, configure the MCP client to restrict exposed tools exclusively to pure sanitization helpers (`sanitize_text`, `detokenize_text`, `sanitize_file`).
 
 ### Caveat 3: Token Mapping Volatility & Multi-Session Scope
-- **Mechanism:** Token-to-value maps (`sessionMap`) are stored strictly in volatile heap memory (`Map<string, string>`).
+- **Mechanism:** Token-to-value maps (in-memory token tables) are stored strictly in volatile heap memory (`Map<string, string>`).
 - **Security Posture:** 
   - Token mappings are never persisted to disk, local cookies, databases, or cloud backends.
   - Terminating or restarting the MCP process instantly and permanently purges all session mappings, rendering previously tokenized logs cryptographically irreversible.
@@ -90,10 +90,10 @@ PrivacyScrubber MCP is an **application-layer, defense-in-depth data sanitizatio
   npm test
   ```
   All tests execute and pass with 100% offline parity.
-- **Zero Remote Licensing Telemetry:** PRO/TEAMS tier license validation is performed fully offline via local asymmetric RSA-4096 signature verification against hardcoded public keys. No remote validation pings or phone-home requests exist in the codebase.
+- **Zero Remote Licensing Telemetry:** PRO/TEAMS tier license validation is performed fully offline via local asymmetric Ed25519 and RSA cryptographic signature verification against hardcoded public keys. No remote validation pings or phone-home requests exist in the codebase.
 
 ---
 
-## 5. Licensing & Open Source Integrity
+## 5. Licensing & Proprietary Integrity
 
-The core PrivacyScrubber MCP server and CLI are released under the open-source **MIT License** (see [LICENSE](LICENSE)). All core redaction, CLI piping, file scanning, and basic profile capabilities are freely available under standard MIT permissions.
+The PrivacyScrubber MCP server, CLI, and Google Antigravity plugin bundle are governed by the **PrivacyScrubber Dual Community & Commercial License** (see [LICENSE](LICENSE)). Personal local evaluation under Free Tier quotas is permitted; commercial organization use, 30 specialized industry profiles, reverse-engineering, and competing redistribution require a valid commercial license.
