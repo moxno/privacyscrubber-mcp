@@ -74,6 +74,22 @@ npx -y @privacyscrubber/mcp-server install --cursor
 npx -y @privacyscrubber/mcp-server install --claude
 ```
 
+### Google Antigravity Plugin
+
+Install the native Google Antigravity plugin bundle (MCP server, deterministic `PreToolUse` secret-egress gate hook, `/privacyscrubber-guard` skill, always-on `AGENTS.md` rule, and read-only `ztds-compliance-auditor` subagent across App, IDE, and CLI):
+
+```bash
+agy plugin install https://github.com/moxno/privacyscrubber-mcp
+```
+
+- **Instant Zero-Config Startup:** Activates immediately with zero external network egress and zero mandatory API key prompts.
+- **Deterministic Credential Gate:** `PreToolUse` hooks block direct reads of `.env`, private keys, or credential dumps and route inspection safely through `guard_read_file` and `guard_exec` in local RAM.
+- **Offline Commercial Activation (30 Industry Profiles):** Validate and store an offline Ed25519 PRO, TEAMS (`$99/mo`), or Developer SDK (`$299/mo`) key locally under mode `0600` (`${PLUGIN_DATA}/license.key` and `~/.privacyscrubber/license.key`):
+
+```bash
+node skills/privacyscrubber-guard/scripts/activate-license.cjs "<PRIVACYSCRUBBER_KEY>"
+```
+
 ### 2. Install via Smithery
 To automatically configure and run with your preferred client, install using Smithery:
 ```bash

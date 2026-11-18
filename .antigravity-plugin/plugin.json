@@ -1,0 +1,33 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "privacyscrubber",
+  "displayName": "PrivacyScrubber",
+  "version": "2.5.1",
+  "description": "In-RAM Zero-Trust Data Sanitization (ZTDS) firewall for PII, PHI, and DevOps secrets. Tokenizes sensitive context locally with 30 industry compliance profiles (GDPR, HIPAA, SOC 2, PCI-DSS) and SHA-256 audit receipts before cloud egress.",
+  "logo": "assets/logo.svg",
+  "suggestedPrompts": [
+    "Audit this workspace for leaked API keys, .env secrets, and unmasked PII",
+    "Sanitize customer PII and credentials in RAM before sending context to the model",
+    "Generate a SHA-256 compliance audit receipt mapped to GDPR, HIPAA, and SOC 2"
+  ],
+  "author": {
+    "name": "Ilya Sibiryakov (BrandMeWeb)",
+    "email": "support@privacyscrubber.com",
+    "url": "https://privacyscrubber.com"
+  },
+  "homepage": "https://privacyscrubber.com/pii-mcp/",
+  "repository": "https://github.com/moxno/privacyscrubber-mcp",
+  "license": "MIT",
+  "keywords": [
+    "security",
+    "privacy",
+    "pii",
+    "dlp",
+    "redaction",
+    "secrets",
+    "hipaa",
+    "gdpr",
+    "soc2",
+    "ztds"
+  ]
+}

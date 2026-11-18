@@ -1,31 +1,35 @@
 ---
 name: privacyscrubber-guard
-description: Pre-ingestion zero-trust PII, secret, and regulated data sanitization skill for AI coding agents (Claude Code, Cursor, Codex, Gemini CLI, Windsurf) via @privacyscrubber/mcp-server. Intercepts files, shell commands, and prompts in local RAM with 30 specialized industry profiles and SHA-256 compliance receipts.
-metadata:
-  author: moxno
-  version: "2.5.1"
-  mcp_server: "npx -y @privacyscrubber/mcp-server"
+description: >-
+  Zero-Trust Data Sanitization (ZTDS) firewall and PII/secret masking skill for Google Antigravity.
+  Use when sanitizing customer PII, PHI, or credentials in local RAM, inspecting sensitive files
+  or diffs safely, restoring masked tokens locally, or generating GDPR/HIPAA/SOC 2 SHA-256 audit receipts.
+license: MIT
 ---
 
-# PrivacyScrubber Guard — Agent Skill
+# PrivacyScrubber Guard — Google Antigravity Skill
 
-Enforces local in-RAM PII and secret sanitization before AI agents read files, run terminal commands, apply patches, or send context to external LLM APIs.
+Enforces in-RAM Zero-Trust Data Sanitization (ZTDS) with zero external network egress before prompts, repository files, diffs, or command outputs reach remote LLM providers.
 
-## Quick Setup
+## 1. Core Local-RAM Workflow
+
+1. **Pre-Flight Risk Scan (`audit_context`):** Non-destructively classify PII, PHI, API secrets, and triggered regulatory frameworks (GDPR Art. 32, HIPAA Safe Harbor, SOC 2, PCI-DSS) before model transmission.
+2. **Mask Sensitive Data (`sanitize_text` / `ztds_sanitize`):** Tokenize raw identifiers into deterministic surrogates (`[EMAIL_1]`, `[OPENAI_KEY_1]`, `[SSN_1]`) stored solely in volatile process memory.
+3. **Protected Reads, Commands & Patches (`guard_read_file`, `guard_exec`, `guard_git_diff`, `guard_apply_patch`):** Read `.env`/credential files or inspect shell output safely in RAM without exposing cleartext secrets to model context, and hydrate patches locally on disk.
+4. **Restore Locally (`reveal_text` / `stream_reveal_text` / `ztds_restore`):** Re-hydrate surrogate tokens inside the final local response or output file when cleartext is required locally.
+5. **Attestation & Memory Purge (`generate_compliance_report`, `export_audit_log`, `guard_session_reset`):** Generate deterministic SHA-256 compliance receipts (zero plaintext PII) and wipe volatile session maps on task completion.
+
+## 2. Offline B2B License Activation (No Restart Config Prompt)
+
+The community baseline runs immediately on install (up to 15,000 chars on general PII and 5,000 chars trial quota across 30 specialized industry profiles). To unlock unlimited throughput across all 30 regulated verticals (`Medical`, `Finance`, `Legal`, `Compliance`, `HR`, `Security`, etc.), activate a commercial or evaluation key locally:
 
 ```bash
-claude mcp add privacyscrubber -- npx -y @privacyscrubber/mcp-server
+node scripts/activate-license.cjs "<PRIVACYSCRUBBER_KEY>"
 ```
 
-Or via Python (`uvx`):
+This validates the cryptographic Ed25519 signature offline and stores the key with `0600` permissions in `${PLUGIN_DATA}/license.key` and `~/.privacyscrubber/license.key`.
 
-```bash
-claude mcp add privacyscrubber -- uvx privacyscrubber-mcp
-```
-
-## Core Agent Workflow
-
-1. **Sanitize Text & Prompts (`scrub_text`):** Mask PII, API keys, HIPAA PHI, PCI-DSS PAN/IBAN, and corporate secrets into deterministic surrogate tokens (`[EMAIL_1]`, `[OPENAI_KEY_1]`, `[SSN_1]`) in local RAM.
-2. **Guard File Reads & Shell Commands (`guard_read_file`, `guard_exec`, `guard_apply_patch`):** Automatically redact sensitive literals from local files and command outputs before they enter the agent context window.
-3. **Restore Cleartext Locally (`reveal_text`):** Re-hydrate surrogate tokens from volatile session memory into final local outputs without exposing cleartext to external LLM providers.
-4. **Compliance Attestation (`generate_audit_receipt`):** Emit a deterministic SHA-256 compliance receipt mapping detected entities to GDPR, HIPAA, SOC 2, PCI-DSS, and NIST frameworks.
+- **TEAMS (\$99/mo flat, unlimited seats) & 7-Day B2B Trial:** `https://privacyscrubber.com/pricing/?tier=teams&trial=true`
+- **Developer SDK (\$299/mo flat, <1ms headless Node.js/WASM):** `https://privacyscrubber.com/sdk/`
+- **SOLO PRO (\$15/mo or \$110 Lifetime):** `https://privacyscrubber.com/pricing/?tier=pro`
+- **CISO / VP Procurement Brief:** Run `generate_procurement_memo` MCP tool for an executive ROI and Statutory Risk Minimization packet.

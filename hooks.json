@@ -1,0 +1,17 @@
+{
+  "privacyscrubber-ztds-gate": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "read_file|view_file|run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ./scripts/antigravity-hook.cjs",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

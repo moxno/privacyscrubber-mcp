@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "guard": {
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/scripts/antigravity-mcp-server.cjs"
+      ],
+      "env": {
+        "ZTDS_GUARD_LOCAL": "1"
+      },
+      "tools": {
+        "sanitize_text": { "eager": true },
+        "reveal_text": { "eager": true },
+        "audit_context": { "eager": true },
+        "guard_read_file": { "eager": true },
+        "guard_exec": { "eager": true }
+      }
+    }
+  }
+}
