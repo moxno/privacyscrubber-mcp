@@ -39,10 +39,9 @@
     "prepublishOnly": "npm run build && node -e \"const fs=require('fs'); for(const f of ['ps-license-manager.js','ps-license-manager.cjs','ps-pii-engine.js','ps-pii-engine.cjs','scrubber-core.cjs']){const c=fs.readFileSync(f,'utf8'); if(!c.includes('_0x')||c.split('\\n').length>25){console.error('FATAL: Unobfuscated '+f+' detected!'); process.exit(1);}}\" && npm test"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "mammoth": "^1.8.0",
-    "pdf-parse": "^1.1.1",
-    "xlsx": "^0.18.5"
+    "pdf-parse": "^1.1.1"
   },
   "keywords": [
     "mcp",

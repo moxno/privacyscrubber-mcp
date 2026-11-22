@@ -41,8 +41,7 @@ async function promptGitHubStarIfInteractive() {
       if (normalized === 'y' || normalized === 'yes') {
         try {
           execFileSync('gh', ['repo', 'star', 'moxno/privacyscrubber-mcp'], { stdio: 'ignore', timeout: 4000 });
-          execFileSync('gh', ['repo', 'star', 'moxno/ztds.ai'], { stdio: 'ignore', timeout: 4000 });
-          console.log('   [GitHub] Thank you for starring moxno/privacyscrubber-mcp & moxno/ztds.ai!');
+          console.log('   [GitHub] Thank you for starring moxno/privacyscrubber-mcp!');
         } catch (_) {
           console.log('   [GitHub] Star manually: https://github.com/moxno/privacyscrubber-mcp');
         }

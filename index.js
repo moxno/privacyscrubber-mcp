@@ -32,6 +32,7 @@ if (typeof globalThis !== 'undefined' && !globalThis.__psNodeCrypto) {
 }
 import { execSync } from 'child_process';
 import { Transform } from 'stream';
+import zlib from 'zlib';
 
 const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
@@ -674,6 +675,68 @@ function reverseTokens(text, map) {
     }
   }
   return result;
+}
+
+function reverseTokensShellSafe(command, map) {
+  if (!command || typeof command !== 'string' || !map || Object.keys(map).length === 0) return command;
+  const sortedTokens = Object.keys(map).filter(Boolean).sort((a, b) => b.length - a.length);
+  if (sortedTokens.length === 0) return command;
+
+  let out = '';
+  let quoteState = 'none'; // 'none' | 'single' | 'double'
+
+  for (let i = 0; i < command.length; ) {
+    let matchedToken = null;
+    for (let t = 0; t < sortedTokens.length; t++) {
+      if (command.startsWith(sortedTokens[t], i)) {
+        matchedToken = sortedTokens[t];
+        break;
+      }
+    }
+
+    if (matchedToken !== null) {
+      const val = String(map[matchedToken] ?? '');
+      if (/[\0\r\n]/.test(val)) {
+        throw new Error('Security policy violation — restored token contains control or newline characters unsafe for shell execution.');
+      }
+      if (quoteState === 'single') {
+        out += val.replace(/'/g, "'\\''");
+      } else if (quoteState === 'double') {
+        out += val.replace(/[\\"$`]/g, '\\$&');
+      } else {
+        out += "'" + val.replace(/'/g, "'\\''") + "'";
+      }
+      i += matchedToken.length;
+      continue;
+    }
+
+    const ch = command[i];
+    if (quoteState === 'none') {
+      if (ch === '\\' && i + 1 < command.length) {
+        out += ch + command[i + 1];
+        i += 2;
+        continue;
+      }
+      if (ch === "'") quoteState = 'single';
+      else if (ch === '"') quoteState = 'double';
+      out += ch;
+      i++;
+    } else if (quoteState === 'single') {
+      if (ch === "'") quoteState = 'none';
+      out += ch;
+      i++;
+    } else {
+      if (ch === '\\' && i + 1 < command.length) {
+        out += ch + command[i + 1];
+        i += 2;
+        continue;
+      }
+      if (ch === '"') quoteState = 'none';
+      out += ch;
+      i++;
+    }
+  }
+  return out;
 }
 
 // ANSI terminal color helpers
@@ -2872,7 +2935,55 @@ function isWithinAnyWorkspaceRoot(targetPath, roots) {
   return { ok: false, matchedRoot: roots[0] || process.cwd() };
 }
 
+function assertRegularNonSymlinkOrAbsent(targetPath, label = "target path") {
+  try {
+    const st = fs.lstatSync(targetPath);
+    if (st.isSymbolicLink() || !st.isFile()) {
+      return `Error: Security policy violation — ${label} must be a regular non-symlink file.`;
+    }
+  } catch (err) {
+    if (!err || err.code !== 'ENOENT') {
+      return `Error: Security policy violation — cannot inspect ${label}: ${err ? err.message : 'unknown error'}`;
+    }
+  }
+  return null;
+}
+
+function safeWriteFileNoFollow(filePath, content, { append = false, label = "target file" } = {}) {
+  const errMsg = assertRegularNonSymlinkOrAbsent(filePath, label);
+  if (errMsg) {
+    throw new Error(errMsg);
+  }
+  const noFollowFlag = (fs.constants && typeof fs.constants.O_NOFOLLOW === 'number') ? fs.constants.O_NOFOLLOW : 0;
+  const flags = fs.constants.O_WRONLY | fs.constants.O_CREAT | (append ? fs.constants.O_APPEND : fs.constants.O_TRUNC) | noFollowFlag;
+  const fd = fs.openSync(filePath, flags, 0o600);
+  try {
+    const buf = Buffer.isBuffer(content) ? content : Buffer.from(String(content), 'utf8');
+    let offset = 0;
+    while (offset < buf.length) {
+      offset += fs.writeSync(fd, buf, offset, buf.length - offset);
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function safeCopyBackupNoFollow(srcPath, bakPath) {
+  const srcErr = assertRegularNonSymlinkOrAbsent(srcPath, "source file");
+  if (srcErr) throw new Error(srcErr);
+  const bakErr = assertRegularNonSymlinkOrAbsent(bakPath, "backup file");
+  if (bakErr) throw new Error(bakErr);
+  const raw = fs.readFileSync(srcPath);
+  safeWriteFileNoFollow(bakPath, raw, { append: false, label: "backup file" });
+}
+
 function resolveWorkspaceSafePath(inputPath, paramName = "file_path") {
+  if (typeof inputPath !== 'string' || inputPath.includes('\0')) {
+    return {
+      ok: false,
+      error: `Error: Security policy violation — invalid '${paramName}' (null byte or non-string blocked).`
+    };
+  }
   const roots = getEffectiveWorkspaceRoots();
   const primaryRoot = roots[0];
   const resolvedPath = path.resolve(primaryRoot, inputPath);
@@ -2883,23 +2994,313 @@ function resolveWorkspaceSafePath(inputPath, paramName = "file_path") {
       error: `Error: Security policy violation — target '${paramName}' resolves outside the active workspace directory (path traversal blocked).`
     };
   }
-  let checkCursor = resolvedPath;
-  while (!fs.existsSync(checkCursor)) {
-    const parentCursor = path.dirname(checkCursor);
-    if (parentCursor === checkCursor) break;
-    checkCursor = parentCursor;
-  }
-  if (fs.existsSync(checkCursor)) {
-    const realCheck = fs.realpathSync(checkCursor);
-    const realBoundary = isWithinAnyWorkspaceRoot(realCheck, roots);
-    if (!realBoundary.ok) {
+
+  // Walk every path segment from matchedRoot down to resolvedPath via lstatSync (never gated by existsSync)
+  // so dangling symlinks or intermediate directory symlinks escaping workspace are caught deterministically.
+  const relFromRoot = path.relative(boundaryCheck.matchedRoot, resolvedPath);
+  const segments = relFromRoot ? relFromRoot.split(path.sep).filter(Boolean) : [];
+  let cursor = boundaryCheck.matchedRoot;
+  for (const seg of segments) {
+    cursor = path.join(cursor, seg);
+    let st;
+    try {
+      st = fs.lstatSync(cursor);
+    } catch (err) {
+      if (err && err.code === 'ENOENT') {
+        break;
+      }
       return {
         ok: false,
-        error: `Error: Security policy violation — target path symlink escapes the active workspace directory.`
+        error: `Error: Security policy violation — cannot inspect '${paramName}' segment.`
       };
+    }
+    if (st.isSymbolicLink()) {
+      let realTarget;
+      try {
+        realTarget = fs.realpathSync(cursor);
+      } catch (_) {
+        return {
+          ok: false,
+          error: `Error: Security policy violation — target path contains a dangling symlink.`
+        };
+      }
+      if (!isWithinAnyWorkspaceRoot(realTarget, roots).ok) {
+        return {
+          ok: false,
+          error: `Error: Security policy violation — target path symlink escapes the active workspace directory.`
+        };
+      }
     }
   }
   return { ok: true, resolvedPath, workspaceRoot: boundaryCheck.matchedRoot };
+}
+
+function decodeXmlEntities(str) {
+  if (!str || typeof str !== 'string') return '';
+  return str
+    .replace(/&#(\d+);/g, (_, d) => {
+      const cp = parseInt(d, 10);
+      return Number.isFinite(cp) && cp >= 0 && cp <= 0x10FFFF ? String.fromCodePoint(cp) : '';
+    })
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => {
+      const cp = parseInt(h, 16);
+      return Number.isFinite(cp) && cp >= 0 && cp <= 0x10FFFF ? String.fromCodePoint(cp) : '';
+    })
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+function extractSafeZipEntries(buf, { maxEntries = 512, maxEntryBytes = 20 * 1024 * 1024, maxTotalBytes = 50 * 1024 * 1024 } = {}) {
+  const zipEntries = Object.create(null);
+  if (!Buffer.isBuffer(buf) || buf.length < 22) return zipEntries;
+  let eocdOffset = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) {
+      eocdOffset = i;
+      break;
+    }
+  }
+  if (eocdOffset === -1) return zipEntries;
+
+  const cdEntries = buf.readUInt16LE(eocdOffset + 10);
+  if (cdEntries > maxEntries) {
+    throw new Error(`Archive exceeds maximum safe entry count (${cdEntries} > ${maxEntries}).`);
+  }
+  let pos = buf.readUInt32LE(eocdOffset + 16);
+  let totalUncompressed = 0;
+
+  for (let e = 0; e < cdEntries && pos + 46 <= buf.length; e++) {
+    if (buf.readUInt32LE(pos) !== 0x02014b50) break;
+    const method = buf.readUInt16LE(pos + 10);
+    const compSize = buf.readUInt32LE(pos + 20);
+    const uncompSize = buf.readUInt32LE(pos + 24);
+    const nameLen = buf.readUInt16LE(pos + 28);
+    const extraLen = buf.readUInt16LE(pos + 30);
+    const commentLen = buf.readUInt16LE(pos + 32);
+    const localOffset = buf.readUInt32LE(pos + 42);
+    const entryName = buf.toString('utf8', pos + 46, pos + 46 + nameLen);
+    pos += 46 + nameLen + extraLen + commentLen;
+
+    if (!entryName || entryName.includes('\0') || entryName.startsWith('/') || entryName.includes('\\') || entryName.split('/').includes('..')) {
+      continue;
+    }
+    if (uncompSize > maxEntryBytes) {
+      throw new Error(`Archive entry '${entryName}' exceeds uncompressed size limit.`);
+    }
+    if (localOffset + 30 <= buf.length && buf.readUInt32LE(localOffset) === 0x04034b50) {
+      const lNameLen = buf.readUInt16LE(localOffset + 26);
+      const lExtraLen = buf.readUInt16LE(localOffset + 28);
+      const dataStart = localOffset + 30 + lNameLen + lExtraLen;
+      if (dataStart + compSize > buf.length) continue;
+      const compData = buf.subarray(dataStart, dataStart + compSize);
+      let inflated = null;
+      if (method === 0) {
+        if (compData.length > maxEntryBytes) throw new Error(`Archive entry '${entryName}' exceeds size limit.`);
+        inflated = compData;
+      } else if (method === 8) {
+        inflated = zlib.inflateRawSync(compData, { maxOutputLength: maxEntryBytes });
+      }
+      if (inflated) {
+        totalUncompressed += inflated.length;
+        if (totalUncompressed > maxTotalBytes) {
+          throw new Error(`Archive uncompressed total exceeds safe limit (${maxTotalBytes} bytes).`);
+        }
+        zipEntries[entryName] = inflated.toString('utf8');
+      }
+    }
+  }
+  return zipEntries;
+}
+
+function csvEscapeCell(val) {
+  const s = String(val ?? '');
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function colLettersToIndex(ref) {
+  const m = String(ref || '').match(/^([A-Za-z]+)\d+$/);
+  if (!m) return -1;
+  let idx = 0;
+  const letters = m[1].toUpperCase();
+  for (let i = 0; i < letters.length; i++) {
+    idx = idx * 26 + (letters.charCodeAt(i) - 64);
+  }
+  return idx - 1;
+}
+
+function extractXlsxTextSafely(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < 4) {
+    throw new Error('Invalid or empty Excel buffer.');
+  }
+  if (buf[0] === 0xD0 && buf[1] === 0xCF && buf[2] === 0x11 && buf[3] === 0xE0) {
+    throw new Error('Legacy binary .xls format is disabled for security; convert to .xlsx or .csv.');
+  }
+  const entries = extractSafeZipEntries(buf);
+  const entryNames = Object.keys(entries);
+  if (!entries['xl/workbook.xml'] && !entryNames.some(n => /^xl\/worksheets\/sheet\d+\.xml$/i.test(n))) {
+    throw new Error('Not a valid XLSX OOXML archive.');
+  }
+
+  let content = '';
+  const coreXml = entries['docProps/core.xml'] || '';
+  const appXml = entries['docProps/app.xml'] || '';
+  const customXml = entries['docProps/custom.xml'] || '';
+
+  const propExtractors = [
+    ['Author', coreXml, /<dc:creator\b[^>]*>([\s\S]*?)<\/dc:creator>/i],
+    ['LastAuthor', coreXml, /<cp:lastModifiedBy\b[^>]*>([\s\S]*?)<\/cp:lastModifiedBy>/i],
+    ['Title', coreXml, /<dc:title\b[^>]*>([\s\S]*?)<\/dc:title>/i],
+    ['Subject', coreXml, /<dc:subject\b[^>]*>([\s\S]*?)<\/dc:subject>/i],
+    ['Comments', coreXml, /<dc:description\b[^>]*>([\s\S]*?)<\/dc:description>/i],
+    ['Company', appXml, /<Company\b[^>]*>([\s\S]*?)<\/Company>/i],
+    ['Manager', appXml, /<Manager\b[^>]*>([\s\S]*?)<\/Manager>/i]
+  ];
+  for (const [label, src, rx] of propExtractors) {
+    const m = src.match(rx);
+    if (m && m[1]) {
+      const cleaned = decodeXmlEntities(m[1].replace(/<[^>]+>/g, '')).trim();
+      if (cleaned) content += `[Workbook ${label}]: ${cleaned}\n`;
+    }
+  }
+  if (customXml) {
+    const cpRx = /<property\b[^>]*name="([^"]+)"[^>]*>([\s\S]*?)<\/property>/gi;
+    let cm;
+    while ((cm = cpRx.exec(customXml)) !== null) {
+      const val = decodeXmlEntities(cm[2].replace(/<[^>]+>/g, '')).trim();
+      if (val) content += `[Custom Property ${decodeXmlEntities(cm[1])}]: ${val}\n`;
+    }
+  }
+
+  const sharedStrings = [];
+  if (entries['xl/sharedStrings.xml']) {
+    const siRx = /<si\b[^>]*>([\s\S]*?)<\/si>/gi;
+    let sm;
+    while ((sm = siRx.exec(entries['xl/sharedStrings.xml'])) !== null) {
+      const tParts = [];
+      const tRx = /<t\b[^>]*>([\s\S]*?)<\/t>/gi;
+      let tm;
+      while ((tm = tRx.exec(sm[1])) !== null) {
+        tParts.push(decodeXmlEntities(tm[1]));
+      }
+      sharedStrings.push(tParts.join(''));
+    }
+  }
+
+  const relTargetMap = Object.create(null);
+  if (entries['xl/_rels/workbook.xml.rels']) {
+    const relRx = /<Relationship\b([^>]+)\/?>/gi;
+    let rm;
+    while ((rm = relRx.exec(entries['xl/_rels/workbook.xml.rels'])) !== null) {
+      const attrs = rm[1];
+      const idM = attrs.match(/\bId="([^"]+)"/i);
+      const tgtM = attrs.match(/\bTarget="([^"]+)"/i);
+      if (idM && tgtM) {
+        const normalizedTarget = tgtM[1].replace(/^\/+/, '');
+        relTargetMap[idM[1]] = normalizedTarget.startsWith('xl/') ? normalizedTarget : `xl/${normalizedTarget}`;
+      }
+    }
+  }
+
+  const sheets = [];
+  if (entries['xl/workbook.xml']) {
+    const sheetRx = /<sheet\b([^>]+)\/?>/gi;
+    let sm;
+    while ((sm = sheetRx.exec(entries['xl/workbook.xml'])) !== null) {
+      const attrs = sm[1];
+      const nameM = attrs.match(/\bname="([^"]+)"/i);
+      const ridM = attrs.match(/\br:id="([^"]+)"/i);
+      const name = nameM ? decodeXmlEntities(nameM[1]) : `Sheet${sheets.length + 1}`;
+      const pathCand = (ridM && relTargetMap[ridM[1]]) || `xl/worksheets/sheet${sheets.length + 1}.xml`;
+      if (entries[pathCand]) sheets.push({ name, path: pathCand });
+    }
+  }
+  if (sheets.length === 0) {
+    entryNames
+      .filter(n => /^xl\/worksheets\/sheet\d+\.xml$/i.test(n))
+      .sort()
+      .forEach((p, idx) => sheets.push({ name: `Sheet${idx + 1}`, path: p }));
+  }
+
+  for (const sh of sheets) {
+    content += `--- Sheet: ${sh.name} ---\n`;
+    const xml = entries[sh.path] || '';
+    const rowRx = /<row\b[^>]*>([\s\S]*?)<\/row>/gi;
+    let rw;
+    while ((rw = rowRx.exec(xml)) !== null) {
+      const rowCells = [];
+      let nextCol = 0;
+      const cellRx = /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/gi;
+      let ce;
+      while ((ce = cellRx.exec(rw[1])) !== null) {
+        const cAttrs = ce[1];
+        const cBody = ce[2] || '';
+        const refM = cAttrs.match(/\br="([^"]+)"/i);
+        const typeM = cAttrs.match(/\bt="([^"]+)"/i);
+        const colIdx = refM ? colLettersToIndex(refM[1]) : -1;
+        const targetCol = colIdx >= 0 ? colIdx : nextCol;
+        nextCol = targetCol + 1;
+
+        let val = '';
+        const cType = typeM ? typeM[1] : '';
+        if (cType === 's') {
+          const vM = cBody.match(/<v\b[^>]*>([\s\S]*?)<\/v>/i);
+          if (vM) {
+            const idx = parseInt(vM[1].trim(), 10);
+            if (Number.isInteger(idx) && idx >= 0 && idx < sharedStrings.length) {
+              val = sharedStrings[idx];
+            }
+          }
+        } else if (cType === 'inlineStr') {
+          const tParts = [];
+          const tRx = /<t\b[^>]*>([\s\S]*?)<\/t>/gi;
+          let tm;
+          while ((tm = tRx.exec(cBody)) !== null) tParts.push(decodeXmlEntities(tm[1]));
+          val = tParts.join('');
+        } else {
+          const vM = cBody.match(/<v\b[^>]*>([\s\S]*?)<\/v>/i);
+          if (vM) val = decodeXmlEntities(vM[1]);
+        }
+        while (rowCells.length < targetCol) rowCells.push('');
+        rowCells[targetCol] = csvEscapeCell(val);
+      }
+      if (rowCells.length > 0) {
+        content += rowCells.join(',') + '\n';
+      }
+    }
+
+    const baseName = path.posix.basename(sh.path);
+    const sheetRelsPath = `xl/worksheets/_rels/${baseName}.rels`;
+    if (entries[sheetRelsPath]) {
+      const hRx = /<Relationship\b([^>]+)\/?>/gi;
+      let hm;
+      while ((hm = hRx.exec(entries[sheetRelsPath])) !== null) {
+        const tM = hm[1].match(/\bTarget="([^"]+)"/i);
+        const modeM = hm[1].match(/\bTargetMode="External"/i);
+        if (tM && (modeM || /^(?:mailto:|tel:|https?:\/\/)/i.test(tM[1]))) {
+          content += `[Hyperlink]: ${decodeXmlEntities(tM[1])}\n`;
+        }
+      }
+    }
+  }
+
+  for (const cname of entryNames.filter(n => /^xl\/comments\d*\.xml$/i.test(n))) {
+    const cXml = entries[cname];
+    const commentRx = /<comment\b[^>]*ref="([^"]+)"[^>]*>([\s\S]*?)<\/comment>/gi;
+    let cm;
+    while ((cm = commentRx.exec(cXml)) !== null) {
+      const textParts = [];
+      const tRx = /<t\b[^>]*>([\s\S]*?)<\/t>/gi;
+      let tm;
+      while ((tm = tRx.exec(cm[2])) !== null) textParts.push(decodeXmlEntities(tm[1]));
+      const txt = textParts.join('').trim();
+      if (txt) content += `[Comment ${cm[1]}] ${txt}\n`;
+    }
+  }
+
+  return content;
 }
 
 // Handle tool execution calls
@@ -3269,47 +3670,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (resolvedPath.toLowerCase().endsWith(".docx")) {
         try {
           const mammoth = require('mammoth');
-          const zlib = require('zlib');
           const docxBuf = fs.readFileSync(resolvedPath);
           const result = await mammoth.extractRawText({ buffer: docxBuf });
           let extraXmlText = "";
           try {
-            const zipEntries = {};
-            let eocdOffset = -1;
-            for (let i = docxBuf.length - 22; i >= Math.max(0, docxBuf.length - 65557); i--) {
-              if (docxBuf.readUInt32LE(i) === 0x06054b50) {
-                eocdOffset = i;
-                break;
-              }
-            }
-            if (eocdOffset !== -1) {
-              const cdEntries = docxBuf.readUInt16LE(eocdOffset + 10);
-              let pos = docxBuf.readUInt32LE(eocdOffset + 16);
-              for (let e = 0; e < cdEntries && pos + 46 <= docxBuf.length; e++) {
-                if (docxBuf.readUInt32LE(pos) !== 0x02014b50) break;
-                const method = docxBuf.readUInt16LE(pos + 10);
-                const compSize = docxBuf.readUInt32LE(pos + 20);
-                const nameLen = docxBuf.readUInt16LE(pos + 28);
-                const extraLen = docxBuf.readUInt16LE(pos + 30);
-                const commentLen = docxBuf.readUInt16LE(pos + 32);
-                const localOffset = docxBuf.readUInt32LE(pos + 42);
-                const entryName = docxBuf.toString('utf8', pos + 46, pos + 46 + nameLen);
-                if (localOffset + 30 <= docxBuf.length && docxBuf.readUInt32LE(localOffset) === 0x04034b50) {
-                  const lNameLen = docxBuf.readUInt16LE(localOffset + 26);
-                  const lExtraLen = docxBuf.readUInt16LE(localOffset + 28);
-                  const dataStart = localOffset + 30 + lNameLen + lExtraLen;
-                  const compData = docxBuf.subarray(dataStart, dataStart + compSize);
-                  if (method === 0) {
-                    if (compData.length <= 20 * 1024 * 1024) {
-                      zipEntries[entryName] = compData.toString('utf8');
-                    }
-                  } else if (method === 8) {
-                    zipEntries[entryName] = zlib.inflateRawSync(compData, { maxOutputLength: 20 * 1024 * 1024 }).toString('utf8');
-                  }
-                }
-                pos += 46 + nameLen + extraLen + commentLen;
-              }
-            }
+            const zipEntries = extractSafeZipEntries(docxBuf);
             const xmlTargets = Object.keys(zipEntries).filter((n) =>
               /^(?:word\/(?:header\d*|footer\d*|footnotes|endnotes|comments|commentsExtended|people)\.xml|docProps\/(?:core|app|custom)\.xml)$/i.test(n)
             );
@@ -3458,48 +3823,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         if (isExcel) {
           try {
-            const XLSX = require('xlsx');
-            const workbook = XLSX.read(buffer, { type: 'buffer' });
-            let content = '';
-            if (workbook.Props && typeof workbook.Props === 'object') {
-              const propFields = ['Author', 'LastAuthor', 'Company', 'Manager', 'Title', 'Subject', 'Comments'];
-              for (const pf of propFields) {
-                if (workbook.Props[pf] && String(workbook.Props[pf]).trim()) {
-                  content += `[Workbook ${pf}]: ${String(workbook.Props[pf]).trim()}\n`;
-                }
-              }
-            }
-            if (workbook.CustProps && typeof workbook.CustProps === 'object') {
-              for (const [ck, cv] of Object.entries(workbook.CustProps)) {
-                if (cv !== undefined && cv !== null && String(cv).trim()) {
-                  content += `[Custom Property ${ck}]: ${String(cv).trim()}\n`;
-                }
-              }
-            }
-            workbook.SheetNames.forEach(sheetName => {
-              const worksheet = workbook.Sheets[sheetName];
-              content += `--- Sheet: ${sheetName} ---\n`;
-              content += XLSX.utils.sheet_to_csv(worksheet) + '\n';
-              if (worksheet && typeof worksheet === 'object') {
-                for (const cellKey of Object.keys(worksheet)) {
-                  if (cellKey.startsWith('!')) continue;
-                  const cell = worksheet[cellKey];
-                  if (!cell || typeof cell !== 'object') continue;
-                  if (cell.l && cell.l.Target) {
-                    content += `[Hyperlink ${cellKey}]: ${cell.l.Target}\n`;
-                  }
-                  if (Array.isArray(cell.c)) {
-                    for (const comm of cell.c) {
-                      const author = comm.a ? `${comm.a}: ` : '';
-                      const cText = (comm.t || '').trim();
-                      if (cText) {
-                        content += `[Comment ${cellKey}] ${author}${cText}\n`;
-                      }
-                    }
-                  }
-                }
-              }
-            });
+            const content = extractXlsxTextSafely(buffer);
 
             let finalProfile = targetProfile;
 
@@ -3768,10 +4092,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
 
         if (!no_backup) {
-          fs.writeFileSync(`${resolvedRedactPath}.bak`, content, 'utf8');
+          safeCopyBackupNoFollow(resolvedRedactPath, `${resolvedRedactPath}.bak`);
         }
 
-        fs.writeFileSync(resolvedRedactPath, result.scrubbedText, 'utf8');
+        safeWriteFileNoFollow(resolvedRedactPath, result.scrubbedText, { label: "redacted file" });
 
         return {
           content: [{ 
@@ -3786,7 +4110,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     if (name === "create_default_config") {
-      const configPath = path.resolve(process.cwd(), 'privacyscrubber.json');
+      const safeConfig = resolveWorkspaceSafePath('privacyscrubber.json', 'privacyscrubber.json');
+      if (!safeConfig.ok) {
+        return { isError: true, content: [{ type: "text", text: safeConfig.error }] };
+      }
+      const configPath = safeConfig.resolvedPath;
+      const symlinkErr = assertRegularNonSymlinkOrAbsent(configPath, 'privacyscrubber.json');
+      if (symlinkErr) {
+        return { isError: true, content: [{ type: "text", text: symlinkErr }] };
+      }
       if (fs.existsSync(configPath)) {
         return {
           content: [{
@@ -3821,7 +4153,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       };
 
       try {
-        fs.writeFileSync(configPath, JSON.stringify(defaultTemplate, null, 2) + '\n', 'utf8');
+        safeWriteFileNoFollow(configPath, JSON.stringify(defaultTemplate, null, 2) + '\n', { label: 'privacyscrubber.json' });
         return {
           content: [{
             type: "text",
@@ -4085,8 +4417,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const targetSession = getSessionMap(session_id);
       const targetIgnoreList = getSessionIgnoreList(session_id);
-      // Transparent in-memory unmasking of any token placeholders before local execution
-      const rawExecutableCommand = reverseTokens(command, targetSession);
+      // Transparent in-memory shell-safe unmasking of any token placeholders before local execution
+      let rawExecutableCommand;
+      try {
+        rawExecutableCommand = reverseTokensShellSafe(command, targetSession);
+      } catch (shellErr) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Error: ${shellErr.message}` }]
+        };
+      }
 
       let execCwd = process.cwd();
       if (cwd) {
@@ -4130,7 +4470,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const telemetry = buildCisoAuditTelemetry(allNewTokens);
       const receiptMd = formatAuditReceipt(telemetry, false, (truncOut || truncErr), charLimit);
 
-      const responseText = `[Zero-Trust Agentic Guard: Exec: ${command.split(' ')[0]}]\n` +
+      const responseText = `[Zero-Trust Agentic Guard: Exec: ${resCommand.scrubbedText.split(/\s+/)[0]}]\n` +
         `Command: ${resCommand.scrubbedText}\n` +
         `Exit Code: ${exitCode}\n` +
         `Tokens Redacted: ${tokenCount}\n\n` +
@@ -4221,11 +4561,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }
         } else {
           try {
-            const XLSX = require('xlsx');
-            const workbook = XLSX.read(rawBuffer, { type: 'buffer' });
-            workbook.SheetNames.forEach(sheetName => {
-              rawContent += `--- Sheet: ${sheetName} ---\n` + XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]) + '\n';
-            });
+            rawContent = extractXlsxTextSafely(rawBuffer);
           } catch (xlsxErr) {
             return {
               isError: true,
@@ -4398,12 +4734,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (limitStatus.blocked) {
         return buildDailyLimitBlockedResponse();
       }
-      if (fs.existsSync(resolvedPath)) {
-        const existingLstat = fs.lstatSync(resolvedPath);
-        if (existingLstat.isSymbolicLink() || !existingLstat.isFile()) {
+      const symlinkTargetErr = assertRegularNonSymlinkOrAbsent(resolvedPath, 'file_path');
+      if (symlinkTargetErr) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: symlinkTargetErr }]
+        };
+      }
+      const backupPath = `${resolvedPath}.bak`;
+      if (create_backup) {
+        const bakSymlinkErr = assertRegularNonSymlinkOrAbsent(backupPath, 'backup file');
+        if (bakSymlinkErr) {
           return {
             isError: true,
-            content: [{ type: "text", text: "Error: Security policy violation — target must be a regular non-symlink file." }]
+            content: [{ type: "text", text: bakSymlinkErr }]
           };
         }
       }
@@ -4414,8 +4758,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       let backupCreated = false;
       if (create_backup && fs.existsSync(resolvedPath)) {
-        const backupPath = `${resolvedPath}.bak`;
-        fs.copyFileSync(resolvedPath, backupPath);
+        safeCopyBackupNoFollow(resolvedPath, backupPath);
         backupCreated = true;
       }
 
@@ -4424,7 +4767,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         fs.mkdirSync(parentDir, { recursive: true });
       }
 
-      fs.writeFileSync(resolvedPath, authenticContent, 'utf8');
+      safeWriteFileNoFollow(resolvedPath, authenticContent, { label: 'file_path' });
 
       return {
         content: [{
@@ -4467,61 +4810,74 @@ Before reading sensitive files, running terminal commands that may print credent
    Do NOT repeat this banner on subsequent turns in the same conversation once displayed, to keep interactions clean.
 `;
 
+      const safeWriteRuleFile = (targetFile, body) => {
+        const safeCheck = resolveWorkspaceSafePath(targetFile, path.basename(targetFile));
+        if (!safeCheck.ok) {
+          throw new Error(safeCheck.error);
+        }
+        const dir = path.dirname(safeCheck.resolvedPath);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        safeWriteFileNoFollow(safeCheck.resolvedPath, body, { label: path.basename(targetFile) });
+      };
+      const safeReadRuleFileIfExists = (targetFile) => {
+        const safeCheck = resolveWorkspaceSafePath(targetFile, path.basename(targetFile));
+        if (!safeCheck.ok) {
+          throw new Error(safeCheck.error);
+        }
+        const symErr = assertRegularNonSymlinkOrAbsent(safeCheck.resolvedPath, path.basename(targetFile));
+        if (symErr) throw new Error(symErr);
+        return fs.existsSync(safeCheck.resolvedPath) ? fs.readFileSync(safeCheck.resolvedPath, 'utf8') : null;
+      };
+
       const generatedFiles = [];
       if (targets.includes("cursor")) {
-        const p = path.join(targetDir, '.cursorrules');
-        fs.writeFileSync(p, ruleText, 'utf8');
+        safeWriteRuleFile(path.join(targetDir, '.cursorrules'), ruleText);
         generatedFiles.push('.cursorrules');
 
-        const cursorRulesDir = path.join(targetDir, '.cursor', 'rules');
         try {
-          if (!fs.existsSync(cursorRulesDir)) fs.mkdirSync(cursorRulesDir, { recursive: true });
           const mdcContent = `---\ndescription: PrivacyScrubber Zero-Trust Data Sanitization (ZTDS) Agentic Guard\nglobs: *\nalwaysApply: true\n---\n\n${ruleText}`;
-          fs.writeFileSync(path.join(cursorRulesDir, 'privacyscrubber.mdc'), mdcContent, 'utf8');
+          safeWriteRuleFile(path.join(targetDir, '.cursor', 'rules', 'privacyscrubber.mdc'), mdcContent);
           generatedFiles.push('.cursor/rules/privacyscrubber.mdc');
         } catch (_) {}
       }
       if (targets.includes("windsurf")) {
-        const p = path.join(targetDir, '.windsurfrules');
-        fs.writeFileSync(p, ruleText, 'utf8');
+        safeWriteRuleFile(path.join(targetDir, '.windsurfrules'), ruleText);
         generatedFiles.push('.windsurfrules');
       }
       if (targets.includes("claude_code")) {
         const p = path.join(targetDir, 'CLAUDE.md');
-        if (fs.existsSync(p)) {
-          const existing = fs.readFileSync(p, 'utf8');
+        const existing = safeReadRuleFileIfExists(p);
+        if (existing !== null) {
           if (!existing.includes("Zero-Trust Agentic Guard")) {
-            fs.writeFileSync(p, existing + "\n\n" + ruleText, 'utf8');
+            safeWriteRuleFile(p, existing + "\n\n" + ruleText);
             generatedFiles.push('CLAUDE.md (appended)');
           }
         } else {
-          fs.writeFileSync(p, ruleText, 'utf8');
+          safeWriteRuleFile(p, ruleText);
           generatedFiles.push('CLAUDE.md');
         }
       }
       if (targets.includes("agents_md") || targets.includes("codex")) {
         const p = path.join(targetDir, 'AGENTS.md');
-        if (fs.existsSync(p)) {
-          const existing = fs.readFileSync(p, 'utf8');
+        const existing = safeReadRuleFileIfExists(p);
+        if (existing !== null) {
           if (!existing.includes("Zero-Trust Agentic Guard")) {
-            fs.writeFileSync(p, existing + "\n\n" + ruleText, 'utf8');
+            safeWriteRuleFile(p, existing + "\n\n" + ruleText);
             generatedFiles.push('AGENTS.md (appended)');
           }
         } else {
-          fs.writeFileSync(p, ruleText, 'utf8');
+          safeWriteRuleFile(p, ruleText);
           generatedFiles.push('AGENTS.md');
         }
       }
       if (targets.includes("copilot")) {
-        const copilotDir = path.join(targetDir, '.github');
-        if (!fs.existsSync(copilotDir)) fs.mkdirSync(copilotDir, { recursive: true });
-        const p = path.join(copilotDir, 'copilot-instructions.md');
-        fs.writeFileSync(p, ruleText, 'utf8');
+        safeWriteRuleFile(path.join(targetDir, '.github', 'copilot-instructions.md'), ruleText);
         generatedFiles.push('.github/copilot-instructions.md');
       }
       if (targets.includes("cline")) {
-        const p = path.join(targetDir, '.clinerules');
-        fs.writeFileSync(p, ruleText, 'utf8');
+        safeWriteRuleFile(path.join(targetDir, '.clinerules'), ruleText);
         generatedFiles.push('.clinerules');
       }
 
@@ -4530,10 +4886,10 @@ Before reading sensitive files, running terminal commands that may print credent
         if (targets.includes("cursor") || agent_types.includes("all")) {
           try {
             const cursorHooksPath = path.join(targetDir, '.cursor', 'hooks.json');
-            fs.mkdirSync(path.dirname(cursorHooksPath), { recursive: true });
             let cursorHooks = { version: 1, hooks: {} };
-            if (fs.existsSync(cursorHooksPath)) {
-              try { cursorHooks = JSON.parse(fs.readFileSync(cursorHooksPath, 'utf8')); } catch (_) {}
+            const existingCursorHooks = safeReadRuleFileIfExists(cursorHooksPath);
+            if (existingCursorHooks !== null) {
+              try { cursorHooks = JSON.parse(existingCursorHooks); } catch (_) {}
             }
             if (!cursorHooks.hooks || typeof cursorHooks.hooks !== 'object') cursorHooks.hooks = {};
             for (const ev of ['beforeReadFile', 'beforeShellExecution']) {
@@ -4542,17 +4898,17 @@ Before reading sensitive files, running terminal commands that may print credent
                 cursorHooks.hooks[ev].push({ command: hookCmd });
               }
             }
-            fs.writeFileSync(cursorHooksPath, JSON.stringify(cursorHooks, null, 2) + '\n', 'utf8');
+            safeWriteRuleFile(cursorHooksPath, JSON.stringify(cursorHooks, null, 2) + '\n');
             generatedFiles.push('.cursor/hooks.json');
           } catch (_) {}
         }
         if (targets.includes("claude_code") || agent_types.includes("all")) {
           try {
             const claudeSettingsPath = path.join(targetDir, '.claude', 'settings.json');
-            fs.mkdirSync(path.dirname(claudeSettingsPath), { recursive: true });
             let claudeSettings = {};
-            if (fs.existsSync(claudeSettingsPath)) {
-              try { claudeSettings = JSON.parse(fs.readFileSync(claudeSettingsPath, 'utf8')); } catch (_) {}
+            const existingClaudeSettings = safeReadRuleFileIfExists(claudeSettingsPath);
+            if (existingClaudeSettings !== null) {
+              try { claudeSettings = JSON.parse(existingClaudeSettings); } catch (_) {}
             }
             if (!claudeSettings.hooks || typeof claudeSettings.hooks !== 'object') claudeSettings.hooks = {};
             if (!Array.isArray(claudeSettings.hooks.PreToolUse)) claudeSettings.hooks.PreToolUse = [];
@@ -4565,7 +4921,7 @@ Before reading sensitive files, running terminal commands that may print credent
                 hooks: [{ type: "command", command: hookCmd }]
               });
             }
-            fs.writeFileSync(claudeSettingsPath, JSON.stringify(claudeSettings, null, 2) + '\n', 'utf8');
+            safeWriteRuleFile(claudeSettingsPath, JSON.stringify(claudeSettings, null, 2) + '\n');
             generatedFiles.push('.claude/settings.json');
           } catch (_) {}
         }
@@ -4970,20 +5326,18 @@ Before reading sensitive files, running terminal commands that may print credent
           };
         }
         try {
-          if (fs.existsSync(safeDest.resolvedPath)) {
-            const st = fs.lstatSync(safeDest.resolvedPath);
-            if (st.isSymbolicLink() || !st.isFile()) {
-              return {
-                isError: true,
-                content: [{ type: "text", text: "Error: Security policy violation — destination_file must be a regular non-symlink file." }]
-              };
-            }
+          const symErr = assertRegularNonSymlinkOrAbsent(safeDest.resolvedPath, 'destination_file');
+          if (symErr) {
+            return {
+              isError: true,
+              content: [{ type: "text", text: symErr }]
+            };
           }
           const dir = path.dirname(safeDest.resolvedPath);
           if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
           }
-          fs.appendFileSync(safeDest.resolvedPath, outputText + '\n', 'utf8');
+          safeWriteFileNoFollow(safeDest.resolvedPath, outputText + '\n', { append: true, label: 'destination_file' });
         } catch (e) {
           return {
             isError: true,
@@ -5297,8 +5651,134 @@ function getSessionMetricsSummary() {
 
 function isCatastrophicRegex(pat) {
   if (!pat || typeof pat !== 'string' || pat.length > 500) return true;
-  const nestedQuantifierRegex = /\([^)]*(\+|\*|\{\d+,?\d*\})\)[+*]|\([^)]*(\+|\*|\{\d+,?\d*\})\)\{\d+,?\d*\}|\([^)]*\|[^)]*\)(?:[+*]|\{\d+,?\d*\})/;
-  if (nestedQuantifierRegex.test(pat)) return true;
+  if ((pat.match(/\.\*/g) || []).length >= 3 || (pat.match(/\.\+/g) || []).length >= 3) return true;
+
+  const stack = [{ hasQuantifier: false, hasAlternation: false, hasBackref: false, lastVarAtom: null, varStreak: 0 }];
+  let inCharClass = false;
+  let charClassStart = -1;
+  let lastToken = null;
+
+  const flushUnquantified = () => {
+    const top = stack[stack.length - 1];
+    top.lastVarAtom = null;
+    top.varStreak = 0;
+  };
+
+  const parseQuantifier = (i) => {
+    const ch = pat[i];
+    if (ch === '*' || ch === '+') {
+      const next = pat[i + 1];
+      return { end: i + ((next === '?' || next === '+') ? 2 : 1), isVar: true, multi: true };
+    }
+    if (ch === '?') {
+      const next = pat[i + 1];
+      return { end: i + ((next === '?' || next === '+') ? 2 : 1), isVar: true, multi: false };
+    }
+    if (ch === '{') {
+      const m = pat.slice(i).match(/^\{(\d+)(?:,(\d*))?\}([?+]?)/);
+      if (m) {
+        const min = parseInt(m[1], 10);
+        const max = m[2] === undefined ? min : (m[2] === '' ? Infinity : parseInt(m[2], 10));
+        return { end: i + m[0].length, isVar: max !== min, multi: max > 1 };
+      }
+    }
+    return null;
+  };
+
+  for (let i = 0; i < pat.length; ) {
+    const q = !inCharClass ? parseQuantifier(i) : null;
+    if (q) {
+      const top = stack[stack.length - 1];
+      if (q.multi) top.hasQuantifier = true;
+      if (lastToken && lastToken.type === 'group' && q.multi) {
+        if (lastToken.hasQuantifier || lastToken.hasAlternation || lastToken.hasBackref) return true;
+      }
+      if (lastToken && lastToken.isBackref && q.isVar) return true;
+      if (lastToken && lastToken.type === 'atom' && q.isVar) {
+        if (top.lastVarAtom === lastToken.atomText) {
+          top.varStreak++;
+        } else {
+          top.lastVarAtom = lastToken.atomText;
+          top.varStreak = 1;
+        }
+        if (top.varStreak >= 3) return true;
+      } else {
+        flushUnquantified();
+      }
+      lastToken = null;
+      i = q.end;
+      continue;
+    }
+
+    const ch = pat[i];
+    if (inCharClass) {
+      if (ch === '\\') { i += 2; continue; }
+      if (ch === ']') {
+        inCharClass = false;
+        lastToken = { type: 'atom', atomText: pat.slice(charClassStart, i + 1) };
+      }
+      i++;
+      continue;
+    }
+
+    if (lastToken) flushUnquantified();
+
+    if (ch === '\\') {
+      const escaped = pat.slice(i, i + 2);
+      const isBackref = /^\\[1-9]$/.test(escaped);
+      if (isBackref) stack[stack.length - 1].hasBackref = true;
+      lastToken = { type: 'atom', atomText: escaped, isBackref };
+      i += 2;
+      continue;
+    }
+    if (ch === '[') {
+      inCharClass = true;
+      charClassStart = i;
+      lastToken = null;
+      i++;
+      continue;
+    }
+    if (ch === '(') {
+      stack.push({ hasQuantifier: false, hasAlternation: false, hasBackref: false, lastVarAtom: null, varStreak: 0 });
+      lastToken = null;
+      i++;
+      if (pat[i] === '?') {
+        if (pat[i + 1] === '<' && pat[i + 2] !== '=' && pat[i + 2] !== '!') {
+          const gt = pat.indexOf('>', i + 2);
+          if (gt !== -1) i = gt + 1; else i++;
+        } else if (pat[i + 1] === ':' || pat[i + 1] === '=' || pat[i + 1] === '!') {
+          i += 2;
+        } else if (pat[i + 1] === '<' && (pat[i + 2] === '=' || pat[i + 2] === '!')) {
+          i += 3;
+        }
+      }
+      continue;
+    }
+    if (ch === ')') {
+      if (stack.length > 1) {
+        const closed = stack.pop();
+        const top = stack[stack.length - 1];
+        if (closed.hasQuantifier) top.hasQuantifier = true;
+        if (closed.hasBackref) top.hasBackref = true;
+        lastToken = { type: 'group', ...closed };
+      } else {
+        lastToken = null;
+      }
+      i++;
+      continue;
+    }
+    if (ch === '|') {
+      const top = stack[stack.length - 1];
+      top.hasAlternation = true;
+      flushUnquantified();
+      lastToken = null;
+      i++;
+      continue;
+    }
+    lastToken = { type: 'atom', atomText: ch };
+    i++;
+  }
+
   try {
     new RegExp(pat, 'gi');
     return false;

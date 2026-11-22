@@ -114,15 +114,28 @@ if (args.includes("-h") || args.includes("--help") || (!hasCommand && !isDiffMod
 if (isHookMode) {
   const SENSITIVE_FILE_RX = /(?:^|[\\/])(?:\.env(?:\.[a-zA-Z0-9_-]+)?|id_rsa|id_ed25519|id_ecdsa|.*\.pem|.*\.key|.*\.p12|.*\.pfx|.*credentials.*\.json|.*secret.*\.(?:json|ya?ml|env|txt)|\.npmrc|\.pypirc|\.netrc)$/i;
   const SAFE_TEMPLATE_RX = /\.(?:example|sample|template|dist|schema)$/i;
-  const SENSITIVE_CMD_RX = /(?:^|[;&|]\s*)(?:cat|head|tail|less|more|bat|sed|awk|grep)\s+[^\n|;&]*(?:\.env\b|id_rsa|\.pem\b|\.key\b|credentials\.json|\bsecrets?\.)|(?:^|[;&|]\s*)(?:printenv|env\s*$|export\s+-p|aws\s+configure\s+get|gcloud\s+auth\s+print-access-token)/i;
+  const SENSITIVE_CMD_RX = /(?:^|[;&|]\s*)(?:cat|head|tail|less|more|bat|sed|awk|grep|base64|xxd|od|cp|mv|nl|tr|strings|xargs|python3?|node|ruby|perl|jq|curl)\s+[^\n|;&]*(?:\.env(?:\.[a-zA-Z0-9_-]+)?\b|id_rsa|id_ed25519|id_ecdsa|\.pem\b|\.key\b|credentials\.json|\bsecrets?\.|\.npmrc\b|\.pypirc\b|\.netrc\b)|(?:^|[;&|]\s*)(?:printenv|env\s*$|export\s+-p|aws\s+configure\s+get|gcloud\s+auth\s+print-access-token)/i;
 
   const evaluateHookPayload = (rawStr) => {
     let payload = {};
-    try {
-      payload = rawStr && rawStr.trim() ? JSON.parse(rawStr) : {};
-    } catch (_) {
-      process.stdout.write(JSON.stringify({ permission: "allow", continue: true }) + "\n");
-      process.exit(0);
+    if (rawStr && rawStr.trim()) {
+      try {
+        payload = JSON.parse(rawStr);
+      } catch (_) {
+        const denyReason = 'Blocked by PrivacyScrubber ZTDS policy: malformed hook payload JSON (fail-closed).';
+        process.stdout.write(JSON.stringify({
+          permission: "deny",
+          userMessage: "[PrivacyScrubber ZTDS] Malformed hook payload denied.",
+          agentMessage: denyReason,
+          hookSpecificOutput: {
+            hookEventName: "PreToolUse",
+            permissionDecision: "deny",
+            permissionDecisionReason: denyReason
+          }
+        }) + "\n");
+        process.stderr.write(denyReason + "\n");
+        process.exit(2);
+      }
     }
 
     const eventName = String(payload.hook_event_name || payload.hookEventName || payload.event || "");
@@ -140,7 +153,7 @@ if (isHookMode) {
       (!toolName && (payload.file_path !== undefined || payload.command !== undefined || payload.attachments !== undefined));
 
     const isReadTool = /^(?:Read|View|read_file|view_file|ReadFile)$/i.test(toolName) || /^beforeReadFile$/i.test(eventName) || (!toolName && Boolean(candidatePath));
-    const isShellTool = /^(?:Bash|Execute|run_command| run_terminal_cmd)$/i.test(toolName) || /^beforeShellExecution$/i.test(eventName) || (!toolName && Boolean(candidateCmd));
+    const isShellTool = /^(?:Bash|Execute|run_command|run_terminal_cmd)$/i.test(toolName) || /^beforeShellExecution$/i.test(eventName) || (!toolName && Boolean(candidateCmd));
 
     if (isReadTool && candidatePath && SENSITIVE_FILE_RX.test(candidatePath) && !SAFE_TEMPLATE_RX.test(candidatePath)) {
       const reason = `Blocked by PrivacyScrubber ZTDS policy: Direct read of sensitive file '${path.basename(candidatePath)}' is prohibited. Call the PrivacyScrubber MCP tool 'guard_read_file' or 'sanitize_file' instead so secrets are tokenized in local RAM.`;
@@ -281,11 +294,142 @@ function resolveConfigPath() {
   return configPath;
 }
 
-function isCatastrophicRegex(pattern) {
-  if (!pattern || typeof pattern !== 'string' || pattern.length > 500) return true;
-  if (/(\([^)]*[+*][^)]*\))[+*?{]/.test(pattern)) return true;
-  if (/(\.\*){3,}/.test(pattern)) return true;
-  return false;
+function isCatastrophicRegex(pat) {
+  if (!pat || typeof pat !== 'string' || pat.length > 500) return true;
+  if ((pat.match(/\.\*/g) || []).length >= 3 || (pat.match(/\.\+/g) || []).length >= 3) return true;
+
+  const stack = [{ hasQuantifier: false, hasAlternation: false, hasBackref: false, lastVarAtom: null, varStreak: 0 }];
+  let inCharClass = false;
+  let charClassStart = -1;
+  let lastToken = null;
+
+  const flushUnquantified = () => {
+    const top = stack[stack.length - 1];
+    top.lastVarAtom = null;
+    top.varStreak = 0;
+  };
+
+  const parseQuantifier = (i) => {
+    const ch = pat[i];
+    if (ch === '*' || ch === '+') {
+      const next = pat[i + 1];
+      return { end: i + ((next === '?' || next === '+') ? 2 : 1), isVar: true, multi: true };
+    }
+    if (ch === '?') {
+      const next = pat[i + 1];
+      return { end: i + ((next === '?' || next === '+') ? 2 : 1), isVar: true, multi: false };
+    }
+    if (ch === '{') {
+      const m = pat.slice(i).match(/^\{(\d+)(?:,(\d*))?\}([?+]?)/);
+      if (m) {
+        const min = parseInt(m[1], 10);
+        const max = m[2] === undefined ? min : (m[2] === '' ? Infinity : parseInt(m[2], 10));
+        return { end: i + m[0].length, isVar: max !== min, multi: max > 1 };
+      }
+    }
+    return null;
+  };
+
+  for (let i = 0; i < pat.length; ) {
+    const q = !inCharClass ? parseQuantifier(i) : null;
+    if (q) {
+      const top = stack[stack.length - 1];
+      if (q.multi) top.hasQuantifier = true;
+      if (lastToken && lastToken.type === 'group' && q.multi) {
+        if (lastToken.hasQuantifier || lastToken.hasAlternation || lastToken.hasBackref) return true;
+      }
+      if (lastToken && lastToken.isBackref && q.isVar) return true;
+      if (lastToken && lastToken.type === 'atom' && q.isVar) {
+        if (top.lastVarAtom === lastToken.atomText) {
+          top.varStreak++;
+        } else {
+          top.lastVarAtom = lastToken.atomText;
+          top.varStreak = 1;
+        }
+        if (top.varStreak >= 3) return true;
+      } else {
+        flushUnquantified();
+      }
+      lastToken = null;
+      i = q.end;
+      continue;
+    }
+
+    const ch = pat[i];
+    if (inCharClass) {
+      if (ch === '\\') { i += 2; continue; }
+      if (ch === ']') {
+        inCharClass = false;
+        lastToken = { type: 'atom', atomText: pat.slice(charClassStart, i + 1) };
+      }
+      i++;
+      continue;
+    }
+
+    if (lastToken) flushUnquantified();
+
+    if (ch === '\\') {
+      const escaped = pat.slice(i, i + 2);
+      const isBackref = /^\\[1-9]$/.test(escaped);
+      if (isBackref) stack[stack.length - 1].hasBackref = true;
+      lastToken = { type: 'atom', atomText: escaped, isBackref };
+      i += 2;
+      continue;
+    }
+    if (ch === '[') {
+      inCharClass = true;
+      charClassStart = i;
+      lastToken = null;
+      i++;
+      continue;
+    }
+    if (ch === '(') {
+      stack.push({ hasQuantifier: false, hasAlternation: false, hasBackref: false, lastVarAtom: null, varStreak: 0 });
+      lastToken = null;
+      i++;
+      if (pat[i] === '?') {
+        if (pat[i + 1] === '<' && pat[i + 2] !== '=' && pat[i + 2] !== '!') {
+          const gt = pat.indexOf('>', i + 2);
+          if (gt !== -1) i = gt + 1; else i++;
+        } else if (pat[i + 1] === ':' || pat[i + 1] === '=' || pat[i + 1] === '!') {
+          i += 2;
+        } else if (pat[i + 1] === '<' && (pat[i + 2] === '=' || pat[i + 2] === '!')) {
+          i += 3;
+        }
+      }
+      continue;
+    }
+    if (ch === ')') {
+      if (stack.length > 1) {
+        const closed = stack.pop();
+        const top = stack[stack.length - 1];
+        if (closed.hasQuantifier) top.hasQuantifier = true;
+        if (closed.hasBackref) top.hasBackref = true;
+        lastToken = { type: 'group', ...closed };
+      } else {
+        lastToken = null;
+      }
+      i++;
+      continue;
+    }
+    if (ch === '|') {
+      const top = stack[stack.length - 1];
+      top.hasAlternation = true;
+      flushUnquantified();
+      lastToken = null;
+      i++;
+      continue;
+    }
+    lastToken = { type: 'atom', atomText: ch };
+    i++;
+  }
+
+  try {
+    new RegExp(pat, 'gi');
+    return false;
+  } catch (_) {
+    return true;
+  }
 }
 
 function loadCustomRules() {
@@ -1060,11 +1204,10 @@ if (isWrapMode) {
   }
 } else if (hasCommand) {
   // Mode 4: Spawn Child Process (-- <command>)
-  const commandArgs = args.slice(cmdIndex + 1);
-  const fullCommand = commandArgs.join(' ');
-  const child = spawn(fullCommand, {
+  const [cmdBin, ...cmdRest] = args.slice(cmdIndex + 1);
+  const child = spawn(cmdBin, cmdRest, {
     stdio: ['inherit', 'pipe', 'pipe'],
-    shell: true
+    shell: process.platform === 'win32'
   });
 
   const rlStdout = readline.createInterface({

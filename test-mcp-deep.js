@@ -350,17 +350,68 @@ async function runMcpSession() {
       console.log("⚠️ Skipped PDF test case: fixture file not found.");
     }
 
-    // 7.2. Test sanitize_file (Excel file parsing support - PRO)
-    // We dynamically generate xlsx using require to ensure we have a valid format
-    const xlsx = require('xlsx');
+    // 7.2. Test sanitize_file (Excel file parsing support - PRO, zero-dep ZIP+XML builder)
     const tempXlsx = path.resolve(__dirname, 'temp-test-doc.xlsx');
-    const ws = xlsx.utils.aoa_to_sheet([
+    const buildMinimalXlsx = (rows) => {
+      const zlib = require('zlib');
+      const crcTable = new Uint32Array(256);
+      for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+        crcTable[n] = c >>> 0;
+      }
+      const crc32 = (b) => {
+        let c = 0xffffffff;
+        for (let i = 0; i < b.length; i++) c = crcTable[(c ^ b[i]) & 0xff] ^ (c >>> 8);
+        return (c ^ 0xffffffff) >>> 0;
+      };
+      const escXml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const shared = [];
+      const rowXml = rows.map((r, rIdx) => {
+        const cells = r.map((val, cIdx) => {
+          const sIdx = shared.length;
+          shared.push(String(val));
+          const col = String.fromCharCode(65 + cIdx);
+          return `<c r="${col}${rIdx + 1}" t="s"><v>${sIdx}</v></c>`;
+        }).join('');
+        return `<row r="${rIdx + 1}">${cells}</row>`;
+      }).join('');
+      const files = [
+        ['[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/></Types>'],
+        ['_rels/.rels', '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
+        ['xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>'],
+        ['xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/></Relationships>'],
+        ['xl/sharedStrings.xml', `<?xml version="1.0" encoding="UTF-8"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${shared.length}" uniqueCount="${shared.length}">${shared.map(s => `<si><t>${escXml(s)}</t></si>`).join('')}</sst>`],
+        ['xl/worksheets/sheet1.xml', `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${rowXml}</sheetData></worksheet>`]
+      ];
+      const localChunks = [];
+      const cdChunks = [];
+      let offset = 0;
+      for (const [name, content] of files) {
+        const raw = Buffer.from(content, 'utf8');
+        const comp = zlib.deflateRawSync(raw);
+        const nameBuf = Buffer.from(name, 'utf8');
+        const crc = crc32(raw);
+        const lh = Buffer.alloc(30);
+        lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(8, 8);
+        lh.writeUInt32LE(crc, 14); lh.writeUInt32LE(comp.length, 18); lh.writeUInt32LE(raw.length, 22); lh.writeUInt16LE(nameBuf.length, 26);
+        localChunks.push(lh, nameBuf, comp);
+        const ch = Buffer.alloc(46);
+        ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(20, 4); ch.writeUInt16LE(20, 6); ch.writeUInt16LE(8, 10);
+        ch.writeUInt32LE(crc, 16); ch.writeUInt32LE(comp.length, 20); ch.writeUInt32LE(raw.length, 24); ch.writeUInt16LE(nameBuf.length, 28); ch.writeUInt32LE(offset, 42);
+        cdChunks.push(ch, nameBuf);
+        offset += lh.length + nameBuf.length + comp.length;
+      }
+      const cdSize = cdChunks.reduce((s, b) => s + b.length, 0);
+      const eocd = Buffer.alloc(22);
+      eocd.writeUInt32LE(0x06054b50, 0); eocd.writeUInt16LE(files.length, 8); eocd.writeUInt16LE(files.length, 10);
+      eocd.writeUInt32LE(cdSize, 12); eocd.writeUInt32LE(offset, 16);
+      return Buffer.concat([...localChunks, ...cdChunks, eocd]);
+    };
+    fs.writeFileSync(tempXlsx, buildMinimalXlsx([
       ["Name", "Email", "Phone"],
       ["Alice Smith", "alice@company.com", "555-0199"]
-    ]);
-    const wb = xlsx.utils.book_new();
-    xlsx.utils.book_append_sheet(wb, ws, "Sheet1");
-    xlsx.writeFile(wb, tempXlsx);
+    ]));
 
     console.log(`--> Calling 'sanitize_file' on Excel workbook: ${tempXlsx}`);
     const xlsxResponse = await sendRequest('tools/call', {
@@ -1014,6 +1065,109 @@ async function runMcpSession() {
       throw new Error(`pii-masking-run Test 13d (--wrap outbound detokenization) failed to restore [EMAIL_1] at upstream tool: ${text103}`);
     }
     console.log('✅ pii-masking-run --wrap (Transparent MCP JSON-RPC 2.0 bidirectional proxy) pass.');
+
+    // ── 14. Wave 2 Security Hardening Regressions ────────────────────────
+    console.log("\n---> Testing Wave 2 Security Hardening Regressions...");
+    const w2DanglingLink = path.resolve(__dirname, '_temp_wave2_dangling_target.txt');
+    const w2DanglingDest = path.join(os.tmpdir(), `ps-w2-dangling-dest-${Date.now()}.txt`);
+    const w2BakSrc = path.resolve(__dirname, '_temp_wave2_bak_src.txt');
+    const w2BakLink = `${w2BakSrc}.bak`;
+    const w2BakDest = path.join(os.tmpdir(), `ps-w2-bak-dest-${Date.now()}.txt`);
+    const w2InjFile = path.resolve(__dirname, '_temp_wave2_inj_secret.txt');
+    const w2PwnFile = path.resolve(__dirname, '_temp_wave2_pwn.txt');
+    const origConfigRaw = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : null;
+
+    try {
+      // Clean any leftovers
+      for (const p of [w2DanglingLink, w2DanglingDest, w2BakSrc, w2BakLink, w2BakDest, w2InjFile, w2PwnFile]) {
+        try { fs.unlinkSync(p); } catch (_) {}
+      }
+
+      // 14a. Dangling target symlink blocked by guard_apply_patch
+      fs.symlinkSync(w2DanglingDest, w2DanglingLink);
+      const resDanglingTarget = await sendRequest('tools/call', {
+        name: 'guard_apply_patch',
+        arguments: { file_path: w2DanglingLink, content: 'pwned-content' }
+      });
+      const textDanglingTarget = resDanglingTarget.result?.content?.[0]?.text || '';
+      if (!resDanglingTarget.result?.isError || !/symlink|Security policy violation/i.test(textDanglingTarget) || fs.existsSync(w2DanglingDest)) {
+        throw new Error(`Wave 2 Test 14a failed: guard_apply_patch did not block dangling symlink target: ${textDanglingTarget}`);
+      }
+
+      // 14b. Dangling .bak symlink blocked by guard_apply_patch
+      fs.writeFileSync(w2BakSrc, 'ORIGINAL_SAFE=1\n', 'utf8');
+      fs.symlinkSync(w2BakDest, w2BakLink);
+      const resDanglingBak = await sendRequest('tools/call', {
+        name: 'guard_apply_patch',
+        arguments: { file_path: w2BakSrc, content: 'ORIGINAL_SAFE=2\n', create_backup: true }
+      });
+      const textDanglingBak = resDanglingBak.result?.content?.[0]?.text || '';
+      if (!resDanglingBak.result?.isError || !/symlink|Security policy violation/i.test(textDanglingBak) || fs.existsSync(w2BakDest)) {
+        throw new Error(`Wave 2 Test 14b failed: guard_apply_patch did not block dangling .bak symlink: ${textDanglingBak}`);
+      }
+      console.log('✅ Wave 2 dangling symlink & dangling .bak symlink blocking pass.');
+
+      // 14c. guard_exec reverseTokensShellSafe neutralizes shell injection inside RAM tokens
+      fs.writeFileSync(configPath, JSON.stringify({
+        customRules: [
+          { pattern: 'SECRET_TEST_PAT', label: 'TEST_SECRET' },
+          { pattern: 'SECRET_SHELL_INJ_[^#\\r\\n]+', label: 'SHELL_INJ' }
+        ]
+      }), 'utf8');
+      const injSecret = `SECRET_SHELL_INJ_$(node -e "require('fs').writeFileSync(${JSON.stringify(w2PwnFile)},'PWNED')")`;
+      fs.writeFileSync(w2InjFile, `${injSecret}#end\n`, 'utf8');
+      const readInjRes = await sendRequest('tools/call', {
+        name: 'guard_read_file',
+        arguments: { file_path: w2InjFile, profile: 'General' }
+      });
+      const readInjText = readInjRes.result?.content?.[0]?.text || '';
+      const injTokenMatch = readInjText.match(/\[SHELL_INJ_\d+\]/);
+      if (!injTokenMatch || readInjText.includes(injSecret)) {
+        throw new Error(`Wave 2 Test 14c setup failed: guard_read_file did not mask shell injection secret: ${readInjText}`);
+      }
+      const injToken = injTokenMatch[0];
+
+      // Execute inside double quotes AND unquoted; neither may execute $()
+      const execInjRes = await sendRequest('tools/call', {
+        name: 'guard_exec',
+        arguments: {
+          command: `node -e "console.log('LEN_Q=' + process.argv[1].length + ',LEN_U=' + process.argv[2].length)" "${injToken}" ${injToken}`,
+          profile: 'General'
+        }
+      });
+      const execInjText = execInjRes.result?.content?.[0]?.text || '';
+      const expectedLen = injSecret.length;
+      if (fs.existsSync(w2PwnFile) || !execInjText.includes(`LEN_Q=${expectedLen},LEN_U=${expectedLen}`)) {
+        throw new Error(`Wave 2 Test 14c failed: shell injection executed or length mismatch (expected ${expectedLen}). Got: ${execInjText}`);
+      }
+      console.log('✅ Wave 2 guard_exec shell-safe token neutralization pass.');
+
+      // 14d. pii-masking-run.js --hook blocks run_terminal_cmd (.env) and fails closed on malformed JSON
+      const hookRunTerm = await runCli(['--hook'], JSON.stringify({
+        tool_name: 'run_terminal_cmd',
+        tool_input: { command: 'cat .env' }
+      }));
+      let hookRunTermParsed = {};
+      try { hookRunTermParsed = JSON.parse(hookRunTerm.stdout); } catch (_) {}
+      if (hookRunTerm.code !== 2 || hookRunTermParsed.permission !== 'deny') {
+        throw new Error(`Wave 2 Test 14d failed (run_terminal_cmd .env): code=${hookRunTerm.code}, stdout=${hookRunTerm.stdout}`);
+      }
+
+      const hookMalformed = await runCli(['--hook'], '{not-valid-json');
+      let hookMalformedParsed = {};
+      try { hookMalformedParsed = JSON.parse(hookMalformed.stdout); } catch (_) {}
+      if (hookMalformed.code !== 2 || hookMalformedParsed.permission !== 'deny') {
+        throw new Error(`Wave 2 Test 14d failed (malformed JSON fail-closed): code=${hookMalformed.code}, stdout=${hookMalformed.stdout}`);
+      }
+      console.log('✅ Wave 2 pii-masking-run --hook hardening (run_terminal_cmd + fail-closed JSON) pass.');
+    } finally {
+      if (origConfigRaw !== null) {
+        fs.writeFileSync(configPath, origConfigRaw, 'utf8');
+      }
+      for (const p of [w2DanglingLink, w2DanglingDest, w2BakSrc, w2BakLink, w2BakDest, w2InjFile, w2PwnFile]) {
+        try { fs.unlinkSync(p); } catch (_) {}
+      }
+    }
 
     console.log("\n🎉 All deep integration, hardening, and CLI tests passed successfully!");
     // ─────────────────────────────────────────────────────────────────────
