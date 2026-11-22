@@ -1803,7 +1803,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         description: "STEP 3 (Streaming): Real-time streaming token detokenizer for LLM Server-Sent Events (SSE) and stdio chunk pipelines. Buffers split token candidates across chunk boundaries (e.g. '[EM' + 'AIL_1]') so no characters or tokens are corrupted. Pass 'flush: true' on the final chunk.",
         annotations: {
           title: "Streaming Token Detokenizer",
-          readOnlyHint: true,
+          readOnlyHint: false,
           destructiveHint: false,
           idempotentHint: false,
           openWorldHint: false
@@ -1998,9 +1998,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         description: "Marks a previously detected token as a false positive. The original plaintext value will be excluded from all future sanitize_text calls in this session. Returns the restored original value and updated ignore list size.",
         annotations: {
           title: "Mark Token as False Positive",
-          readOnlyHint: true,
-          destructiveHint: false,
-          idempotentHint: true,
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: false,
           openWorldHint: false
         },
         inputSchema: {
@@ -2042,7 +2042,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           readOnlyHint: false,
           destructiveHint: true,
           idempotentHint: false,
-          openWorldHint: false
+          openWorldHint: true
         },
         inputSchema: {
           type: "object",
@@ -2155,7 +2155,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         annotations: {
           title: "Guard Apply Unmasked Patch to Disk",
           readOnlyHint: false,
-          destructiveHint: false,
+          destructiveHint: true,
           idempotentHint: true,
           openWorldHint: false
         },
@@ -2188,7 +2188,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         annotations: {
           title: "Scaffold AI Agent Security Rules",
           readOnlyHint: false,
-          destructiveHint: false,
+          destructiveHint: true,
           idempotentHint: true,
           openWorldHint: false
         },
@@ -2261,8 +2261,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         description: "Zero-Trust Agentic Guard: Explicitly purges the in-memory token map for a specific session_id or all sessions upon agent task completion.",
         annotations: {
           title: "Reset RAM Session Token Map",
-          readOnlyHint: true,
-          destructiveHint: false,
+          readOnlyHint: false,
+          destructiveHint: true,
           idempotentHint: true,
           openWorldHint: false
         },
@@ -2375,7 +2375,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           title: "Export SIEM Compliance Audit Log",
           readOnlyHint: false,
           destructiveHint: false,
-          idempotentHint: true,
+          idempotentHint: false,
           openWorldHint: false
         },
         inputSchema: {
@@ -3183,17 +3183,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      const CREDENTIAL_TOKEN_RE = /^\[(?:SECRET|API_KEY|API_TOKEN|AWS_KEY|STRIPE_KEY|OPENAI_KEY|JWT_TOKEN|DB_URI|PRIVATE_KEY|PASSWORD)_\d+\]$/i;
+      const isCredentialToken = CREDENTIAL_TOKEN_RE.test(token.trim());
+
       // Add the original plaintext to the ignore list
       currentIgnoreList.add(original);
       // Remove the token from the session map
       delete currentSession[token];
 
-      mcpLog(`${colors.yellow}🔖 [PrivacyScrubber] False Positive: '${token}' → '${original}' will be excluded from future scrubs.${colors.reset}\n`);
+      mcpLog(`${colors.yellow}🔖 [PrivacyScrubber] False Positive: '${token}' → ${isCredentialToken ? '[suppressed for credential token type]' : `'${original}'`} will be excluded from future scrubs.${colors.reset}\n`);
 
       return {
         content: [{
           type: "text",
-          text: `✅ Marked '${token}' as false positive.\n\n**Restored value:** ${original}\n**Session ignore list size:** ${currentIgnoreList.size}\n\nThis value will be excluded from all future \`sanitize_text\` calls in this session.`
+          text: `✅ Marked '${token}' as false positive.\n\n**Restored value:** ${isCredentialToken ? '[suppressed for credential token type — verify locally]' : original}\n**Session ignore list size:** ${currentIgnoreList.size}\n\nThis value will be excluded from all future \`sanitize_text\` calls in this session.`
         }]
       };
     }

@@ -10,7 +10,7 @@ import subprocess
 import json
 import re
 
-VERSION = "2.5.1"
+VERSION = "2.5.2"
 
 PATTERNS = {
     "SECRET": re.compile(
@@ -235,7 +235,7 @@ def run_native_mcp_loop():
                         {
                             "name": "mark_false_positive",
                             "description": "Whitelist a specific phrase or restore a falsely redacted token in the current in-memory RAM session.",
-                            "annotations": {"title": "Mark False Positive Token", **ro_annot},
+                            "annotations": {"title": "Mark False Positive Token", "readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": False},
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
@@ -248,7 +248,7 @@ def run_native_mcp_loop():
                         {
                             "name": "guard_session_reset",
                             "description": "Immediately zeroize and purge all volatile in-memory token mappings and counters.",
-                            "annotations": {"title": "Reset RAM Session", **ro_annot},
+                            "annotations": {"title": "Reset RAM Session", "readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False},
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {}
@@ -406,13 +406,25 @@ def run_native_mcp_loop():
                 target_phrase = restored_phrase if restored_phrase else val
                 if target_phrase:
                     engine.ignore_list.add(target_phrase.lower())
+                is_credential_token = bool(
+                    re.match(
+                        r'^\[(?:SECRET|API_KEY|API_TOKEN|AWS_KEY|STRIPE_KEY|OPENAI_KEY|JWT_TOKEN|DB_URI|PRIVATE_KEY|PASSWORD)_\d+\]$',
+                        val,
+                        re.IGNORECASE
+                    )
+                )
+                msg_text = (
+                    f"Marked '{val}' as a false positive for this RAM session (plaintext echo suppressed for credential token)."
+                    if is_credential_token
+                    else f"Marked '{target_phrase}' as a false positive for this RAM session."
+                )
                 res = {
                     "jsonrpc": "2.0",
                     "id": req_id,
                     "result": {
                         "content": [{
                             "type": "text",
-                            "text": f"Marked '{target_phrase}' as a false positive for this RAM session."
+                            "text": msg_text
                         }]
                     }
                 }

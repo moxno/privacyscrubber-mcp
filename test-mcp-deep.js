@@ -132,6 +132,26 @@ async function runMcpSession() {
       }
     }
 
+    const expectedAnnotations = {
+      guard_apply_patch: { readOnlyHint: false, destructiveHint: true },
+      guard_session_reset: { readOnlyHint: false, destructiveHint: true },
+      ztds_reset_session: { readOnlyHint: false, destructiveHint: true },
+      mark_false_positive: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+      guard_exec: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+      create_agent_rules: { readOnlyHint: false, destructiveHint: true },
+      redact_file: { readOnlyHint: false, destructiveHint: true },
+      export_audit_log: { readOnlyHint: false, idempotentHint: false },
+      stream_reveal_text: { readOnlyHint: false, idempotentHint: false }
+    };
+    for (const [toolName, expected] of Object.entries(expectedAnnotations)) {
+      const found = tools.find(t => t.name === toolName);
+      for (const [hintKey, expectedVal] of Object.entries(expected)) {
+        if (found?.annotations?.[hintKey] !== expectedVal) {
+          throw new Error(`Tool '${toolName}' annotation ${hintKey} expected ${expectedVal}, got ${found?.annotations?.[hintKey]}`);
+        }
+      }
+    }
+
     // 2.1 Verify prompts/list, resources/list, resources/templates/list, and resources/read (Glama & MCP SDK inspection parity)
     console.log("--> Sending 'prompts/list', 'resources/list', and 'resources/templates/list' requests...");
     const promptsResponse = await sendRequest('prompts/list', {});
