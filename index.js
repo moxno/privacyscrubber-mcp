@@ -712,7 +712,7 @@ function reverseTokensShellSafe(command, map) {
 
     const ch = command[i];
     if (quoteState === 'none') {
-      if (ch === '\\' && i + 1 < command.length) {
+      if (ch === '\x5C' && i + 1 < command.length) {
         out += ch + command[i + 1];
         i += 2;
         continue;
@@ -726,7 +726,7 @@ function reverseTokensShellSafe(command, map) {
       out += ch;
       i++;
     } else {
-      if (ch === '\\' && i + 1 < command.length) {
+      if (ch === '\x5C' && i + 1 < command.length) {
         out += ch + command[i + 1];
         i += 2;
         continue;
@@ -3084,7 +3084,7 @@ function extractSafeZipEntries(buf, { maxEntries = 512, maxEntryBytes = 20 * 102
     const entryName = buf.toString('utf8', pos + 46, pos + 46 + nameLen);
     pos += 46 + nameLen + extraLen + commentLen;
 
-    if (!entryName || entryName.includes('\0') || entryName.startsWith('/') || entryName.includes('\\') || entryName.split('/').includes('..')) {
+    if (!entryName || entryName.includes('\0') || entryName.startsWith('/') || entryName.includes('\x5C') || entryName.split('/').includes('..')) {
       continue;
     }
     if (uncompSize > maxEntryBytes) {
@@ -5712,7 +5712,7 @@ function isCatastrophicRegex(pat) {
 
     const ch = pat[i];
     if (inCharClass) {
-      if (ch === '\\') { i += 2; continue; }
+      if (ch === '\x5C') { i += 2; continue; }
       if (ch === ']') {
         inCharClass = false;
         lastToken = { type: 'atom', atomText: pat.slice(charClassStart, i + 1) };
@@ -5723,7 +5723,7 @@ function isCatastrophicRegex(pat) {
 
     if (lastToken) flushUnquantified();
 
-    if (ch === '\\') {
+    if (ch === '\x5C') {
       const escaped = pat.slice(i, i + 2);
       const isBackref = /^\\[1-9]$/.test(escaped);
       if (isBackref) stack[stack.length - 1].hasBackref = true;
