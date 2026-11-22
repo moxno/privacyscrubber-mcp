@@ -12,7 +12,7 @@ body:
     attributes:
       label: Package Version & MCP Client
       description: Output of `npx @privacyscrubber/mcp-server --help` or your IDE client (Cursor, Claude Desktop, Windsurf, Antigravity).
-      placeholder: "@privacyscrubber/mcp-server 2.5.2 | Node v22.x | Cursor / Claude Desktop"
+      placeholder: "@privacyscrubber/mcp-server 2.5.3 | Node v22.x | Cursor / Claude Desktop"
     validations:
       required: true
   - type: dropdown

@@ -5,6 +5,8 @@
 
 import assert from 'node:assert';
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -115,8 +117,10 @@ class JsonRpcMcpClient {
 }
 
 async function runStreamingSuite() {
+  const tempStreamHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ps-stream-home-'));
   const client = new JsonRpcMcpClient(MCP_SERVER_PATH, {
-    PRIVACYSCRUBBER_KEY: 'test-pro-key'
+    HOME: tempStreamHome,
+    USERPROFILE: tempStreamHome
   });
 
   try {
@@ -264,6 +268,34 @@ async function runStreamingSuite() {
     assert.ok(infoText.includes('Stream Buffer:'), 'Session info must display Stream Buffer bytes');
     console.log('✅ Test 9 Passed: Stream buffer metrics displayed in diagnostics.\n');
 
+    // 9b. Stream plural 's', unbracketed split, \u005b non-token non-stall, LABEL_ALIASES, and structuredContent dedup
+    console.log('--> [Test 9b] Hardened StreamingDetokenizer parity checks...');
+    const p1 = await client.callTool('stream_reveal_text', {
+      chunk: '[EMAIL_1]s and [NAME_1]\'s alias [MAIL_1] for [USER_1]. ',
+      flush: true,
+      session_id: 'stream-session-1'
+    });
+    const p1Out = p1.content[0].text;
+    assert.ok(p1Out.includes('alice.brown@mayo.clinics'), `Plural s must be preserved: ${p1Out}`);
+    assert.ok(p1Out.includes("Alice Brown's"), `Possessive must be preserved: ${p1Out}`);
+    assert.ok(p1Out.includes('alias alice.brown@mayo.clinic for Alice Brown'), `LABEL_ALIASES must restore in streaming: ${p1Out}`);
+
+    const bare1 = await client.callTool('stream_reveal_text', { chunk: 'Mail EM', flush: false, session_id: 'stream-session-1' });
+    const bare2 = await client.callTool('stream_reveal_text', { chunk: 'AIL_1 ok', flush: true, session_id: 'stream-session-1' });
+    assert.strictEqual(bare1.content[0].text + bare2.content[0].text, 'Mail alice.brown@mayo.clinic ok', 'Unbracketed split EM+AIL_1 must restore');
+
+    const nonTok = await client.callTool('stream_reveal_text', { chunk: '\\u005bNOT_A_TOKEN\\u005d hello', flush: false, session_id: 'stream-session-1' });
+    assert.strictEqual(nonTok.content[0].text, '\\u005bNOT_A_TOKEN\\u005d hello', 'Non-token unicode-escaped bracket must emit without stalling');
+
+    const scStream = await client.callTool('reveal_text', {
+      text: 'Link https://https://[EMAIL_1]',
+      stream: true,
+      flush: true,
+      session_id: 'stream-session-1'
+    });
+    assert.strictEqual(scStream.structuredContent?.restoredText, 'Link https://alice.brown@mayo.clinic', 'reveal_text stream must emit structuredContent and dedup double schemes');
+    console.log('[PASS] Test 9b Passed: All hardened StreamingDetokenizer edge cases verified.\n');
+
     // 10. Purge and Zeroization via guard_session_reset
     console.log('--> [Test 10] Zeroization via guard_session_reset...');
     await client.callTool('guard_session_reset', { session_id: 'stream-session-1' });
@@ -271,9 +303,10 @@ async function runStreamingSuite() {
     assert.ok(resetInfo.content[0].text.includes('does not exist or has expired'), 'Reset session must be purged from RAM');
     console.log('✅ Test 10 Passed: Stream detokenizer and session maps purged from memory.\n');
 
-    console.log('🎉 All 10 Stdio MCP Streaming & Token-Split Guard tests PASSED successfully!');
+    console.log('[PASS] All Stdio MCP Streaming & Token-Split Guard tests PASSED successfully!');
   } finally {
     client.stop();
+    try { fs.rmSync(tempStreamHome, { recursive: true, force: true }); } catch (_) {}
   }
 }
 

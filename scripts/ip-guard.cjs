@@ -27,6 +27,8 @@ const FORBIDDEN_PATTERNS = [
   { pattern: /moxno\/PrivacyScrubber(?![-a-z0-9])/i, name: "Private upstream repository URL reference" },
   { pattern: /\/Users\/[a-zA-Z0-9_-]+/, name: "Local developer filesystem path (/Users/...)" },
   { pattern: /\bPS-(?:PRO|TEAMS|SDK|ENTERPRISE)-[A-Z0-9]{6,12}-\d{4}\b/, name: "Static license key literal" },
+  { pattern: new RegExp(["PS", "PRO", "TEST", "2339"].join("-") + "|" + ["PROD9876", "KEY5"].join("")), name: "Removed static test key literal" },
+  { pattern: new RegExp("STRICT_LICENSE_GATE\\s*=\\s*" + "false"), name: "Disabled license gate literal" },
   { pattern: /\blook(?:around|ahead|behind)\b/i, name: "Internal regex heuristic terminology" },
   { pattern: /IL\s*331905|14\/09\/2026|\bB17B\b/i, name: "Internal unpublished patent metadata" },
   { pattern: /ZTDS[_]SALT[_]/, name: "Legacy salt identifier prefix" },
@@ -45,11 +47,15 @@ function resolveTargetFiles(scanAll) {
     .split("\n")
     .map((f) => f.trim())
     .filter(Boolean);
-  if (staged.length > 0) return staged;
-  return execSync("git diff --name-only", { cwd: REPO_ROOT, encoding: "utf8" })
+  const unstaged = execSync("git diff --name-only", { cwd: REPO_ROOT, encoding: "utf8" })
     .split("\n")
     .map((f) => f.trim())
     .filter(Boolean);
+  const untracked = execSync("git ls-files --others --exclude-standard", { cwd: REPO_ROOT, encoding: "utf8" })
+    .split("\n")
+    .map((f) => f.trim())
+    .filter(Boolean);
+  return Array.from(new Set([...staged, ...unstaged, ...untracked]));
 }
 
 function hasForbiddenLiteralDigest(content) {
@@ -137,14 +143,34 @@ function main() {
     assert.strictEqual(typeof lm.generateKey, "undefined", "LicenseManager.generateKey must be stripped from public repo");
 
     const eng = require(path.join(REPO_ROOT, "ps-pii-engine.cjs"));
-    assert.strictEqual(eng.PROFILE_RULES, undefined, "engine.PROFILE_RULES must be undefined");
-    assert.strictEqual(eng.REGEX_RULES, undefined, "engine.REGEX_RULES must be undefined");
-    assert.strictEqual(eng.getActiveRules, undefined, "engine.getActiveRules must be undefined");
-    assert.strictEqual(eng.getRulesMap, undefined, "engine.getRulesMap must be undefined");
+    for (const hiddenProp of [
+      "PROFILE_RULES",
+      "REGEX_RULES",
+      "getActiveRules",
+      "getRulesMap",
+      "NAME_STOP_LIST",
+      "JARGON_WORDS",
+      "NOT_NAME_WORDS",
+      "PROFILE_JARGON",
+      "getDevopsRules",
+    ]) {
+      assert.strictEqual(eng[hiddenProp], undefined, `engine.${hiddenProp} must be undefined`);
+    }
+    eng.init();
+    assert.throws(
+      () => eng.detectMatches("A".repeat(6000), "Medical"),
+      /Free Tier limit exceeded/i,
+      "engine.detectMatches must enforce 5k vertical limit in hardened ps-pii-engine.cjs"
+    );
 
     const sc = require(path.join(REPO_ROOT, "scrubber-core.cjs"));
     sc.init();
     assert.strictEqual(sc.getRules, undefined, "scrubberCore.getRules must be undefined");
+    assert.throws(
+      () => sc.scrubText("A".repeat(5500), [], {}, "Medical", {}, true),
+      /Free Tier limit exceeded/i,
+      "Boolean isPro=true must not bypass 5k vertical Free Tier limit in hardened scrubber-core.cjs"
+    );
     assert.throws(
       () => sc.scrubText("A".repeat(16000), [], {}, "General", {}, true),
       /Free Tier limit exceeded/i,

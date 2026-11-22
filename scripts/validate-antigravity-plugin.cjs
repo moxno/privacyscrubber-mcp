@@ -152,13 +152,14 @@ function runColdRoomMcpTest(pluginRoot, pluginData) {
       cwd: os.tmpdir(),
       env: {
         ...process.env,
+        HOME: pluginData,
+        USERPROFILE: pluginData,
         PLUGIN_ROOT: pluginRoot,
         PLUGIN_DATA: pluginData,
         PRIVACYSCRUBBER_KEY: "",
         PRIVACYSCRUBBER_LICENSE_KEY: "",
         ZTDS_LICENSE: "",
         ZTDS_LICENSE_KEY: "",
-        ZTDS_GUARD_LOCAL: "1",
       },
       stdio: ["pipe", "pipe", "pipe"],
     });

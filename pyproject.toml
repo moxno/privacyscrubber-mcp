@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "privacyscrubber-mcp"
-version = "2.5.2"
+version = "2.5.3"
 description = "CISO-Approved Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Windsurf, and Claude Desktop"
 readme = "README.md"
 authors = [
@@ -57,3 +57,19 @@ privacyscrubber-mcp = "privacyscrubber_mcp:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/privacyscrubber_mcp"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/privacyscrubber_mcp/**",
+    "README.md",
+    "LICENSE",
+    "pyproject.toml",
+]
+exclude = [
+    ".github/**",
+    "scripts/**",
+    ".antigravity-plugin/**",
+    "tests/**",
+    "test-*.js",
+    "*.cjs",
+]

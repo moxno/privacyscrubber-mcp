@@ -12,6 +12,7 @@
 import { spawn, execSync } from 'child_process';
 import { createRequire } from 'module';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import readline from 'readline';
@@ -27,7 +28,7 @@ const cmdIndex = args.indexOf("--");
 
 if (args.includes("--version") || args.includes("-v")) {
   const pkgPath = path.resolve(__dirname, './package.json');
-  let version = '2.5.2';
+  let version = '2.5.3';
   try { version = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version; } catch (_) {}
   console.log(`ps-guard / pii-masking-run v${version} (PrivacyScrubber MCP)`);
   process.exit(0);
@@ -431,6 +432,31 @@ if (!LicenseManager || typeof LicenseManager.validate !== 'function') {
   LicenseManager = global.LicenseManager;
 }
 
+const PRO_ELIGIBLE_TIERS = new Set([
+  'PRO',
+  'TEAMS',
+  'SDK',
+  'SDK_INTERNAL',
+  'SDK_OEM',
+  'ENTERPRISE',
+  'ENTERPRISE_AIRGAP',
+  'OEM'
+]);
+
+const FREE_TIER_DAILY_LIMIT = 100;
+const EVAL_TIER_DAILY_LIMIT = 250;
+const USAGE_FILE_MAX_BYTES = 4096;
+const USAGE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+let usageTmpCounter = 0;
+
+function canonicalProfileSlug(profileName) {
+  const lower = String(profileName || 'general').trim().toLowerCase();
+  if (!lower || lower === 'universal' || lower === 'baseline' || lower === 'general') return 'general';
+  if (lower === 'dev_secrets') return 'dev';
+  if (lower === 'privilege') return 'legal';
+  return lower;
+}
+
 function checkLicenseStatus() {
   const key = (
     process.env.PRIVACYSCRUBBER_KEY ||
@@ -439,24 +465,293 @@ function checkLicenseStatus() {
     process.env.ZTDS_LICENSE_KEY ||
     ""
   ).trim();
-  if (!key) return { isPro: false, key: '', type: null, error: "No license key provided." };
+  if (!key) {
+    return {
+      isPro: false,
+      isEval: false,
+      key: '',
+      type: null,
+      allowedProfiles: null,
+      allowedProfilesSet: null,
+      error: "No license key provided."
+    };
+  }
 
   const result = LicenseManager.validate(key);
   if (!result.valid) {
-    return { isPro: false, key: '', type: null, error: result.reason || "Invalid license format or signature." };
+    return {
+      isPro: false,
+      isEval: false,
+      key: '',
+      type: null,
+      allowedProfiles: null,
+      allowedProfilesSet: null,
+      error: result.reason || "Invalid license format or signature."
+    };
   }
-  const rawTier = String(result.tier || '').toUpperCase();
+
+  const rawTier = String(result.tier || '').toUpperCase().trim();
   const isEval = rawTier === 'EVAL' || rawTier === 'EVALUATION';
-  if (isEval) {
-    return { isPro: false, key: '', type: result.tier, error: null };
+  const isProTier = !isEval && PRO_ELIGIBLE_TIERS.has(rawTier);
+
+  if (!isEval && !isProTier) {
+    return {
+      isPro: false,
+      isEval: false,
+      key: '',
+      type: rawTier || null,
+      allowedProfiles: null,
+      allowedProfilesSet: null,
+      error: "License tier is not active for commercial entitlements."
+    };
   }
-  return { isPro: true, key: key, type: result.tier, error: null };
+
+  let normalizedAllowedProfiles = null;
+  let allowedProfilesSet = null;
+  const rawAllowed = Array.isArray(result.allowedProfiles) ? result.allowedProfiles : null;
+  const hasWildcard = rawAllowed && rawAllowed.some((p) => String(p).trim() === '*');
+  if (rawAllowed && rawAllowed.length > 0 && !hasWildcard) {
+    normalizedAllowedProfiles = Array.from(
+      new Set(rawAllowed.map((p) => canonicalProfileSlug(p)).filter(Boolean))
+    );
+    if (normalizedAllowedProfiles.length > 0) {
+      allowedProfilesSet = new Set(normalizedAllowedProfiles);
+    }
+  } else if (isEval || result.specializedProfiles === false) {
+    normalizedAllowedProfiles = ['general'];
+    allowedProfilesSet = new Set(['general']);
+  }
+
+  return {
+    isPro: isProTier,
+    isEval,
+    key: isProTier ? key : '',
+    type: rawTier,
+    allowedProfiles: normalizedAllowedProfiles,
+    allowedProfilesSet,
+    error: null
+  };
+}
+
+function getUsageFilePath() {
+  const envHome = (process.env.HOME && process.env.HOME.trim()) ||
+    (process.env.USERPROFILE && process.env.USERPROFILE.trim()) ||
+    '';
+  const homeDir = envHome || (typeof os.homedir === 'function' ? (os.homedir() || '').trim() : '');
+  if (!homeDir) return '';
+  return path.resolve(homeDir, '.privacyscrubber-usage.json');
+}
+
+function readUsageNoFollow(filePath) {
+  const noFollowFlag = (fs.constants && typeof fs.constants.O_NOFOLLOW === 'number') ? fs.constants.O_NOFOLLOW : 0;
+  const fd = fs.openSync(filePath, fs.constants.O_RDONLY | noFollowFlag);
+  try {
+    const fstat = fs.fstatSync(fd);
+    if (!fstat.isFile() || fstat.size > USAGE_FILE_MAX_BYTES) {
+      throw new Error('Usage state file must be a regular file <= 4096 bytes.');
+    }
+    const buf = Buffer.alloc(fstat.size);
+    let offset = 0;
+    while (offset < fstat.size) {
+      const readBytes = fs.readSync(fd, buf, offset, fstat.size - offset, null);
+      if (readBytes <= 0) break;
+      offset += readBytes;
+    }
+    return buf.subarray(0, offset).toString('utf8');
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function readUsageStateFromDisk(filePath, today, { checkWritable = false } = {}) {
+  if (!filePath) {
+    return { ok: false, tampered: true, count: FREE_TIER_DAILY_LIMIT, evalCount: EVAL_TIER_DAILY_LIMIT, reason: 'Unable to resolve home directory for usage tracking.' };
+  }
+  let st;
+  try {
+    st = fs.lstatSync(filePath);
+  } catch (err) {
+    if (err && err.code === 'ENOENT') {
+      return { ok: true, exists: false, date: today, count: 0, evalCount: 0 };
+    }
+    return { ok: false, tampered: true, count: FREE_TIER_DAILY_LIMIT, evalCount: EVAL_TIER_DAILY_LIMIT, reason: err ? err.message : 'lstat failed' };
+  }
+  if (st.isSymbolicLink() || !st.isFile()) {
+    return { ok: false, tampered: true, count: FREE_TIER_DAILY_LIMIT, evalCount: EVAL_TIER_DAILY_LIMIT, reason: 'Usage state file must be a regular non-symlink file.' };
+  }
+  if (st.size > USAGE_FILE_MAX_BYTES) {
+    return { ok: false, tampered: true, count: FREE_TIER_DAILY_LIMIT, evalCount: EVAL_TIER_DAILY_LIMIT, reason: 'Usage state file exceeds maximum allowed size.' };
+  }
+  if (checkWritable) {
+    try {
+      fs.accessSync(filePath, fs.constants.R_OK | fs.constants.W_OK);
+    } catch (_) {
+      return { ok: false, tampered: true, count: FREE_TIER_DAILY_LIMIT, evalCount: EVAL_TIER_DAILY_LIMIT, reason: 'Usage state file is not writable.' };
+    }
+  }
+  let raw;
+  try {
+    raw = readUsageNoFollow(filePath);
+  } catch (err) {
+    return { ok: false, tampered: true, count: FREE_TIER_DAILY_LIMIT, evalCount: EVAL_TIER_DAILY_LIMIT, reason: err ? err.message : 'unreadable usage file' };
+  }
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (_) {
+    return { ok: false, tampered: true, count: FREE_TIER_DAILY_LIMIT, evalCount: EVAL_TIER_DAILY_LIMIT, reason: 'Usage state contains invalid JSON.' };
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return { ok: false, tampered: true, count: FREE_TIER_DAILY_LIMIT, evalCount: EVAL_TIER_DAILY_LIMIT, reason: 'Usage state schema invalid.' };
+  }
+  if (typeof data.date !== 'string' || !USAGE_DATE_RE.test(data.date)) {
+    return { ok: false, tampered: true, count: FREE_TIER_DAILY_LIMIT, evalCount: EVAL_TIER_DAILY_LIMIT, reason: 'Usage state date invalid.' };
+  }
+  if (data.date !== today) {
+    if (data.date > today) {
+      return { ok: false, tampered: true, count: FREE_TIER_DAILY_LIMIT, evalCount: EVAL_TIER_DAILY_LIMIT, reason: 'Usage state contains future date.' };
+    }
+    return { ok: true, exists: true, date: today, count: 0, evalCount: 0 };
+  }
+  const hasCount = Object.prototype.hasOwnProperty.call(data, 'count');
+  const hasEvalCount = Object.prototype.hasOwnProperty.call(data, 'evalCount');
+  if (!hasCount && !hasEvalCount) {
+    return { ok: false, tampered: true, count: FREE_TIER_DAILY_LIMIT, evalCount: EVAL_TIER_DAILY_LIMIT, reason: 'Usage state missing counter fields.' };
+  }
+  const countVal = hasCount ? data.count : 0;
+  const evalVal = hasEvalCount ? data.evalCount : 0;
+  if (!Number.isInteger(countVal) || countVal < 0 || !Number.isSafeInteger(countVal)) {
+    return { ok: false, tampered: true, count: FREE_TIER_DAILY_LIMIT, evalCount: EVAL_TIER_DAILY_LIMIT, reason: 'Usage count field invalid.' };
+  }
+  if (!Number.isInteger(evalVal) || evalVal < 0 || !Number.isSafeInteger(evalVal)) {
+    return { ok: false, tampered: true, count: FREE_TIER_DAILY_LIMIT, evalCount: EVAL_TIER_DAILY_LIMIT, reason: 'Usage evalCount field invalid.' };
+  }
+  return { ok: true, exists: true, date: today, count: countVal, evalCount: evalVal };
+}
+
+function sleepSyncMs(ms) {
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  } catch (_) {}
+}
+
+function withUsageFileLock(filePath, fn) {
+  const lockPath = `${filePath}.lock`;
+  const noFollowFlag = (fs.constants && typeof fs.constants.O_NOFOLLOW === 'number') ? fs.constants.O_NOFOLLOW : 0;
+  const deadline = Date.now() + 2000;
+  let lockFd = -1;
+  while (lockFd === -1) {
+    try {
+      lockFd = fs.openSync(lockPath, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY | noFollowFlag, 0o600);
+      try { fs.writeSync(lockFd, String(process.pid)); } catch (_) {}
+      break;
+    } catch (err) {
+      if (!err || err.code !== 'EEXIST') throw err;
+      try {
+        const lst = fs.lstatSync(lockPath);
+        if (lst.isSymbolicLink()) throw new Error('Usage lockfile cannot be a symlink.');
+        if ((Date.now() - lst.mtimeMs) > 5000) {
+          fs.unlinkSync(lockPath);
+          continue;
+        }
+      } catch (statErr) {
+        if (statErr && statErr.code === 'ENOENT') continue;
+        throw statErr;
+      }
+      if (Date.now() >= deadline) throw new Error('Timed out waiting for usage file lock.');
+      sleepSyncMs(5);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    try { fs.closeSync(lockFd); } catch (_) {}
+    try { fs.unlinkSync(lockPath); } catch (_) {}
+  }
+}
+
+function writeUsageAtomicSync(filePath, payloadObj) {
+  const dir = path.dirname(filePath);
+  const noFollowFlag = (fs.constants && typeof fs.constants.O_NOFOLLOW === 'number') ? fs.constants.O_NOFOLLOW : 0;
+  usageTmpCounter = (usageTmpCounter + 1) % 1000000;
+  const tmpPath = path.join(dir, `.privacyscrubber-usage.tmp.${process.pid}.${usageTmpCounter}`);
+  const body = JSON.stringify(payloadObj);
+  const fd = fs.openSync(tmpPath, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | noFollowFlag, 0o600);
+  let closed = false;
+  try {
+    const buf = Buffer.from(body, 'utf8');
+    let offset = 0;
+    while (offset < buf.length) {
+      offset += fs.writeSync(fd, buf, offset, buf.length - offset);
+    }
+    try { fs.fsyncSync(fd); } catch (_) {}
+    fs.closeSync(fd);
+    closed = true;
+    fs.renameSync(tmpPath, filePath);
+  } catch (err) {
+    if (!closed) {
+      try { fs.closeSync(fd); } catch (_) {}
+    }
+    try { fs.unlinkSync(tmpPath); } catch (_) {}
+    throw err;
+  }
+}
+
+function checkFreeTierLimit(isPro, isEval = false) {
+  if (isPro) {
+    return { blocked: false, count: 0 };
+  }
+  const today = new Date().toISOString().split('T')[0];
+  const file = getUsageFilePath();
+  if (!file) {
+    return { blocked: true, count: FREE_TIER_DAILY_LIMIT, tampered: true, reason: 'Home directory unavailable.' };
+  }
+  const parentDir = path.dirname(file);
+  try {
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true, mode: 0o700 });
+    }
+  } catch (err) {
+    return { blocked: true, count: FREE_TIER_DAILY_LIMIT, tampered: true, reason: err ? err.message : 'Directory creation failed' };
+  }
+  try {
+    return withUsageFileLock(file, () => {
+      const state = readUsageStateFromDisk(file, today, { checkWritable: true });
+      if (!state.ok) {
+        return { blocked: true, count: FREE_TIER_DAILY_LIMIT, tampered: true, reason: state.reason };
+      }
+      if (isEval) {
+        if (state.evalCount >= EVAL_TIER_DAILY_LIMIT) {
+          return { blocked: true, count: state.evalCount, evalLimitExhausted: true };
+        }
+        const nextEval = state.evalCount + 1;
+        writeUsageAtomicSync(file, { date: today, count: state.count, evalCount: nextEval });
+        if (nextEval >= EVAL_TIER_DAILY_LIMIT) {
+          return { blocked: true, count: nextEval, evalLimitExhausted: true };
+        }
+        return { blocked: false, count: nextEval };
+      }
+      if (state.count >= FREE_TIER_DAILY_LIMIT) {
+        return { blocked: true, count: state.count };
+      }
+      const nextCount = state.count + 1;
+      writeUsageAtomicSync(file, { date: today, count: nextCount, evalCount: state.evalCount });
+      if (nextCount >= FREE_TIER_DAILY_LIMIT) {
+        return { blocked: true, count: nextCount };
+      }
+      return { blocked: false, count: nextCount };
+    });
+  } catch (err) {
+    return { blocked: true, count: FREE_TIER_DAILY_LIMIT, tampered: true, reason: err ? err.message : 'Quota update failed' };
+  }
 }
 
 function resolveConfigPath() {
   let configPath = path.resolve(process.cwd(), 'privacyscrubber.json');
   if (!fs.existsSync(configPath)) {
-    const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+    const homeDir = (process.env.HOME && process.env.HOME.trim()) ||
+      (process.env.USERPROFILE && process.env.USERPROFILE.trim()) ||
+      (typeof os.homedir === 'function' ? (os.homedir() || '').trim() : '');
     if (homeDir) {
       configPath = path.resolve(homeDir, 'privacyscrubber.json');
     }
@@ -464,11 +759,27 @@ function resolveConfigPath() {
   return configPath;
 }
 
+function canAtomsOverlap(srcA, srcB) {
+  if (!srcA || !srcB) return false;
+  if (srcA === srcB) return true;
+  const probes = ['a', 'A', '0', '9', '_', ' ', '\t', '-', '/', '.', '@', ':'];
+  try {
+    const rxA = new RegExp(`^(?:${srcA})$`, 'i');
+    const rxB = new RegExp(`^(?:${srcB})$`, 'i');
+    for (const ch of probes) {
+      if (rxA.test(ch) && rxB.test(ch)) return true;
+    }
+    return false;
+  } catch (_) {
+    return true;
+  }
+}
+
 function isCatastrophicRegex(pat) {
   if (!pat || typeof pat !== 'string' || pat.length > 500) return true;
   if ((pat.match(/\.\*/g) || []).length >= 3 || (pat.match(/\.\+/g) || []).length >= 3) return true;
 
-  const stack = [{ hasQuantifier: false, hasAlternation: false, hasBackref: false, lastVarAtom: null, varStreak: 0 }];
+  const stack = [{ hasQuantifier: false, hasAlternation: false, hasBackref: false, lastVarAtom: null, varStreak: 0, varChain: [] }];
   let inCharClass = false;
   let charClassStart = -1;
   let lastToken = null;
@@ -477,24 +788,29 @@ function isCatastrophicRegex(pat) {
     const top = stack[stack.length - 1];
     top.lastVarAtom = null;
     top.varStreak = 0;
+    top.varChain = [];
   };
 
   const parseQuantifier = (i) => {
     const ch = pat[i];
-    if (ch === '*' || ch === '+') {
+    if (ch === '*') {
       const next = pat[i + 1];
-      return { end: i + ((next === '?' || next === '+') ? 2 : 1), isVar: true, multi: true };
+      return { end: i + ((next === '?' || next === '+') ? 2 : 1), isVar: true, multi: true, minZero: true, unbounded: true };
+    }
+    if (ch === '+') {
+      const next = pat[i + 1];
+      return { end: i + ((next === '?' || next === '+') ? 2 : 1), isVar: true, multi: true, minZero: false, unbounded: true };
     }
     if (ch === '?') {
       const next = pat[i + 1];
-      return { end: i + ((next === '?' || next === '+') ? 2 : 1), isVar: true, multi: false };
+      return { end: i + ((next === '?' || next === '+') ? 2 : 1), isVar: true, multi: false, minZero: true, unbounded: false };
     }
     if (ch === '{') {
       const m = pat.slice(i).match(/^\{(\d+)(?:,(\d*))?\}([?+]?)/);
       if (m) {
         const min = parseInt(m[1], 10);
         const max = m[2] === undefined ? min : (m[2] === '' ? Infinity : parseInt(m[2], 10));
-        return { end: i + m[0].length, isVar: max !== min, multi: max > 1 };
+        return { end: i + m[0].length, isVar: max !== min, multi: max > 1, minZero: min === 0, unbounded: max === Infinity };
       }
     }
     return null;
@@ -509,7 +825,7 @@ function isCatastrophicRegex(pat) {
         if (lastToken.hasQuantifier || lastToken.hasAlternation || lastToken.hasBackref) return true;
       }
       if (lastToken && lastToken.isBackref && q.isVar) return true;
-      if (lastToken && lastToken.type === 'atom' && q.isVar) {
+      if (lastToken && (lastToken.type === 'atom' || lastToken.type === 'group') && q.isVar) {
         if (top.lastVarAtom === lastToken.atomText) {
           top.varStreak++;
         } else {
@@ -517,6 +833,23 @@ function isCatastrophicRegex(pat) {
           top.varStreak = 1;
         }
         if (top.varStreak >= 3) return true;
+
+        if (q.multi) {
+          if (lastToken.atomText) {
+            const overlapsPrev = top.varChain.filter((prev) => canAtomsOverlap(prev, lastToken.atomText)).length;
+            top.varChain.push(lastToken.atomText);
+            if (overlapsPrev >= 2 || top.varChain.length >= 4) {
+              if (overlapsPrev >= 2) return true;
+              const anyOverlapCount = top.varChain.reduce((acc, a, idx) => {
+                if (idx === 0) return 0;
+                return acc + (canAtomsOverlap(top.varChain[idx - 1], a) ? 1 : 0);
+              }, 0);
+              if (anyOverlapCount >= 2) return true;
+            }
+          }
+        } else if (!q.minZero) {
+          top.varChain = [];
+        }
       } else {
         flushUnquantified();
       }
@@ -539,10 +872,23 @@ function isCatastrophicRegex(pat) {
     if (lastToken) flushUnquantified();
 
     if (ch === '\x5C') {
+      const rest = pat.slice(i);
+      const numBackref = rest.match(/^\\([1-9]\d*)/);
+      const namedBackref = rest.match(/^\\k<[^>]+>/);
+      if (numBackref) {
+        stack[stack.length - 1].hasBackref = true;
+        lastToken = { type: 'atom', atomText: numBackref[0], isBackref: true };
+        i += numBackref[0].length;
+        continue;
+      }
+      if (namedBackref) {
+        stack[stack.length - 1].hasBackref = true;
+        lastToken = { type: 'atom', atomText: namedBackref[0], isBackref: true };
+        i += namedBackref[0].length;
+        continue;
+      }
       const escaped = pat.slice(i, i + 2);
-      const isBackref = /^\\[1-9]$/.test(escaped);
-      if (isBackref) stack[stack.length - 1].hasBackref = true;
-      lastToken = { type: 'atom', atomText: escaped, isBackref };
+      lastToken = { type: 'atom', atomText: escaped, isBackref: false };
       i += 2;
       continue;
     }
@@ -554,7 +900,7 @@ function isCatastrophicRegex(pat) {
       continue;
     }
     if (ch === '(') {
-      stack.push({ hasQuantifier: false, hasAlternation: false, hasBackref: false, lastVarAtom: null, varStreak: 0 });
+      stack.push({ hasQuantifier: false, hasAlternation: false, hasBackref: false, lastVarAtom: null, varStreak: 0, varChain: [], startIdx: i });
       lastToken = null;
       i++;
       if (pat[i] === '?') {
@@ -574,8 +920,13 @@ function isCatastrophicRegex(pat) {
         const closed = stack.pop();
         const top = stack[stack.length - 1];
         if (closed.hasQuantifier) top.hasQuantifier = true;
+        if (closed.hasAlternation) top.hasAlternation = true;
         if (closed.hasBackref) top.hasBackref = true;
-        lastToken = { type: 'group', ...closed };
+        lastToken = {
+          type: 'group',
+          ...closed,
+          atomText: typeof closed.startIdx === 'number' ? pat.slice(closed.startIdx, i + 1) : null
+        };
       } else {
         lastToken = null;
       }
@@ -602,43 +953,82 @@ function isCatastrophicRegex(pat) {
   }
 }
 
+const FORBIDDEN_CUSTOM_LABELS = new Set(['__PROTO__', 'CONSTRUCTOR', 'PROTOTYPE', 'TOSTRING', 'VALUEOF']);
+
+function sanitizeCustomRuleLabel(rawLabel) {
+  const normalized = String(rawLabel || 'CUSTOM').toUpperCase().replace(/[^A-Z0-9_]/g, '_').replace(/^_+|_+$/g, '');
+  if (!normalized || normalized.length > 40 || FORBIDDEN_CUSTOM_LABELS.has(normalized)) {
+    return 'CUSTOM';
+  }
+  return normalized;
+}
+
 function loadCustomRules() {
   const license = checkLicenseStatus();
   const configPath = resolveConfigPath();
+  if (!configPath) return [];
 
-  if (fs.existsSync(configPath)) {
+  let st;
+  try {
+    st = fs.lstatSync(configPath);
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return [];
+    process.stderr.write(`Security policy warning: cannot inspect privacyscrubber.json (${err.message}).\n`);
+    return [];
+  }
+
+  if (st.isSymbolicLink() || !st.isFile()) {
+    process.stderr.write(`Security policy violation: ignoring privacyscrubber.json because target is a symlink or non-regular file.\n`);
+    return [];
+  }
+  if (st.size > 1024 * 1024) {
+    process.stderr.write(`Security policy violation: ignoring privacyscrubber.json because file size exceeds 1MB limit.\n`);
+    return [];
+  }
+
+  try {
+    const noFollowFlag = (fs.constants && typeof fs.constants.O_NOFOLLOW === 'number') ? fs.constants.O_NOFOLLOW : 0;
+    const fd = fs.openSync(configPath, fs.constants.O_RDONLY | noFollowFlag);
+    let rawJson = '';
     try {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      const rules = config.customRules || [];
-      if (rules.length > 0) {
-        if (license.isPro) {
-          return rules.map(r => {
-            const pat = r.pattern || r.regex || "";
+      rawJson = fs.readFileSync(fd, 'utf8');
+    } finally {
+      fs.closeSync(fd);
+    }
+    const config = JSON.parse(rawJson);
+    const rules = Array.isArray(config?.customRules) ? config.customRules.slice(0, 500) : [];
+    if (rules.length > 0) {
+      if (license.isPro) {
+        return rules
+          .filter(r => r && typeof r === 'object')
+          .map(r => {
+            const pat = typeof r.pattern === 'string' ? r.pattern : (typeof r.regex === 'string' ? r.regex : '');
             if (!pat || isCatastrophicRegex(pat)) return null;
+            const safeLabel = sanitizeCustomRuleLabel(r.label || r.category || "CUSTOM");
             try {
               return {
                 pattern: pat,
-                label: (r.label || r.category || "CUSTOM").toUpperCase(),
+                label: safeLabel,
                 regex: new RegExp(pat, "gi"),
-                category: (r.label || r.category || "CUSTOM").toUpperCase()
+                category: safeLabel
               };
             } catch (_) {
               return null;
             }
           }).filter(Boolean);
-        } else {
-          process.stderr.write(`⚠️  [PrivacyScrubber] Custom rules detected in privacyscrubber.json, but are ignored in the Free Tier.\n👉  Set PRIVACYSCRUBBER_KEY to your PRO license key.\n`);
-        }
+      } else {
+        process.stderr.write(`[PrivacyScrubber] Custom rules detected in privacyscrubber.json, but are ignored in the Free Tier.\nSet PRIVACYSCRUBBER_KEY to your PRO license key.\n`);
       }
-    } catch (e) {
-      process.stderr.write(`Error parsing privacyscrubber.json: ${e.message}\n`);
     }
+  } catch (e) {
+    process.stderr.write(`Error parsing privacyscrubber.json: ${e.message}\n`);
   }
   return [];
 }
 
 // Local runtime variables
 let profile = "General";
+let explicitProfileRequested = false;
 let key = process.env.PRIVACYSCRUBBER_KEY || "";
 let rulesTargets = ["all"];
 
@@ -648,6 +1038,7 @@ const optionsArgs = cmdIndex !== -1 ? args.slice(0, cmdIndex) : args;
 for (let i = 0; i < optionsArgs.length; i++) {
   if (optionsArgs[i] === "--profile" && optionsArgs[i + 1]) {
     profile = optionsArgs[i + 1];
+    explicitProfileRequested = true;
     i++;
   } else if (optionsArgs[i] === "--key" && optionsArgs[i + 1]) {
     key = optionsArgs[i + 1];
@@ -664,23 +1055,84 @@ if (key) {
   process.env.PRIVACYSCRUBBER_KEY = key;
 }
 
+const startupLicense = checkLicenseStatus();
+if (startupLicense.allowedProfilesSet) {
+  const normRequested = canonicalProfileSlug(profile);
+  if (!startupLicense.allowedProfilesSet.has(normRequested)) {
+    if (explicitProfileRequested) {
+      const allowedList = Array.from(startupLicense.allowedProfilesSet).join(', ');
+      process.stderr.write(`Error: PROFILE_NOT_LICENSED - Profile '${profile}' is not permitted under your active license (${startupLicense.type || 'SCOPED'}; allowed: ${allowedList}).\n`);
+      process.exit(1);
+    }
+    profile = startupLicense.allowedProfilesSet.has('general')
+      ? 'General'
+      : Array.from(startupLicense.allowedProfilesSet)[0];
+  }
+}
+
 const customRules = loadCustomRules();
 const localSessionMap = {};
 const MAX_WRAP_SESSION_TOKENS = 5000;
 let sessionWasTruncated = false;
 let sessionTruncatedLimit = 15000;
+let cliQuotaCharged = false;
+let cliCharsProcessed = 0;
+let cliBudgetExhaustedNotified = false;
 
-function performSanitization(text) {
+function enforceDailyQuotaOnce() {
+  if (cliQuotaCharged) return null;
+  cliQuotaCharged = true;
   const license = checkLicenseStatus();
-  const normalizedProfile = (profile || "general").trim().toLowerCase();
+  const limitStatus = checkFreeTierLimit(license.isPro, license.isEval);
+  if (limitStatus.blocked) {
+    return limitStatus;
+  }
+  return null;
+}
+
+function performSanitization(text, { perCallQuota = false } = {}) {
+  const license = checkLicenseStatus();
+  const normalizedProfile = canonicalProfileSlug(profile);
+
+  if (license.allowedProfilesSet && !license.allowedProfilesSet.has(normalizedProfile)) {
+    throw new Error(`PROFILE_NOT_LICENSED: Profile '${profile}' is outside licensed scope.`);
+  }
+
+  const quotaBlock = perCallQuota
+    ? (() => {
+        const st = checkFreeTierLimit(license.isPro, license.isEval);
+        return st.blocked ? st : null;
+      })()
+    : enforceDailyQuotaOnce();
+
+  if (quotaBlock) {
+    const errMsg = quotaBlock.tampered
+      ? `QUOTA_PERSISTENCE_ERROR: ${quotaBlock.reason || 'invalid usage file'}`
+      : 'FREE_TIER_DAILY_LIMIT_EXCEEDED';
+    throw new Error(errMsg);
+  }
+
   const limit = (normalizedProfile !== "general" && !license.isPro) ? 5000 : 15000;
   let textToScrub = text;
   let wasTruncated = false;
-  if (!license.isPro && textToScrub.length > limit) {
-    textToScrub = textToScrub.slice(0, limit);
-    wasTruncated = true;
-    sessionWasTruncated = true;
-    sessionTruncatedLimit = limit;
+  if (!license.isPro) {
+    const remaining = Math.max(0, limit - cliCharsProcessed);
+    if (remaining === 0) {
+      sessionWasTruncated = true;
+      sessionTruncatedLimit = limit;
+      if (!cliBudgetExhaustedNotified) {
+        cliBudgetExhaustedNotified = true;
+        process.stderr.write(`[PrivacyScrubber Free Tier Limit Reached (${limit.toLocaleString()} chars) - further lines redacted fail-closed]\n`);
+      }
+      return '[REDACTED - FREE TIER CHAR QUOTA EXCEEDED]';
+    }
+    if (textToScrub.length > remaining) {
+      textToScrub = textToScrub.slice(0, remaining);
+      wasTruncated = true;
+      sessionWasTruncated = true;
+      sessionTruncatedLimit = limit;
+    }
+    cliCharsProcessed += textToScrub.length;
   }
 
   const activeRules = [...customRules];
@@ -697,10 +1149,13 @@ function performSanitization(text) {
   try {
     result = PrivacyScrubberCore.scrubText(textToScrub, activeRules, {}, normalizedProfile, localSessionMap, license.isPro ? (license.key || '') : '');
   } catch (err) {
-    return text;
+    throw new Error(`ZTDS_SANITIZATION_FAILED: ${err && err.message ? err.message : 'core scrub error'}`);
+  }
+  if (!result || typeof result.scrubbedText !== 'string') {
+    throw new Error('ZTDS_SANITIZATION_FAILED: core engine returned invalid sanitization output.');
   }
 
-  if (result && result.tokenMap) {
+  if (result.tokenMap) {
     Object.assign(localSessionMap, result.tokenMap);
   }
   if (isWrapMode) {
@@ -1299,17 +1754,58 @@ if (isWrapMode) {
     terminal: false
   });
 
+  const emitWrapRpcError = (id, message) => {
+    process.stdout.write(JSON.stringify({
+      jsonrpc: '2.0',
+      id: id ?? null,
+      error: { code: -32603, message }
+    }) + '\n');
+  };
+
   rlUpstreamOut.on('line', (line) => {
     const trimmed = line.trim();
     if (!trimmed.startsWith('{')) {
-      process.stdout.write(performSanitization(line) + '\n');
+      try {
+        process.stdout.write(performSanitization(line) + '\n');
+      } catch (err) {
+        process.stderr.write(`[PrivacyScrubber FAIL-CLOSED] ${err && err.message ? err.message : 'sanitization blocked'}\n`);
+        process.stdout.write('[REDACTED - SANITIZATION FAIL-CLOSED]\n');
+      }
       return;
     }
+    let msg = null;
     try {
-      const msg = JSON.parse(trimmed);
-      if (msg && typeof msg === 'object') {
+      msg = JSON.parse(trimmed);
+    } catch (_) {
+      try {
+        process.stdout.write(performSanitization(line) + '\n');
+      } catch (err) {
+        process.stderr.write(`[PrivacyScrubber FAIL-CLOSED] ${err && err.message ? err.message : 'sanitization blocked'}\n`);
+        process.stdout.write('[REDACTED - SANITIZATION FAIL-CLOSED]\n');
+      }
+      return;
+    }
+
+    if (msg && typeof msg === 'object') {
+      try {
+        let shouldSanitizeMsg = false;
+        const isSchemaListing = Boolean(
+          msg.result &&
+          typeof msg.result === 'object' &&
+          (Array.isArray(msg.result.tools) || Array.isArray(msg.result.prompts) || Array.isArray(msg.result.resourceTemplates) || Boolean(msg.result.protocolVersion))
+        );
+        if ((msg.result && typeof msg.result === 'object' && !isSchemaListing) ||
+            (msg.params && typeof msg.params === 'object') ||
+            (msg.error !== undefined && msg.error !== null)) {
+          shouldSanitizeMsg = true;
+        }
+        if (shouldSanitizeMsg) {
+          cliQuotaCharged = false;
+          cliCharsProcessed = 0;
+          cliBudgetExhaustedNotified = false;
+        }
+
         if (msg.result && typeof msg.result === 'object') {
-          const isSchemaListing = Array.isArray(msg.result.tools) || Array.isArray(msg.result.prompts) || Array.isArray(msg.result.resourceTemplates) || Boolean(msg.result.protocolVersion);
           if (!isSchemaListing) {
             msg.result = deepSanitizeResult(msg.result);
             const receipt = buildPsr2Receipt(localSessionMap);
@@ -1335,10 +1831,28 @@ if (isWrapMode) {
           msg.error = sanitizeErrorPayload(msg.error);
         }
         process.stdout.write(JSON.stringify(msg) + '\n');
-        return;
+      } catch (err) {
+        const errText = err && err.message ? err.message : 'Sanitization failed closed.';
+        process.stderr.write(`[PrivacyScrubber FAIL-CLOSED] ${errText}\n`);
+        if (msg.id !== undefined) {
+          emitWrapRpcError(msg.id, `PrivacyScrubber blocked response fail-closed: ${errText}`);
+        } else {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: '2.0',
+            method: msg.method || 'notifications/redacted',
+            params: { redacted: true, reason: errText }
+          }) + '\n');
+        }
       }
-    } catch (_) {}
-    process.stdout.write(performSanitization(line) + '\n');
+      return;
+    }
+
+    try {
+      process.stdout.write(performSanitization(line) + '\n');
+    } catch (err) {
+      process.stderr.write(`[PrivacyScrubber FAIL-CLOSED] ${err && err.message ? err.message : 'sanitization blocked'}\n`);
+      process.stdout.write('[REDACTED - SANITIZATION FAIL-CLOSED]\n');
+    }
   });
 
   const rlUpstreamErr = readline.createInterface({
@@ -1347,7 +1861,11 @@ if (isWrapMode) {
   });
 
   rlUpstreamErr.on('line', (line) => {
-    process.stderr.write(performSanitization(line) + '\n');
+    try {
+      process.stderr.write(performSanitization(line) + '\n');
+    } catch (err) {
+      process.stderr.write(`[REDACTED STDERR - FAIL-CLOSED: ${err && err.message ? err.message : 'error'}]\n`);
+    }
   });
 
   const handleSignal = (sig) => {
@@ -1378,28 +1896,43 @@ if (isWrapMode) {
     process.stdin.setEncoding('utf8');
     process.stdin.on('data', chunk => { rawInput += chunk; });
     process.stdin.on('end', () => {
-      const sanitized = performSanitization(rawInput);
-      const telemetry = buildCisoAuditTelemetry(localSessionMap);
-      process.stdout.write(JSON.stringify({
-        scrubbedText: sanitized,
-        tokenMap: localSessionMap,
-        count: Object.keys(localSessionMap).length,
-        telemetry: telemetry,
-        receipt: buildPsr2Receipt(localSessionMap)
-      }, null, 2) + '\n');
-      emitProofFeedback();
-      process.exit(0);
+      try {
+        const sanitized = performSanitization(rawInput);
+        const telemetry = buildCisoAuditTelemetry(localSessionMap);
+        process.stdout.write(JSON.stringify({
+          scrubbedText: sanitized,
+          tokenMap: localSessionMap,
+          count: Object.keys(localSessionMap).length,
+          telemetry: telemetry,
+          receipt: buildPsr2Receipt(localSessionMap)
+        }, null, 2) + '\n');
+        emitProofFeedback();
+        process.exit(0);
+      } catch (err) {
+        process.stderr.write(`Error [PrivacyScrubber FAIL-CLOSED]: ${err && err.message ? err.message : 'sanitization failed'}\n`);
+        process.exit(1);
+      }
     });
   } else {
     const rlStdin = readline.createInterface({
       input: process.stdin,
       terminal: false
     });
+    let stdinFailed = false;
     rlStdin.on('line', (line) => {
-      const sanitized = performSanitization(line);
-      process.stdout.write(sanitized + '\n');
+      if (stdinFailed) return;
+      try {
+        const sanitized = performSanitization(line);
+        process.stdout.write(sanitized + '\n');
+      } catch (err) {
+        stdinFailed = true;
+        process.stderr.write(`Error [PrivacyScrubber FAIL-CLOSED]: ${err && err.message ? err.message : 'sanitization failed'}\n`);
+        rlStdin.close();
+        process.exit(1);
+      }
     });
     rlStdin.on('close', () => {
+      if (stdinFailed) return;
       emitProofFeedback();
       process.exit(0);
     });
@@ -1412,14 +1945,28 @@ if (isWrapMode) {
     shell: process.platform === 'win32'
   });
 
+  let cmdSanitizeFailed = false;
+  const failClosedChild = (err) => {
+    if (cmdSanitizeFailed) return;
+    cmdSanitizeFailed = true;
+    process.stderr.write(`Error [PrivacyScrubber FAIL-CLOSED]: ${err && err.message ? err.message : 'sanitization failed'}\n`);
+    try { child.kill('SIGTERM'); } catch (_) {}
+    process.exit(1);
+  };
+
   const rlStdout = readline.createInterface({
     input: child.stdout,
     terminal: false
   });
 
   rlStdout.on('line', (line) => {
-    const sanitized = performSanitization(line);
-    process.stdout.write(sanitized + '\n');
+    if (cmdSanitizeFailed) return;
+    try {
+      const sanitized = performSanitization(line);
+      process.stdout.write(sanitized + '\n');
+    } catch (err) {
+      failClosedChild(err);
+    }
   });
 
   const rlStderr = readline.createInterface({
@@ -1428,11 +1975,17 @@ if (isWrapMode) {
   });
 
   rlStderr.on('line', (line) => {
-    const sanitized = performSanitization(line);
-    process.stderr.write(sanitized + '\n');
+    if (cmdSanitizeFailed) return;
+    try {
+      const sanitized = performSanitization(line);
+      process.stderr.write(sanitized + '\n');
+    } catch (err) {
+      failClosedChild(err);
+    }
   });
 
   child.on('close', (code) => {
+    if (cmdSanitizeFailed) return;
     emitProofFeedback();
     process.exit(code || 0);
   });

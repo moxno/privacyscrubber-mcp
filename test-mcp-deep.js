@@ -25,8 +25,9 @@ async function runMcpSession() {
   }), 'utf8');
 
   // Generate ephemeral process-scoped test token + temp preload shim (zero hardcoded keys in git)
+  const tempMainHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ps-mcp-deep-main-'));
   const ephemeralToken = "PS-EPHEMERAL-" + crypto.randomUUID();
-  const preloadPath = path.join(os.tmpdir(), "ps-mcp-test-preload-" + process.pid + ".cjs");
+  const preloadPath = path.join(tempMainHome, "ps-mcp-test-preload-" + process.pid + ".cjs");
   fs.writeFileSync(preloadPath, [
     'const LM = require(process.env.PS_LM_PATH);',
     'const orig = LM.validate.bind(LM);',
@@ -41,6 +42,8 @@ async function runMcpSession() {
   const mcpProcess = spawn(process.execPath, ['--require', preloadPath, indexScript, '--toolset=full'], {
     env: {
       ...process.env,
+      HOME: tempMainHome,
+      USERPROFILE: tempMainHome,
       PRIVACYSCRUBBER_KEY: process.env.PS_CI_PRO_TEST_KEY || ephemeralToken,
       PS_EPHEMERAL_TEST_TOKEN: ephemeralToken,
       PS_LM_PATH: path.resolve(__dirname, 'ps-license-manager.cjs')
@@ -725,13 +728,15 @@ async function runMcpSession() {
     }
     console.log("✅ MCP prompts list and get verified.");
 
-    // Clear the usage limits file to ensure fresh limit for Server 2
-    try { fs.unlinkSync(path.join(os.homedir(), '.privacyscrubber-usage.json')); } catch(e) {}
+    // Clear isolated usage limits dir to ensure fresh limit for Server 2
+    const tempServer2Home = fs.mkdtempSync(path.join(os.tmpdir(), 'ps-mcp-deep-s2-'));
     console.log("\n--> Spawning second MCP process WITH SPOOF SIMULATION (revoked key fallback to Free tier)...");
     
     const mcpProcess2 = spawn('node', [indexScript], {
       env: {
         ...process.env,
+        HOME: tempServer2Home,
+        USERPROFILE: tempServer2Home,
         PRIVACYSCRUBBER_KEY: ["PS", "PRO", "TESTKEY123", "4062"].join("-") // revoked key
       }
     });
@@ -884,14 +889,18 @@ async function runMcpSession() {
     }
 
     mcpProcess2.kill();
+    try { fs.rmSync(tempServer2Home, { recursive: true, force: true }); } catch (_) {}
 
     // ── pii-masking-run CLI regression tests ──────────────────────────────
     console.log("\n---> Running pii-masking-run CLI regression tests...");
     const cliScript = path.resolve(__dirname, 'pii-masking-run.js');
+    const tempCliHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ps-mcp-deep-cli-'));
 
-    async function runCli(args, stdinData = null) {
+    async function runCli(args, stdinData = null, extraEnv = {}) {
       return new Promise((resolve, reject) => {
-        const proc = spawn('node', [cliScript, ...args], { env: { ...process.env } });
+        const proc = spawn('node', [cliScript, ...args], {
+          env: { ...process.env, HOME: tempCliHome, USERPROFILE: tempCliHome, ...extraEnv }
+        });
         let stdout = '';
         let stderr = '';
         proc.stdout.on('data', d => { stdout += d.toString(); });
@@ -1052,7 +1061,9 @@ async function runMcpSession() {
       "});"
     ].join(' ');
 
-    const wrapProc = spawn(process.execPath, [path.resolve(__dirname, 'pii-masking-run.js'), '--wrap', '--', process.execPath, '-e', mockUpstreamScript]);
+    const wrapProc = spawn(process.execPath, [path.resolve(__dirname, 'pii-masking-run.js'), '--wrap', '--', process.execPath, '-e', mockUpstreamScript], {
+      env: { ...process.env, HOME: tempCliHome, USERPROFILE: tempCliHome }
+    });
     let wrapBuf = '';
     const wrapPending = new Map();
     wrapProc.stdout.on('data', (chunk) => {
@@ -1210,7 +1221,7 @@ async function runMcpSession() {
     // ── 15. Wave 3 Toolset Modes, Clean Responses & Free-Limit Hardening ──
     console.log("\n---> Testing Wave 3 Toolset Modes, Clean Responses & Daily-Limit Hardening...");
 
-    async function runMcpOneOff(cliFlags = [], envOverrides = {}, calls = []) {
+    async function runMcpOneOff(cliFlags = [], envOverrides = {}, calls = [], extraNodeArgs = []) {
       const cleanEnv = { ...process.env };
       delete cleanEnv.PLUGIN_ROOT;
       delete cleanEnv.PRIVACYSCRUBBER_TOOLSET;
@@ -1227,7 +1238,7 @@ async function runMcpSession() {
       }
 
       return new Promise((resolve, reject) => {
-        const proc = spawn(process.execPath, [indexScript, ...cliFlags], { env: cleanEnv });
+        const proc = spawn(process.execPath, [...extraNodeArgs, indexScript, ...cliFlags], { env: cleanEnv });
         let buf = '';
         const pending = new Map();
         const timer = setTimeout(() => {
@@ -1282,33 +1293,38 @@ async function runMcpSession() {
       });
     }
 
-    // 15a. Default 'agent' toolset = 10 tools (<15KB JSON), ztds_sanitize still callable
-    const [agentToolsRes, agentZtdsCall] = await runMcpOneOff([], { PRIVACYSCRUBBER_TEST_MODE: '1' }, [
-      { method: 'tools/list' },
-      { method: 'tools/call', params: { name: 'ztds_sanitize', arguments: { text: 'Email alice@example.com' } } }
-    ]);
-    const agentTools = agentToolsRes.result?.tools || [];
-    const agentJsonBytes = Buffer.byteLength(JSON.stringify(agentToolsRes.result), 'utf8');
-    const expectedAgentNames = ['sanitize_text', 'reveal_text', 'guard_read_file', 'guard_exec', 'guard_git_diff', 'guard_apply_patch', 'guard_unmask_args', 'guard_session_info', 'guard_session_reset', 'mark_false_positive'];
-    if (agentTools.length !== 10 || !expectedAgentNames.every(n => agentTools.some(t => t.name === n))) {
-      throw new Error(`Default agent toolset expected 10 exact tools, got ${agentTools.length}: ${agentTools.map(t => t.name).join(', ')}`);
-    }
-    if (agentJsonBytes >= 15 * 1024) {
-      throw new Error(`Default agent tools/list JSON exceeded 15KB limit: ${agentJsonBytes} bytes`);
-    }
-    if (agentZtdsCall.error || agentZtdsCall.result?.isError || !agentZtdsCall.result?.structuredContent?.zeroEgressAttested) {
-      throw new Error(`ztds_sanitize failed backward-compat call under default agent toolset: ${JSON.stringify(agentZtdsCall)}`);
-    }
-    console.log(`✅ Wave 3 default agent toolset verified (10 tools, ${agentJsonBytes} bytes < 15KB, full dispatch compat).`);
+    const tempWave3Home = fs.mkdtempSync(path.join(os.tmpdir(), 'ps-w3-home-'));
+    try {
+      // 15a. Default 'agent' toolset = 10 tools (<15KB JSON), ztds_sanitize still callable (no test-mode bypass env needed)
+      const [agentToolsRes, agentZtdsCall] = await runMcpOneOff([], { HOME: tempWave3Home, USERPROFILE: tempWave3Home }, [
+        { method: 'tools/list' },
+        { method: 'tools/call', params: { name: 'ztds_sanitize', arguments: { text: 'Email alice@example.com' } } }
+      ]);
+      const agentTools = agentToolsRes.result?.tools || [];
+      const agentJsonBytes = Buffer.byteLength(JSON.stringify(agentToolsRes.result), 'utf8');
+      const expectedAgentNames = ['sanitize_text', 'reveal_text', 'guard_read_file', 'guard_exec', 'guard_git_diff', 'guard_apply_patch', 'guard_unmask_args', 'guard_session_info', 'guard_session_reset', 'mark_false_positive'];
+      if (agentTools.length !== 10 || !expectedAgentNames.every(n => agentTools.some(t => t.name === n))) {
+        throw new Error(`Default agent toolset expected 10 exact tools, got ${agentTools.length}: ${agentTools.map(t => t.name).join(', ')}`);
+      }
+      if (agentJsonBytes >= 15 * 1024) {
+        throw new Error(`Default agent tools/list JSON exceeded 15KB limit: ${agentJsonBytes} bytes`);
+      }
+      if (agentZtdsCall.error || agentZtdsCall.result?.isError || !agentZtdsCall.result?.structuredContent?.zeroEgressAttested) {
+        throw new Error(`ztds_sanitize failed backward-compat call under default agent toolset: ${JSON.stringify(agentZtdsCall)}`);
+      }
+      console.log(`[PASS] Wave 3 default agent toolset verified (10 tools, ${agentJsonBytes} bytes < 15KB, full dispatch compat).`);
 
-    // 15b. --toolset=core (5), PRIVACYSCRUBBER_TOOLSET=ztds (5), PLUGIN_ROOT -> full (28)
-    const [coreToolsRes] = await runMcpOneOff(['--toolset=core'], { PRIVACYSCRUBBER_TEST_MODE: '1' }, [{ method: 'tools/list' }]);
-    const [ztdsToolsRes] = await runMcpOneOff([], { PRIVACYSCRUBBER_TEST_MODE: '1', PRIVACYSCRUBBER_TOOLSET: 'ztds' }, [{ method: 'tools/list' }]);
-    const [pluginToolsRes] = await runMcpOneOff([], { PRIVACYSCRUBBER_TEST_MODE: '1', PLUGIN_ROOT: '/tmp/fake-plugin' }, [{ method: 'tools/list' }]);
-    if ((coreToolsRes.result?.tools || []).length !== 5 || (ztdsToolsRes.result?.tools || []).length !== 5 || (pluginToolsRes.result?.tools || []).length !== 28) {
-      throw new Error(`Toolset counts mismatch: core=${coreToolsRes.result?.tools?.length}, ztds=${ztdsToolsRes.result?.tools?.length}, plugin=${pluginToolsRes.result?.tools?.length}`);
+      // 15b. --toolset=core (5), PRIVACYSCRUBBER_TOOLSET=ztds (5), PLUGIN_ROOT -> full (28)
+      const [coreToolsRes] = await runMcpOneOff(['--toolset=core'], { HOME: tempWave3Home, USERPROFILE: tempWave3Home }, [{ method: 'tools/list' }]);
+      const [ztdsToolsRes] = await runMcpOneOff([], { HOME: tempWave3Home, USERPROFILE: tempWave3Home, PRIVACYSCRUBBER_TOOLSET: 'ztds' }, [{ method: 'tools/list' }]);
+      const [pluginToolsRes] = await runMcpOneOff([], { HOME: tempWave3Home, USERPROFILE: tempWave3Home, PLUGIN_ROOT: '/tmp/fake-plugin' }, [{ method: 'tools/list' }]);
+      if ((coreToolsRes.result?.tools || []).length !== 5 || (ztdsToolsRes.result?.tools || []).length !== 5 || (pluginToolsRes.result?.tools || []).length !== 28) {
+        throw new Error(`Toolset counts mismatch: core=${coreToolsRes.result?.tools?.length}, ztds=${ztdsToolsRes.result?.tools?.length}, plugin=${pluginToolsRes.result?.tools?.length}`);
+      }
+      console.log("[PASS] Wave 3 toolset variants (--toolset=core, PRIVACYSCRUBBER_TOOLSET=ztds, PLUGIN_ROOT=full) verified.");
+    } finally {
+      try { fs.rmSync(tempWave3Home, { recursive: true, force: true }); } catch (_) {}
     }
-    console.log("✅ Wave 3 toolset variants (--toolset=core, PRIVACYSCRUBBER_TOOLSET=ztds, PLUGIN_ROOT=full) verified.");
 
     // 15c. Daily limit 100 (ZTDS_GUARD_LOCAL=1 no longer bypasses), zero prompt injection/emojis, guard_apply_patch unblocked
     const tempHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ps-w3-limit-home-'));
@@ -1341,10 +1357,14 @@ async function runMcpSession() {
     }
 
     // 15d. Python native fallback clean receipt + readOnlyHint: false
+    const tempPyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ps-w3-py-home-'));
     try {
       const pyFallbackRes = await new Promise((resolve, reject) => {
         const pyPath = path.resolve(__dirname, 'src', 'privacyscrubber_mcp', 'server.py');
-        const pyProc = spawn('python3', [pyPath, '--native'], { cwd: __dirname });
+        const pyProc = spawn('python3', [pyPath, '--native'], {
+          cwd: __dirname,
+          env: { ...process.env, HOME: tempPyHome, USERPROFILE: tempPyHome }
+        });
         let pBuf = '';
         const pPending = new Map();
         const pTimer = setTimeout(() => { pyProc.kill(); reject(new Error('Python MCP fallback timeout')); }, 8000);
@@ -1394,6 +1414,287 @@ async function runMcpSession() {
       } else {
         throw pyErr;
       }
+    } finally {
+      try { fs.rmSync(tempPyHome, { recursive: true, force: true }); } catch (_) {}
+    }
+
+    // -- 16. Wave 4 Security Hardening & Exploit Regression Tests ---------
+    console.log("\n---> Testing Wave 4 Phase 2A Security Hardening Regressions...");
+    const w4TmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ps-w4-reg-'));
+    try {
+      // 16a. NODE_ENV=test and PRIVACYSCRUBBER_TEST_MODE=1 NO LONGER bypass daily limit, and previously unmetered tools enforce limit
+      const w4EnvHome = path.join(w4TmpRoot, 'home-env-bypass');
+      fs.mkdirSync(w4EnvHome, { recursive: true });
+      const w4UsagePath = path.join(w4EnvHome, '.privacyscrubber-usage.json');
+      const testTools = [
+        ['NODE_ENV=test on sanitize_text', { NODE_ENV: 'test' }, { name: 'sanitize_text', arguments: { text: 'a@b.com' } }],
+        ['PRIVACYSCRUBBER_TEST_MODE=1 on sanitize_text', { PRIVACYSCRUBBER_TEST_MODE: '1' }, { name: 'sanitize_text', arguments: { text: 'a@b.com' } }],
+        ['guard_rag_chunk metered', {}, { name: 'guard_rag_chunk', arguments: { chunks: ['Contact a@b.com'] } }],
+        ['export_audit_log(text) metered', {}, { name: 'export_audit_log', arguments: { text: 'Contact a@b.com', format: 'jsonl' } }],
+        ['audit_context metered', {}, { name: 'audit_context', arguments: { text: 'Contact a@b.com' } }],
+        ['ztds_audit metered', {}, { name: 'ztds_audit', arguments: { text: 'Contact a@b.com' } }]
+      ];
+      for (const [label, extra, callArgs] of testTools) {
+        fs.writeFileSync(w4UsagePath, JSON.stringify({ date: todayStr, count: 99, evalCount: 0 }), 'utf8');
+        const [r] = await runMcpOneOff(['--toolset=full'], { HOME: w4EnvHome, USERPROFILE: w4EnvHome, ...extra }, [
+          { method: 'tools/call', params: callArgs }
+        ]);
+        if (!r.result?.isError) {
+          throw new Error(`Wave 4 Test 16a (${label}) failed to block at count=99: ${JSON.stringify(r)}`);
+        }
+      }
+      console.log("[PASS] Wave 4 Test 16a: Env-var quota bypasses blocked and all audit/RAG tools metered.");
+
+      // 16b. Usage file symlink, negative/non-numeric tamper, future date, chmod 0444, and concurrency race defense
+      const w4TamperHome = path.join(w4TmpRoot, 'home-tamper');
+      fs.mkdirSync(w4TamperHome, { recursive: true });
+      const w4TamperFile = path.join(w4TamperHome, '.privacyscrubber-usage.json');
+      const victimFile = path.join(w4TmpRoot, 'victim-untouched.txt');
+      fs.writeFileSync(victimFile, 'DO_NOT_TOUCH', 'utf8');
+      fs.symlinkSync(victimFile, w4TamperFile);
+      const [symRes] = await runMcpOneOff([], { HOME: w4TamperHome, USERPROFILE: w4TamperHome }, [
+        { method: 'tools/call', params: { name: 'sanitize_text', arguments: { text: 'Email x@y.com' } } }
+      ]);
+      if (!symRes.result?.isError || fs.readFileSync(victimFile, 'utf8') !== 'DO_NOT_TOUCH') {
+        throw new Error(`Wave 4 Test 16b symlink attack must fail closed without touching victim: ${JSON.stringify(symRes)}`);
+      }
+      fs.unlinkSync(w4TamperFile);
+
+      for (const badPayload of [
+        JSON.stringify({ date: todayStr, count: -1000 }),
+        JSON.stringify({ date: todayStr, count: '-' }),
+        JSON.stringify({ date: '2099-01-01', count: 0 }),
+        'not-json'
+      ]) {
+        fs.writeFileSync(w4TamperFile, badPayload, 'utf8');
+        const [tamperRes] = await runMcpOneOff([], { HOME: w4TamperHome, USERPROFILE: w4TamperHome }, [
+          { method: 'tools/call', params: { name: 'sanitize_text', arguments: { text: 'Email x@y.com' } } }
+        ]);
+        if (!tamperRes.result?.isError) {
+          throw new Error(`Wave 4 Test 16b tampered payload (${badPayload}) must block fail closed`);
+        }
+      }
+
+      fs.writeFileSync(w4TamperFile, JSON.stringify({ date: todayStr, count: 98 }), 'utf8');
+      fs.chmodSync(w4TamperFile, 0o444);
+      const [roRes] = await runMcpOneOff([], { HOME: w4TamperHome, USERPROFILE: w4TamperHome }, [
+        { method: 'tools/call', params: { name: 'sanitize_text', arguments: { text: 'Email x@y.com' } } }
+      ]);
+      fs.chmodSync(w4TamperFile, 0o600);
+      if (!roRes.result?.isError) {
+        throw new Error('Wave 4 Test 16b chmod 0444 usage file must fail closed');
+      }
+
+      const w4RaceHome = path.join(w4TmpRoot, 'home-race');
+      fs.mkdirSync(w4RaceHome, { recursive: true });
+      fs.writeFileSync(path.join(w4RaceHome, '.privacyscrubber-usage.json'), JSON.stringify({ date: todayStr, count: 96, evalCount: 0 }), 'utf8');
+      const raceCalls = Array.from({ length: 5 }, () => runMcpOneOff([], { HOME: w4RaceHome, USERPROFILE: w4RaceHome }, [
+        { method: 'tools/call', params: { name: 'sanitize_text', arguments: { text: 'Email x@y.com' } } }
+      ]));
+      const raceResults = await Promise.all(raceCalls);
+      const raceAllowed = raceResults.filter(([r]) => !r.result?.isError).length;
+      if (raceAllowed > 3) {
+        throw new Error(`Wave 4 Test 16b parallel usage race allowed ${raceAllowed} requests from count=96 (expected <=3)`);
+      }
+      console.log("[PASS] Wave 4 Test 16b: Usage symlink, tamper, chmod 0444, and concurrency race defenses verified.");
+
+      // 16c. EVAL daily cap + PROFILE_NOT_LICENSED for scoped licenses + check_status tier labels
+      const w4ScopePreload = path.join(w4TmpRoot, 'scope-preload.cjs');
+      const evalToken = 'PS-W4-EVAL-' + crypto.randomUUID();
+      const medToken = 'PS-W4-MED-' + crypto.randomUUID();
+      fs.writeFileSync(w4ScopePreload, [
+        'const LM = require(process.env.PS_LM_PATH);',
+        'const orig = LM.validate.bind(LM);',
+        'LM.validate = function(k, opts) {',
+        '  if (k === process.env.W4_EVAL_TOK) return { valid: true, tier: "EVAL", specializedProfiles: false, allowedProfiles: ["universal"] };',
+        '  if (k === process.env.W4_MED_TOK) return { valid: true, tier: "SDK", specializedProfiles: true, allowedProfiles: ["medical"] };',
+        '  return orig(k, opts);',
+        '};'
+      ].join('\n'), 'utf8');
+
+      const w4EvalHome = path.join(w4TmpRoot, 'home-eval');
+      fs.mkdirSync(w4EvalHome, { recursive: true });
+      fs.writeFileSync(path.join(w4EvalHome, '.privacyscrubber-usage.json'), JSON.stringify({ date: todayStr, count: 0, evalCount: 249 }), 'utf8');
+      const [evalStatus, evalMedErr, evalLimitErr] = await runMcpOneOff(['--toolset=full'], {
+        HOME: w4EvalHome,
+        USERPROFILE: w4EvalHome,
+        PRIVACYSCRUBBER_KEY: evalToken,
+        W4_EVAL_TOK: evalToken,
+        W4_MED_TOK: medToken,
+        PS_LM_PATH: path.resolve(__dirname, 'ps-license-manager.cjs')
+      }, [
+        { method: 'tools/call', params: { name: 'check_status', arguments: {} } },
+        { method: 'tools/call', params: { name: 'sanitize_text', arguments: { text: 'Patient John Doe', profile: 'Medical' } } },
+        { method: 'tools/call', params: { name: 'sanitize_text', arguments: { text: 'Contact a@b.com', profile: 'General' } } }
+      ], ['--require', w4ScopePreload]);
+      if (!String(evalStatus.result?.content?.[0]?.text || '').includes('Tier: EVAL')) {
+        throw new Error(`Wave 4 Test 16c check_status must report Tier: EVAL: ${evalStatus.result?.content?.[0]?.text}`);
+      }
+      if (!evalMedErr.result?.isError || !String(evalMedErr.result?.content?.[0]?.text || '').includes('PROFILE_NOT_LICENSED')) {
+        throw new Error(`Wave 4 Test 16c EVAL must reject explicit Medical profile: ${JSON.stringify(evalMedErr)}`);
+      }
+      if (!evalLimitErr.result?.isError || !String(evalLimitErr.result?.content?.[0]?.text || '').includes('250 requests')) {
+        throw new Error(`Wave 4 Test 16c EVAL must enforce 250/day limit: ${JSON.stringify(evalLimitErr)}`);
+      }
+
+      const [medStatus, finBlocked, medOk] = await runMcpOneOff(['--toolset=full'], {
+        HOME: w4EvalHome,
+        USERPROFILE: w4EvalHome,
+        PRIVACYSCRUBBER_KEY: medToken,
+        W4_EVAL_TOK: evalToken,
+        W4_MED_TOK: medToken,
+        PS_LM_PATH: path.resolve(__dirname, 'ps-license-manager.cjs')
+      }, [
+        { method: 'tools/call', params: { name: 'check_status', arguments: {} } },
+        { method: 'tools/call', params: { name: 'sanitize_text', arguments: { text: 'IBAN DE89370400440532013000', profile: 'Finance' } } },
+        { method: 'tools/call', params: { name: 'sanitize_text', arguments: { text: 'Patient John Doe email patient@clinic.org', profile: 'Medical' } } }
+      ], ['--require', w4ScopePreload]);
+      if (!String(medStatus.result?.content?.[0]?.text || '').includes('Tier: SDK')) {
+        throw new Error(`Wave 4 Test 16c check_status must report Tier: SDK: ${medStatus.result?.content?.[0]?.text}`);
+      }
+      if (!finBlocked.result?.isError || !String(finBlocked.result?.content?.[0]?.text || '').includes('PROFILE_NOT_LICENSED')) {
+        throw new Error(`Wave 4 Test 16c scoped license must reject Finance profile: ${JSON.stringify(finBlocked)}`);
+      }
+      if (medOk.result?.isError) {
+        throw new Error(`Wave 4 Test 16c scoped license must allow Medical profile: ${JSON.stringify(medOk)}`);
+      }
+      console.log("[PASS] Wave 4 Test 16c: EVAL daily cap, scoped allowedProfiles enforcement, and check_status tier labels verified.");
+
+      // 16d. sanitize_file 10k .js no-crash, audit_directory_for_pii no-false-clean, guard_rag_chunk batch cap, ReDoS nested-alt/overlap reject
+      const w4WsDir = path.resolve(__dirname, `_temp_w4_ws_${Date.now()}`);
+      fs.mkdirSync(w4WsDir, { recursive: true });
+      const bigJsPath = path.join(w4WsDir, 'large_module.js');
+      const bigLeakPath = path.join(w4WsDir, 'big_audit.txt');
+      fs.writeFileSync(bigJsPath, 'const cfg = "ok";\n'.repeat(600) + 'const email = "dev@corp.io";\n', 'utf8');
+      fs.writeFileSync(bigLeakPath, 'Safe header line\n'.repeat(1000) + 'leak@acme.com\n', 'utf8');
+
+      const w4SafeHome = path.join(w4TmpRoot, 'home-free-files');
+      fs.mkdirSync(w4SafeHome, { recursive: true });
+      const w4RedosCfg = path.join(w4TmpRoot, 'redos-cfg.json');
+      fs.writeFileSync(w4RedosCfg, JSON.stringify({
+        customRules: [
+          { pattern: '(?:(?:a|aa))+!', label: 'ALT_REDOS' },
+          { pattern: '[a-z]*[a-z0-9]*[A-Za-z]*[0-9a-z]*[a-z_]*!', label: 'POLY_REDOS' },
+          { pattern: 'SAFE_TOKEN_[0-9]{4}', label: 'SAFE_TOK' }
+        ]
+      }), 'utf8');
+      const prevCfgBackup = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : null;
+      fs.writeFileSync(configPath, fs.readFileSync(w4RedosCfg, 'utf8'), 'utf8');
+      try {
+        const [js10kRes, dirRes, ragOverRes] = await runMcpOneOff(['--toolset=full'], { HOME: w4SafeHome, USERPROFILE: w4SafeHome }, [
+          { method: 'tools/call', params: { name: 'sanitize_file', arguments: { file_path: path.relative(process.cwd(), bigJsPath) } } },
+          { method: 'tools/call', params: { name: 'audit_directory_for_pii', arguments: { directory_path: path.relative(process.cwd(), w4WsDir) } } },
+          { method: 'tools/call', params: { name: 'guard_rag_chunk', arguments: { profile: 'Medical', chunks: ['A'.repeat(4000), 'B'.repeat(4000)] } } }
+        ]);
+        if (js10kRes.result?.isError) {
+          throw new Error(`Wave 4 Test 16d 10k .js sanitize_file crashed on Free tier: ${JSON.stringify(js10kRes)}`);
+        }
+        const dirText = dirRes.result?.content?.[0]?.text || '';
+        if (dirText.includes('Clean. No PII or secrets detected')) {
+          throw new Error(`Wave 4 Test 16d audit_directory_for_pii reported false Clean on truncated >15k file: ${dirText}`);
+        }
+        if (!ragOverRes.result?.isError || !String(ragOverRes.result?.content?.[0]?.text || '').includes('batch budget exceeded')) {
+          throw new Error(`Wave 4 Test 16d guard_rag_chunk must enforce aggregate batch cap: ${JSON.stringify(ragOverRes)}`);
+        }
+
+        const tRedosStart = Date.now();
+        const [redosCheck] = await runMcpOneOff(['--toolset=full'], {
+          HOME: w4SafeHome,
+          USERPROFILE: w4SafeHome,
+          PRIVACYSCRUBBER_KEY: medToken,
+          W4_MED_TOK: medToken,
+          PS_LM_PATH: path.resolve(__dirname, 'ps-license-manager.cjs')
+        }, [
+          { method: 'tools/call', params: { name: 'sanitize_text', arguments: { profile: 'Medical', text: 'SAFE_TOKEN_1234 ' + 'a'.repeat(30) } } }
+        ], ['--require', w4ScopePreload]);
+        const elapsedMs = Date.now() - tRedosStart;
+        const redosOut = redosCheck.result?.content?.[0]?.text || '';
+        if (elapsedMs > 5000 || !redosOut.includes('[SAFE_TOK_1]')) {
+          throw new Error(`Wave 4 Test 16d ReDoS filter failed or hung (${elapsedMs}ms): ${redosOut}`);
+        }
+      } finally {
+        if (prevCfgBackup !== null) fs.writeFileSync(configPath, prevCfgBackup, 'utf8');
+        else if (fs.existsSync(configPath)) fs.unlinkSync(configPath);
+        try { fs.rmSync(w4WsDir, { recursive: true, force: true }); } catch (_) {}
+      }
+      console.log("[PASS] Wave 4 Test 16d: Free file/batch caps and ReDoS custom-rule filter verified.");
+
+      // 16e. pii-masking-run.js quota fail-closed & Python server.py non-recursion + crypto license + session isolation + JWT suppression
+      fs.writeFileSync(path.join(w4SafeHome, '.privacyscrubber-usage.json'), JSON.stringify({ date: todayStr, count: 99, evalCount: 0 }), 'utf8');
+      const blockedCli = await runCli(['--', 'echo', 'Secret alice@acme.com'], null, { HOME: w4SafeHome, USERPROFILE: w4SafeHome });
+      if (blockedCli.code === 0 || blockedCli.stdout.includes('alice@acme.com')) {
+        throw new Error(`Wave 4 Test 16e pii-masking-run failed open at count=99: code=${blockedCli.code}, out=${blockedCli.stdout}`);
+      }
+
+      const w4PyCheck = await new Promise((resolve, reject) => {
+        const pyPath = path.resolve(__dirname, 'src', 'privacyscrubber_mcp', 'server.py');
+        const pyHome = path.join(w4TmpRoot, 'home-py-w4');
+        const fakeBin = path.join(w4TmpRoot, 'py-bin');
+        fs.mkdirSync(pyHome, { recursive: true });
+        fs.mkdirSync(fakeBin, { recursive: true });
+        const fakeWrapper = path.join(fakeBin, 'privacyscrubber-mcp');
+        fs.writeFileSync(fakeWrapper, '#!/usr/bin/env python3\nimport sys\nsys.exit(99)\n', { mode: 0o755 });
+        const pyP = spawn('python3', [pyPath, '--native'], {
+          cwd: __dirname,
+          env: {
+            ...process.env,
+            HOME: pyHome,
+            USERPROFILE: pyHome,
+            PATH: `${fakeBin}:${process.env.PATH || ''}`,
+            PRIVACYSCRUBBER_KEY: 'BOGUS-NOT-VALID-KEY'
+          }
+        });
+        let pBuf = '';
+        const pMap = new Map();
+        const t = setTimeout(() => { pyP.kill(); reject(new Error('Wave 4 Python regression timeout')); }, 8000);
+        pyP.stdout.on('data', d => {
+          pBuf += d.toString();
+          let nl;
+          while ((nl = pBuf.indexOf('\n')) !== -1) {
+            const line = pBuf.slice(0, nl).trim();
+            pBuf = pBuf.slice(nl + 1);
+            if (!line) continue;
+            const m = JSON.parse(line);
+            if (m.id && pMap.has(m.id)) {
+              const fn = pMap.get(m.id);
+              pMap.delete(m.id);
+              fn(m);
+            }
+          }
+        });
+        const sendPy = (id, method, params = {}) => new Promise(res => {
+          pMap.set(id, res);
+          pyP.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
+        });
+        (async () => {
+          await sendPy(1, 'initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'py-w4', version: '1.0' } });
+          const stRes = await sendPy(2, 'tools/call', { name: 'check_status', arguments: {} });
+          const sA = await sendPy(3, 'tools/call', { name: 'sanitize_text', arguments: { text: 'Email secret-a@corp.io and eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature12345', session_id: 'agent-A' } });
+          const sB = await sendPy(4, 'tools/call', { name: 'reveal_text', arguments: { text: 'Leak [EMAIL_1]', session_id: 'agent-B' } });
+          const fpJwt = await sendPy(5, 'tools/call', { name: 'mark_false_positive', arguments: { token: '[JWT_1]', session_id: 'agent-A' } });
+          clearTimeout(t);
+          pyP.kill();
+          resolve({ stRes, sA, sB, fpJwt });
+        })().catch(e => { clearTimeout(t); pyP.kill(); reject(e); });
+      }).catch(e => (e.code === 'ENOENT' ? null : Promise.reject(e)));
+
+      if (w4PyCheck) {
+        const pyStatus = w4PyCheck.stRes.result?.content?.[0]?.text || '';
+        const pyRevB = w4PyCheck.sB.result?.content?.[0]?.text || '';
+        const pyFpJwt = w4PyCheck.fpJwt.result?.content?.[0]?.text || '';
+        if (!pyStatus.includes('Tier: FREE')) {
+          throw new Error(`Wave 4 Test 16e Python fallback accepted bogus key: ${pyStatus}`);
+        }
+        if (pyRevB.includes('secret-a@corp.io')) {
+          throw new Error(`Wave 4 Test 16e Python fallback leaked agent-A secret into agent-B: ${pyRevB}`);
+        }
+        if (pyFpJwt.includes('eyJhbGciOiJIUzI1NiJ9') || !pyFpJwt.includes('suppressed')) {
+          throw new Error(`Wave 4 Test 16e Python mark_false_positive failed to suppress JWT secret: ${pyFpJwt}`);
+        }
+      }
+      console.log("[PASS] Wave 4 Test 16e: pii-masking-run fail-closed and Python server.py hardening verified.");
+    } finally {
+      try { fs.rmSync(w4TmpRoot, { recursive: true, force: true }); } catch (_) {}
     }
 
     console.log("\n🎉 All deep integration, hardening, and CLI tests passed successfully!");
@@ -1405,6 +1706,8 @@ async function runMcpSession() {
     if (fs.existsSync(preloadPath)) {
       fs.unlinkSync(preloadPath);
     }
+    try { fs.rmSync(tempMainHome, { recursive: true, force: true }); } catch (_) {}
+    try { fs.rmSync(tempCliHome, { recursive: true, force: true }); } catch (_) {}
     process.exit(0);
 
   } catch (error) {
@@ -1417,6 +1720,8 @@ async function runMcpSession() {
     if (fs.existsSync(preloadPath)) {
       fs.unlinkSync(preloadPath);
     }
+    try { fs.rmSync(tempMainHome, { recursive: true, force: true }); } catch (_) {}
+    try { fs.rmSync(tempCliHome, { recursive: true, force: true }); } catch (_) {}
     process.exit(1);
   }
 }

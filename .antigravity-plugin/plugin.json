@@ -2,7 +2,7 @@
   "$schema": "https://antigravity.google/schemas/v1/plugin.json",
   "name": "privacyscrubber",
   "displayName": "PrivacyScrubber",
-  "version": "2.5.2",
+  "version": "2.5.3",
   "description": "In-RAM Zero-Trust Data Sanitization (ZTDS) firewall for PII, PHI, and DevOps secrets. Tokenizes sensitive context locally with 30 industry compliance profiles (GDPR, HIPAA, SOC 2, PCI-DSS) and SHA-256 audit receipts before cloud egress.",
   "logo": "assets/logo.svg",
   "suggestedPrompts": [

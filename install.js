@@ -20,6 +20,29 @@ const __installFilename = fileURLToPath(import.meta.url);
 const __installDirname = path.dirname(__installFilename);
 const requireCjs = createRequire(import.meta.url);
 
+function writeRegularFileNoFollowSync(targetPath, content) {
+  let st = null;
+  try {
+    st = fs.lstatSync(targetPath);
+  } catch (err) {
+    if (!err || err.code !== 'ENOENT') throw err;
+  }
+  if (st && (st.isSymbolicLink() || !st.isFile())) {
+    throw new Error(`Refusing to overwrite symlink or non-regular file: ${targetPath}`);
+  }
+  const noFollowFlag = (fs.constants && typeof fs.constants.O_NOFOLLOW === 'number') ? fs.constants.O_NOFOLLOW : 0;
+  const fd = fs.openSync(targetPath, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | noFollowFlag, 0o600);
+  try {
+    const buf = Buffer.from(String(content), 'utf8');
+    let offset = 0;
+    while (offset < buf.length) {
+      offset += fs.writeSync(fd, buf, offset, buf.length - offset);
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 function isGhCliAvailable() {
   try {
     execFileSync('gh', ['--version'], { stdio: 'ignore', timeout: 2000 });
@@ -571,7 +594,7 @@ Options:
         if (!fs.existsSync(dir)) {
           fs.mkdirSync(dir, { recursive: true });
         }
-        fs.writeFileSync(target.path, updatedPayload, 'utf8');
+        writeRegularFileNoFollowSync(target.path, updatedPayload);
         console.log(`         [OK]: Successfully ${options.remove ? 'removed from' : 'written to'} config (${result.serverCount} total MCP servers).`);
         configuredCount++;
       } catch (err) {
@@ -594,7 +617,7 @@ Options:
       '2. Route shell commands that may print credentials or PII through `guard_exec`, and inspect git diffs via `guard_git_diff`.',
       '3. Keep tokens like `[API_KEY_1]`, `[EMAIL_1]` intact during reasoning. Restore final answers via `reveal_text` or write to disk via `guard_apply_patch`.'
     ].join('\n');
-    const mdcContent = `---\ndescription: PrivacyScrubber Zero-Trust Data Sanitization (ZTDS) — Mandatory PII & Secret Guard\nglobs: "**/*"\nalwaysApply: true\n---\n\n${ruleBody}\n`;
+    const mdcContent = `---\ndescription: PrivacyScrubber Zero-Trust Data Sanitization (ZTDS) - Mandatory PII & Secret Guard\nglobs: "**/*"\nalwaysApply: true\n---\n\n${ruleBody}\n`;
 
     if (options.dryRun) {
       console.log(`[DRY-RUN OK]: Would scaffold agent rules in ${mdcPath} and ${agentsMdPath}\n`);
@@ -602,16 +625,16 @@ Options:
       try {
         fs.mkdirSync(path.dirname(mdcPath), { recursive: true });
         if (!fs.existsSync(mdcPath) || !fs.readFileSync(mdcPath, 'utf8').includes('PrivacyScrubber Zero-Trust Agentic Guard')) {
-          fs.writeFileSync(mdcPath, mdcContent, 'utf8');
+          writeRegularFileNoFollowSync(mdcPath, mdcContent);
           console.log(`[RULES] Created ${mdcPath}`);
         }
         if (!fs.existsSync(agentsMdPath)) {
-          fs.writeFileSync(agentsMdPath, ruleBody + '\n', 'utf8');
+          writeRegularFileNoFollowSync(agentsMdPath, ruleBody + '\n');
           console.log(`[RULES] Created ${agentsMdPath}`);
         } else {
           const existingAgents = fs.readFileSync(agentsMdPath, 'utf8');
           if (!existingAgents.includes('PrivacyScrubber Zero-Trust Agentic Guard')) {
-            fs.writeFileSync(agentsMdPath, existingAgents.trimEnd() + '\n\n' + ruleBody + '\n', 'utf8');
+            writeRegularFileNoFollowSync(agentsMdPath, existingAgents.trimEnd() + '\n\n' + ruleBody + '\n');
             console.log(`[RULES] Updated ${agentsMdPath}`);
           }
         }
@@ -721,7 +744,7 @@ function runDoctorHookCase(hookPath, payloadObj, timeoutMs) {
     try {
       proc = spawn(process.execPath, [hookPath, '--hook'], {
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, NODE_ENV: 'test' }
+        env: { ...process.env }
       });
     } catch (err) {
       return finish({ code: -1, stdout: '', stderr: err.message, parsed: null });
@@ -769,7 +792,7 @@ function runDoctorMcpRpcCheck(serverPath, timeoutMs) {
     try {
       proc = spawn(process.execPath, [serverPath], {
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, NODE_ENV: 'test', PRIVACYSCRUBBER_TEST_MODE: '1' }
+        env: { ...process.env }
       });
     } catch (err) {
       return finish({ ok: false, toolCount: 0, serverVersion: null, detail: err.message });
