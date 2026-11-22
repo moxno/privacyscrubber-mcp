@@ -26,7 +26,7 @@ class JsonRpcMcpClient {
 
   async start() {
     return new Promise((resolve, reject) => {
-      this.proc = spawn(process.execPath, [this.serverPath], {
+      this.proc = spawn(process.execPath, [this.serverPath, '--toolset=full'], {
         env: this.env,
         stdio: ['pipe', 'pipe', 'pipe']
       });

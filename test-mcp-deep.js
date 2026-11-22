@@ -38,7 +38,7 @@ async function runMcpSession() {
     '};'
   ].join('\n'), 'utf8');
   
-  const mcpProcess = spawn(process.execPath, ['--require', preloadPath, indexScript], {
+  const mcpProcess = spawn(process.execPath, ['--require', preloadPath, indexScript, '--toolset=full'], {
     env: {
       ...process.env,
       PRIVACYSCRUBBER_KEY: process.env.PS_CI_PRO_TEST_KEY || ephemeralToken,
@@ -133,6 +133,12 @@ async function runMcpSession() {
     }
 
     const expectedAnnotations = {
+      sanitize_text: { readOnlyHint: false },
+      sanitize_file: { readOnlyHint: false },
+      guard_read_file: { readOnlyHint: false },
+      guard_git_diff: { readOnlyHint: false },
+      guard_rag_chunk: { readOnlyHint: false },
+      ztds_sanitize: { readOnlyHint: false },
       guard_apply_patch: { readOnlyHint: false, destructiveHint: true },
       guard_session_reset: { readOnlyHint: false, destructiveHint: true },
       ztds_reset_session: { readOnlyHint: false, destructiveHint: true },
@@ -188,7 +194,14 @@ async function runMcpSession() {
     if (sanitizedText.includes("john.doe@example.com") || sanitizedText.includes("555-0199")) {
       throw new Error("Sanitization failed to redact email or phone number.");
     }
-    console.log("✅ Sanitize text success.");
+    if (!sanitizedText.includes("PrivacyScrubber Audit Receipt") || !sanitizedText.includes("0 bytes egress")) {
+      throw new Error(`Default receipt missing crisp 1-line PrivacyScrubber Audit Receipt: ${sanitizedText}`);
+    }
+    const cleanAuditBannedRx = /🛡️|🟢|🔴|🟠|⭐|👉|💡|🚫|gh repo star|\[AI Agent Action\]/u;
+    if (cleanAuditBannedRx.test(sanitizedText)) {
+      throw new Error(`Default sanitize_text response contained banned emoji/marketing/prompt-injection: ${sanitizedText}`);
+    }
+    console.log("✅ Sanitize text success (clean 1-line receipt verified).");
 
     // 4. Test reveal_text (detokenization)
     console.log("--> Calling 'reveal_text' to restore tokens...");
@@ -202,13 +215,14 @@ async function runMcpSession() {
     console.log("<-- Revealed Output:", revealedText);
     console.log("✅ Reveal text success.");
 
-    // 4.1 Test compact audit receipt mode
+    // 4.1 Test compact audit receipt mode + repeat-token non-CLEAN fix + verbose_receipt
     console.log("--> Calling 'sanitize_text' with compact: true...");
     const compactResponse = await sendRequest('tools/call', {
       name: 'sanitize_text',
       arguments: {
         text: "Contact ceo@startup.io for investor updates",
-        compact: true
+        compact: true,
+        session_id: "compact-repeat-sess"
       }
     });
     const compactText = compactResponse.result?.content?.[0]?.text;
@@ -216,7 +230,31 @@ async function runMcpSession() {
     if (!compactText.includes("[ZTDS: 1 masked")) {
       throw new Error("Compact receipt format was not returned.");
     }
-    console.log("✅ Compact receipt mode verified.");
+    const repeatCompactResponse = await sendRequest('tools/call', {
+      name: 'sanitize_text',
+      arguments: {
+        text: "Contact ceo@startup.io again for investor updates",
+        compact: true,
+        session_id: "compact-repeat-sess"
+      }
+    });
+    const repeatCompactText = repeatCompactResponse.result?.content?.[0]?.text || "";
+    if (repeatCompactText.includes("CLEAN") || !repeatCompactText.includes("[ZTDS: 1 masked") || repeatCompactResponse.result?.structuredContent?.tokensRedacted !== 1) {
+      throw new Error(`Repeat-token sanitize_text({ compact: true }) failed (must NOT say CLEAN): ${repeatCompactText}`);
+    }
+    const verboseResp = await sendRequest('tools/call', {
+      name: 'sanitize_text',
+      arguments: {
+        text: "Contact ceo@startup.io for verbose audit",
+        verbose_receipt: true,
+        session_id: "compact-repeat-sess"
+      }
+    });
+    const verboseText = verboseResp.result?.content?.[0]?.text || "";
+    if (!verboseText.includes("**PrivacyScrubber Audit Receipt**") || !verboseText.includes("**Tokens Masked:** 1") || cleanAuditBannedRx.test(verboseText)) {
+      throw new Error(`verbose_receipt: true failed or contained banned emoji/marketing: ${verboseText}`);
+    }
+    console.log("✅ Compact, repeat-token non-CLEAN, and verbose_receipt modes verified.");
 
     // 4.2 Test heuristic Dev profile auto-elevation from General
     console.log("--> Calling 'sanitize_text' with code snippet on General profile (heuristic elevation)...");
@@ -1166,6 +1204,195 @@ async function runMcpSession() {
       }
       for (const p of [w2DanglingLink, w2DanglingDest, w2BakSrc, w2BakLink, w2BakDest, w2InjFile, w2PwnFile]) {
         try { fs.unlinkSync(p); } catch (_) {}
+      }
+    }
+
+    // ── 15. Wave 3 Toolset Modes, Clean Responses & Free-Limit Hardening ──
+    console.log("\n---> Testing Wave 3 Toolset Modes, Clean Responses & Daily-Limit Hardening...");
+
+    async function runMcpOneOff(cliFlags = [], envOverrides = {}, calls = []) {
+      const cleanEnv = { ...process.env };
+      delete cleanEnv.PLUGIN_ROOT;
+      delete cleanEnv.PRIVACYSCRUBBER_TOOLSET;
+      delete cleanEnv.ZTDS_GUARD_LOCAL;
+      delete cleanEnv.NODE_ENV;
+      delete cleanEnv.PRIVACYSCRUBBER_TEST_MODE;
+      delete cleanEnv.PRIVACYSCRUBBER_KEY;
+      delete cleanEnv.PRIVACYSCRUBBER_LICENSE_KEY;
+      delete cleanEnv.ZTDS_LICENSE;
+      delete cleanEnv.ZTDS_LICENSE_KEY;
+      for (const [k, v] of Object.entries(envOverrides)) {
+        if (v === undefined || v === null) delete cleanEnv[k];
+        else cleanEnv[k] = v;
+      }
+
+      return new Promise((resolve, reject) => {
+        const proc = spawn(process.execPath, [indexScript, ...cliFlags], { env: cleanEnv });
+        let buf = '';
+        const pending = new Map();
+        const timer = setTimeout(() => {
+          proc.kill();
+          reject(new Error(`One-off MCP session timed out (${cliFlags.join(' ')})`));
+        }, 15000);
+
+        proc.stdout.on('data', (chunk) => {
+          buf += chunk.toString();
+          let nl;
+          while ((nl = buf.indexOf('\n')) !== -1) {
+            const line = buf.slice(0, nl).trim();
+            buf = buf.slice(nl + 1);
+            if (!line) continue;
+            try {
+              const msg = JSON.parse(line);
+              if (msg.id && pending.has(msg.id)) {
+                const resFn = pending.get(msg.id);
+                pending.delete(msg.id);
+                resFn(msg);
+              }
+            } catch (_) {}
+          }
+        });
+        proc.on('error', (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+
+        const rpc = (id, method, params = {}) => new Promise((resFn) => {
+          pending.set(id, resFn);
+          proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
+        });
+
+        (async () => {
+          try {
+            await rpc(1, 'initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'w3-qa', version: '1.0' } });
+            const out = [];
+            let cid = 2;
+            for (const c of calls) {
+              out.push(await rpc(cid++, c.method, c.params || {}));
+            }
+            clearTimeout(timer);
+            proc.kill();
+            resolve(out);
+          } catch (err) {
+            clearTimeout(timer);
+            proc.kill();
+            reject(err);
+          }
+        })();
+      });
+    }
+
+    // 15a. Default 'agent' toolset = 10 tools (<15KB JSON), ztds_sanitize still callable
+    const [agentToolsRes, agentZtdsCall] = await runMcpOneOff([], { PRIVACYSCRUBBER_TEST_MODE: '1' }, [
+      { method: 'tools/list' },
+      { method: 'tools/call', params: { name: 'ztds_sanitize', arguments: { text: 'Email alice@example.com' } } }
+    ]);
+    const agentTools = agentToolsRes.result?.tools || [];
+    const agentJsonBytes = Buffer.byteLength(JSON.stringify(agentToolsRes.result), 'utf8');
+    const expectedAgentNames = ['sanitize_text', 'reveal_text', 'guard_read_file', 'guard_exec', 'guard_git_diff', 'guard_apply_patch', 'guard_unmask_args', 'guard_session_info', 'guard_session_reset', 'mark_false_positive'];
+    if (agentTools.length !== 10 || !expectedAgentNames.every(n => agentTools.some(t => t.name === n))) {
+      throw new Error(`Default agent toolset expected 10 exact tools, got ${agentTools.length}: ${agentTools.map(t => t.name).join(', ')}`);
+    }
+    if (agentJsonBytes >= 15 * 1024) {
+      throw new Error(`Default agent tools/list JSON exceeded 15KB limit: ${agentJsonBytes} bytes`);
+    }
+    if (agentZtdsCall.error || agentZtdsCall.result?.isError || !agentZtdsCall.result?.structuredContent?.zeroEgressAttested) {
+      throw new Error(`ztds_sanitize failed backward-compat call under default agent toolset: ${JSON.stringify(agentZtdsCall)}`);
+    }
+    console.log(`✅ Wave 3 default agent toolset verified (10 tools, ${agentJsonBytes} bytes < 15KB, full dispatch compat).`);
+
+    // 15b. --toolset=core (5), PRIVACYSCRUBBER_TOOLSET=ztds (5), PLUGIN_ROOT -> full (28)
+    const [coreToolsRes] = await runMcpOneOff(['--toolset=core'], { PRIVACYSCRUBBER_TEST_MODE: '1' }, [{ method: 'tools/list' }]);
+    const [ztdsToolsRes] = await runMcpOneOff([], { PRIVACYSCRUBBER_TEST_MODE: '1', PRIVACYSCRUBBER_TOOLSET: 'ztds' }, [{ method: 'tools/list' }]);
+    const [pluginToolsRes] = await runMcpOneOff([], { PRIVACYSCRUBBER_TEST_MODE: '1', PLUGIN_ROOT: '/tmp/fake-plugin' }, [{ method: 'tools/list' }]);
+    if ((coreToolsRes.result?.tools || []).length !== 5 || (ztdsToolsRes.result?.tools || []).length !== 5 || (pluginToolsRes.result?.tools || []).length !== 28) {
+      throw new Error(`Toolset counts mismatch: core=${coreToolsRes.result?.tools?.length}, ztds=${ztdsToolsRes.result?.tools?.length}, plugin=${pluginToolsRes.result?.tools?.length}`);
+    }
+    console.log("✅ Wave 3 toolset variants (--toolset=core, PRIVACYSCRUBBER_TOOLSET=ztds, PLUGIN_ROOT=full) verified.");
+
+    // 15c. Daily limit 100 (ZTDS_GUARD_LOCAL=1 no longer bypasses), zero prompt injection/emojis, guard_apply_patch unblocked
+    const tempHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ps-w3-limit-home-'));
+    const todayStr = new Date().toISOString().split('T')[0];
+    fs.writeFileSync(path.join(tempHomeDir, '.privacyscrubber-usage.json'), JSON.stringify({ date: todayStr, count: 99 }), 'utf8');
+    const tempPatchW3 = path.resolve(__dirname, `_temp_w3_patch_${Date.now()}.txt`);
+    try {
+      const [blockedSanitize, allowedPatch] = await runMcpOneOff([], {
+        HOME: tempHomeDir,
+        USERPROFILE: tempHomeDir,
+        ZTDS_GUARD_LOCAL: '1'
+      }, [
+        { method: 'tools/call', params: { name: 'sanitize_text', arguments: { text: 'Test alice@corp.io' } } },
+        { method: 'tools/call', params: { name: 'guard_apply_patch', arguments: { file_path: tempPatchW3, content: 'SAFE_CONFIG=ok\n', create_backup: false } } }
+      ]);
+      const blockedText = blockedSanitize.result?.content?.[0]?.text || '';
+      if (!blockedSanitize.result?.isError || !blockedText.includes('100 requests')) {
+        throw new Error(`Expected daily limit 100 block (without ZTDS_GUARD_LOCAL bypass), got: ${JSON.stringify(blockedSanitize)}`);
+      }
+      if (cleanAuditBannedRx.test(blockedText) || blockedText.includes('generate_procurement_memo')) {
+        throw new Error(`Daily limit response contained banned emoji or prompt injection: ${blockedText}`);
+      }
+      if (allowedPatch.result?.isError || !fs.existsSync(tempPatchW3) || fs.readFileSync(tempPatchW3, 'utf8') !== 'SAFE_CONFIG=ok\n') {
+        throw new Error(`guard_apply_patch was blocked or failed at daily limit: ${JSON.stringify(allowedPatch)}`);
+      }
+      console.log("✅ Wave 3 daily limit 100, ZTDS_GUARD_LOCAL removal, zero prompt injection, and unblocked guard_apply_patch verified.");
+    } finally {
+      try { fs.rmSync(tempHomeDir, { recursive: true, force: true }); } catch (_) {}
+      try { if (fs.existsSync(tempPatchW3)) fs.unlinkSync(tempPatchW3); } catch (_) {}
+    }
+
+    // 15d. Python native fallback clean receipt + readOnlyHint: false
+    try {
+      const pyFallbackRes = await new Promise((resolve, reject) => {
+        const pyPath = path.resolve(__dirname, 'src', 'privacyscrubber_mcp', 'server.py');
+        const pyProc = spawn('python3', [pyPath, '--native'], { cwd: __dirname });
+        let pBuf = '';
+        const pPending = new Map();
+        const pTimer = setTimeout(() => { pyProc.kill(); reject(new Error('Python MCP fallback timeout')); }, 8000);
+        pyProc.stdout.on('data', d => {
+          pBuf += d.toString();
+          let nl;
+          while ((nl = pBuf.indexOf('\n')) !== -1) {
+            const line = pBuf.slice(0, nl).trim();
+            pBuf = pBuf.slice(nl + 1);
+            if (!line) continue;
+            const msg = JSON.parse(line);
+            if (msg.id && pPending.has(msg.id)) {
+              const fn = pPending.get(msg.id);
+              pPending.delete(msg.id);
+              fn(msg);
+            }
+          }
+        });
+        pyProc.on('error', err => { clearTimeout(pTimer); reject(err); });
+        const sendPy = (id, method, params = {}) => new Promise(res => {
+          pPending.set(id, res);
+          pyProc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
+        });
+        (async () => {
+          await sendPy(1, 'initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'py-qa', version: '1.0' } });
+          const tl = await sendPy(2, 'tools/list', {});
+          const san = await sendPy(3, 'tools/call', { name: 'sanitize_text', arguments: { text: 'Contact alice@py.io' } });
+          clearTimeout(pTimer);
+          pyProc.kill();
+          resolve({ tl, san });
+        })().catch(e => { clearTimeout(pTimer); pyProc.kill(); reject(e); });
+      });
+      const pyTools = pyFallbackRes.tl.result?.tools || [];
+      const pySanTool = pyTools.find(t => t.name === 'sanitize_text');
+      const pyFileTool = pyTools.find(t => t.name === 'sanitize_file');
+      const pySanText = pyFallbackRes.san.result?.content?.[0]?.text || '';
+      if (pySanTool?.annotations?.readOnlyHint !== false || pyFileTool?.annotations?.readOnlyHint !== false) {
+        throw new Error('Python server.py sanitize_text/sanitize_file must declare readOnlyHint: false');
+      }
+      if (!pySanText.includes('PrivacyScrubber Audit Receipt') || cleanAuditBannedRx.test(pySanText)) {
+        throw new Error(`Python server.py receipt invalid or contains marketing/emojis: ${pySanText}`);
+      }
+      console.log("✅ Wave 3 Python native fallback annotations & clean audit receipt verified.");
+    } catch (pyErr) {
+      if (pyErr.code === 'ENOENT') {
+        console.log("⚠️ Skipping Python fallback check (python3 not found).");
+      } else {
+        throw pyErr;
       }
     }
 

@@ -110,17 +110,137 @@ if (args.includes("-h") || args.includes("--help") || (!hasCommand && !isDiffMod
   process.exit(0);
 }
 
+const DEVOPS_SECRETS_DETECTOR = [
+    { name: 'Private Cryptographic Key (PEM Block)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----[\s\S]{10,8192}?-----END (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g, label: 'SECRET' },
+    { name: 'Private Cryptographic Key (Header)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g, label: 'SECRET' },
+    { name: 'AWS Secret Access Key', regex: /(?:(?<=\b(?:aws_secret_access_key|aws_secret_key|secret_access_key)[ \t]{0,4}[:=][ \t]{0,4}['"]?)|(?<=\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA)[A-Z0-9]{12,28}[ \t]{0,4}[/|,][ \t]{0,4}))[A-Za-z0-9/+=]{40}(?=['"\s,;]|$)/gi, label: 'AWS_KEY' },
+    { name: 'AWS Credentials', regex: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA)[A-Z0-9]{12,28}\b/g, label: 'AWS_KEY' },
+    { name: 'Google Cloud / Gemini API Key', regex: /\bAIza[0-9A-Za-z_-]{35}\b/g, label: 'API_TOKEN' },
+    { name: 'Anthropic API Key', regex: /\bsk-ant-(?:api\d{2}|admin\d{2}|sid\d{2})-[a-zA-Z0-9_-]{16,128}\b/g, label: 'API_TOKEN' },
+    { name: 'HuggingFace / Perplexity API Key', regex: /\b(?:hf_[a-zA-Z0-9]{20,64}|pplx-[a-zA-Z0-9]{24,64})\b/g, label: 'API_TOKEN' },
+    { name: 'SendGrid API Key', regex: /\bSG\.[a-zA-Z0-9_-]{16,32}\.[a-zA-Z0-9_-]{32,64}\b/g, label: 'API_TOKEN' },
+    { name: 'Postman API Key', regex: /\bPMAK-[a-fA-F0-9]{24}-[a-fA-F0-9]{34}\b/g, label: 'API_TOKEN' },
+    { name: 'GitHub Fine-Grained PAT', regex: /\bgithub_pat_[a-zA-Z0-9]{20,30}_[a-zA-Z0-9]{40,80}\b/g, label: 'API_TOKEN' },
+    { name: 'Slack Enterprise / Refresh Token', regex: /\bxoxe\.xox[baprs]-\d-[a-zA-Z0-9-]{10,}\b|\bxox[eapbrs]-[a-zA-Z0-9-]{10,}\b/g, label: 'API_TOKEN' },
+    { name: 'Telegram Bot API Token', regex: /\b\d{8,10}:AA[A-Za-z0-9_-]{33}\b/g, label: 'API_TOKEN' },
+    { name: 'Age Encryption Secret Key', regex: /\bAGE-SECRET-KEY-1[A-Z0-9]{58}\b/g, label: 'SECRET' },
+    { name: 'Modern Cloud & AI Platform Key', regex: /\b(?:sbp_[a-fA-F0-9]{40}|dop_v1_[a-fA-F0-9]{64}|doo_v1_[a-fA-F0-9]{64}|dp\.(?:st|pt|ct|sa)\.[a-zA-Z0-9_-]{20,}|lin_api_[a-zA-Z0-9]{32,64}|ntn_[a-zA-Z0-9]{32,64}|secret_[a-zA-Z0-9]{32,64}|gsk_[a-zA-Z0-9]{32,64}|r8_[a-zA-Z0-9]{24,64}|tvly-[a-zA-Z0-9_-]{20,64}|fc-[a-fA-F0-9]{32}|dapi[a-fA-F0-9]{32}(?:-\d)?|re_[a-zA-Z0-9_]{20,64}|napi_[a-zA-Z0-9]{32,64}|[a-zA-Z0-9]{14}\.atlasv1\.[a-zA-Z0-9]{50,80}|pypi-[A-Za-z0-9_-]{16,128}|whsec_[A-Za-z0-9+/=_-]{24,128}|shpat_[a-fA-F0-9]{32}|shpss_[a-fA-F0-9]{32}|shpca_[a-fA-F0-9]{32}|shppa_[a-fA-F0-9]{32}|hvs\.[A-Za-z0-9_-]{24,128}|hvb\.[A-Za-z0-9_-]{24,128}|glsa_[A-Za-z0-9]{32}_[A-Fa-f0-9]{8}|glc_[A-Za-z0-9+/=_-]{20,128}|pscale_tkn_[A-Za-z0-9_.-]{20,64}|pscale_pw_[A-Za-z0-9_.-]{20,64}|pat[A-Za-z0-9]{14}\.[a-fA-F0-9]{64}|pat-(?:na1|eu1)-[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}|sq0atp-[A-Za-z0-9_-]{22,64}|sq0csp-[A-Za-z0-9_-]{32,64}|NRAK-[A-Z0-9]{27}|v1\.0-[a-fA-F0-9]{24}-[a-fA-F0-9]{16,160}|ATATT3xFfGF0[A-Za-z0-9+/=_-]{24,128}|tskey-(?:auth|api|client)-[A-Za-z0-9_-]{20,96}|sntry[su]_[A-Za-z0-9+/=_-]{32,160}|(?:pk|sk)\.eyJ1[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{16,}|key-[a-f0-9]{32}|[a-fA-F0-9]{32}-us\d{1,2})\b/g, label: 'API_TOKEN' },
+    { name: 'Twilio Account SID / API Key', regex: /\b(?:AC|SK)[a-fA-F0-9]{32}\b/g, label: 'API_TOKEN' },
+    { name: 'Bcrypt / Argon2 Password Hash', regex: /(?<![A-Za-z0-9])(?:\$2[aby]\$\d{2}\$[./A-Za-z0-9=]{20,60}|\$argon2(?:id|i|d)\$[^\s"']{15,120})/g, label: 'SECRET' },
+    { name: 'JSON Web Token (JWT)', regex: /\beyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b/g, label: 'JWT_TOKEN' },
+    { name: 'API Token/Key (GitHub/Slack/NPM)', regex: /\b(?:ghp|gho|ghu|ghs|ghr|glpat|npm|xox[baprs])[-_][A-Za-z0-9_-]{10,}\b/g, label: 'API_TOKEN' },
+    { name: 'Stripe API Key', regex: /\b(?:[rs]k)_(?:test|live)_[a-zA-Z0-9]{10,}\b/g, label: 'STRIPE_KEY' },
+    { name: 'OpenAI Project API Key', regex: /\b(?:sk|pk)-(?:proj-)?[a-zA-Z0-9_-]{16,}\b/gi, label: 'OPENAI_KEY' },
+    { name: 'Slack / Discord Incoming Webhook URL', regex: /\bhttps:\/\/(?:hooks\.slack\.com\/services\/T[A-Z0-9_]+\/B[A-Z0-9_]+\/[A-Za-z0-9_-]+|(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d{17,20}\/[A-Za-z0-9_-]{60,70})\b/gi, label: 'SECRET' },
+    { name: 'Azure Connection String / SAS Token', regex: /(?:DefaultEndpointsProtocol=https?;AccountName=[^;\s"']+;AccountKey=[A-Za-z0-9+/=]{20,}(?:;EndpointSuffix=[^;\s"']+)?|Endpoint=sb:\/\/[^;\s"']+;SharedAccessKeyName=[^;\s"']+;SharedAccessKey=[A-Za-z0-9+/=]{16,}|\bSharedAccessSignature=sr=[^\s"']+&sig=[A-Za-z0-9%/+=]{16,}|\bAccountKey=[A-Za-z0-9+/=]{40,88}==)/gi, label: 'SECRET' },
+    { name: 'Database Connection URI', regex: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql):\/\/[^\s"']+/gi, label: 'DB_URI' },
+    { name: 'Embedded Credentials URI', regex: /\b(?:h(?:tt|xx)ps?|s?f(?:t|x)p|wss?):\/\/[a-zA-Z0-9_.%+-]+:[^\s/@:"']+@[a-zA-Z0-9_.-]+(?:(?:\[\.\]|\(\.\))[a-zA-Z0-9_.-]+)*(?::\d+)?(?:\/[^\s"']*)?/gi, label: 'SECRET' },
+    { name: 'URL Query Parameter Secret', regex: /(?<=[?&](?:api_key|apikey|access_token|client_secret|auth_token|token|secret|password|private_key)=)[^\s"'\x26#)>]{8,}/gi, label: 'SECRET' },
+    { name: 'CLI Credential Flag / Curl User Auth', regex: /(?:\bcurl\b[^\r\n]*?\s(?:-u|--user)\s+["']?[A-Za-z0-9_.+-]+:[^\s"']+|\b(?:--password|--api-key|--apikey|--access-token|--auth-token|--client-secret|--secret-key|--private-key)(?:=|\s+)["']?[^\s"']{6,}["']?)/gi, label: 'SECRET' },
+    { name: 'HTTP API Key Header', regex: /\b(?:X-API-Key|X-Amz-Security-Token|X-Functions-Key|X-Shopify-Access-Token|X-Auth-Token|Api-Key)\s*:\s*["']?[A-Za-z0-9_.\-~+/=]{12,}["']?/gi, label: 'SECRET' },
+    { name: 'Docker Registry Auth / K8s Secret Base64', regex: /(?<=["']?(?:auth|identitytoken|registrytoken|\.dockerconfigjson)["']?\s*:\s*["'])[A-Za-z0-9+/=]{16,}(?=["'])/gi, label: 'SECRET' },
+    { name: 'Bearer / Basic Auth Header Token', regex: /(?:(?<=\b(?:Bearer|Token)\s+)[a-zA-Z0-9_\-\.~+/=]{16,}(?![a-zA-Z0-9_\-\.~+/=])|(?<=\bAuthorization\s*:\s*Basic\s+)[A-Za-z0-9+/=]{8,}(?![A-Za-z0-9+/=]))/gi, label: 'SECRET' },
+    { name: 'Database/API Secret', regex: /(?<![?&])\b(?:(?:DB|POSTGRES|REDIS|MYSQL|DATABASE)[-_]?(?:PASSWORD|PASS|SECRET|KEY|PWD|CREDENTIALS?|TOKEN|AUTH)|AWS[-_]?(?:SECRET_ACCESS_KEY|SECRET_KEY|SESSION_TOKEN|SECURITY_TOKEN)|API[-_]?(?:KEY|SECRET|TOKEN|PASS|PASSWORD|AUTH|CREDENTIALS?)|[A-Za-z0-9_]*SECRET[A-Za-z0-9_]*|[A-Za-z0-9_]*PASSWORD[A-Za-z0-9_]*|[A-Za-z0-9_]*PASSWD[A-Za-z0-9_]*|[A-Za-z0-9_]*TOKEN[A-Za-z0-9_]*|ENCRYPTION[-_]KEY)[ \t]*[:=][ \t]*["']?(?:Bearer\s+)?(?!\[[A-Z0-9_]+_\d+\])([^\s"'&;\r\n,]{6,}?)(?=[.)?:]*(?:["'\s&;\r\n,]|$))/gi, label: 'SECRET' }
+];
+
 // Fast-path Mode 0: Deterministic IDE Lifecycle Hook (--hook) for Claude Code & Cursor v1.7+
 if (isHookMode) {
-  const SENSITIVE_FILE_RX = /(?:^|[\\/])(?:\.env(?:\.[a-zA-Z0-9_-]+)?|id_rsa|id_ed25519|id_ecdsa|.*\.pem|.*\.key|.*\.p12|.*\.pfx|.*credentials.*\.json|.*secret.*\.(?:json|ya?ml|env|txt)|\.npmrc|\.pypirc|\.netrc)$/i;
+  const SENSITIVE_FILE_RX = /(?:^|[\\/])(?:\.env(?:\.[a-zA-Z0-9_-]+)?|id_rsa|id_ed25519|id_ecdsa|id_dsa|.*\.pem|.*\.key|.*\.p12|.*\.pfx|.*credentials.*\.json|.*secret.*\.(?:json|ya?ml|env)|secrets?\.txt|\.secret[^\\/]*|\.npmrc|\.pypirc|\.netrc|\.git-credentials|\.pgpass|\.my\.cnf|(?:.*)?\.tfstate(?:\.backup)?|\.vault-token|\.aws[\\/](?:credentials|config)|\.kube[\\/]config|\.docker[\\/]config\.json)$/i;
   const SAFE_TEMPLATE_RX = /\.(?:example|sample|template|dist|schema)$/i;
-  const SENSITIVE_CMD_RX = /(?:^|[;&|]\s*)(?:cat|head|tail|less|more|bat|sed|awk|grep|base64|xxd|od|cp|mv|nl|tr|strings|xargs|python3?|node|ruby|perl|jq|curl)\s+[^\n|;&]*(?:\.env(?:\.[a-zA-Z0-9_-]+)?\b|id_rsa|id_ed25519|id_ecdsa|\.pem\b|\.key\b|credentials\.json|\bsecrets?\.|\.npmrc\b|\.pypirc\b|\.netrc\b)|(?:^|[;&|]\s*)(?:printenv|env\s*$|export\s+-p|aws\s+configure\s+get|gcloud\s+auth\s+print-access-token)/i;
+  const SAFE_CMD_TEMPLATE_TOKEN_RX = /(?:^|(?<=[\s"'`=<,;:|&]))[^\s"'`;|&<>]*\.(?:example|sample|template|dist|schema)(?=$|[\s"'`;|&>,])/gi;
+  const SENSITIVE_CMD_TARGET = `(?:(?:^|(?<=[\\s/\\\\"'\`=:,]))(?:\\.env(?:\\.[a-zA-Z0-9_-]+)?\\b|id_rsa(?=$|[\\s"';|&>,])|id_ed25519(?=$|[\\s"';|&>,])|id_ecdsa(?=$|[\\s"';|&>,])|id_dsa(?=$|[\\s"';|&>,])|\\.npmrc\\b|\\.pypirc\\b|\\.netrc\\b|\\.git-credentials\\b|\\.pgpass\\b|\\.my\\.cnf\\b|(?:[^\\s/"'\`]*\\.)?tfstate(?:\\.backup)?\\b|\\.vault-token\\b|secrets?\\.txt(?=$|[\\s"';|&>,])|\\.secret[^\\s"'\`|;&>]*|\\.aws[\\\\/](?:credentials|config)\\b|\\.kube[\\\\/]config\\b|\\.docker[\\\\/]config\\.json\\b|[^\\s/"'\`]*credentials[^\\s/"'\`]*\\.json\\b|[^\\s/"'\`]*secret[^\\s/"'\`]*\\.(?:json|ya?ml|env)\\b)|[^\\s"'\`|;&>]+\\.(?:pem|key|p12|pfx)(?=$|[\\s"';|&>,]))`;
+  const SENSITIVE_CMD_FILES_RX = new RegExp(`(?:^|[;&|\\n(\`]\\s*)(?:cat|type|head|tail|less|more|bat|sed|awk|grep|egrep|fgrep|rg|ag|sort|uniq|cut|paste|diff|cmp|comm|tar|zip|unzip|gzip|base64|xxd|od|cp|mv|nl|tr|strings|xargs|tac|rev|tee|python3?|node|ruby|perl|jq|yq|curl|wget|scp|bash|sh|zsh)\\s+[^\\n|;&]*${SENSITIVE_CMD_TARGET}`, 'i');
+  const SENSITIVE_CMD_REDIR_RX = new RegExp(`(?<!<)<\\s*(?!<)['"]?(?:[^\\s'"|;&>]*[\\\\/])?(?:\\.env(?:\\.[a-zA-Z0-9_-]+)?\\b|id_rsa(?=$|[\\s"';|&>,])|id_ed25519(?=$|[\\s"';|&>,])|id_ecdsa(?=$|[\\s"';|&>,])|id_dsa(?=$|[\\s"';|&>,])|\\.npmrc\\b|\\.pypirc\\b|\\.netrc\\b|\\.git-credentials\\b|\\.pgpass\\b|\\.my\\.cnf\\b|(?:[^\\s/"'\`]*\\.)?tfstate(?:\\.backup)?\\b|\\.vault-token\\b|secrets?\\.txt(?=$|[\\s"';|&>,])|\\.secret[^\\s"'\`|;&>]*|\\.aws[\\\\/](?:credentials|config)\\b|\\.kube[\\\\/]config\\b|\\.docker[\\\\/]config\\.json\\b|[^\\s/"'\`]*credentials[^\\s/"'\`]*\\.json\\b|[^\\s/"'\`]*secret[^\\s/"'\`]*\\.(?:json|ya?ml|env)\\b|[^\\s"'\`|;&>]+\\.(?:pem|key|p12|pfx))(?=$|[\\s"';|&>,])`, 'i');
+  const SENSITIVE_CMD_DD_RX = new RegExp(`(?:^|[;&|\\n(\`]\\s*)dd\\b[^\\n|;&]*\\bif=['"]?(?:[^\\s'"|;&>]*[\\\\/])?(?:\\.env(?:\\.[a-zA-Z0-9_-]+)?\\b|id_rsa(?=$|[\\s"';|&>,])|id_ed25519(?=$|[\\s"';|&>,])|id_ecdsa(?=$|[\\s"';|&>,])|id_dsa(?=$|[\\s"';|&>,])|\\.npmrc\\b|\\.pypirc\\b|\\.netrc\\b|\\.git-credentials\\b|\\.pgpass\\b|\\.my\\.cnf\\b|(?:[^\\s/"'\`]*\\.)?tfstate(?:\\.backup)?\\b|\\.vault-token\\b|secrets?\\.txt(?=$|[\\s"';|&>,])|\\.secret[^\\s"'\`|;&>]*|\\.aws[\\\\/](?:credentials|config)\\b|\\.kube[\\\\/]config\\b|\\.docker[\\\\/]config\\.json\\b|[^\\s/"'\`]*credentials[^\\s/"'\`]*\\.json\\b|[^\\s/"'\`]*secret[^\\s/"'\`]*\\.(?:json|ya?ml|env)\\b|[^\\s"'\`|;&>]+\\.(?:pem|key|p12|pfx))(?=$|[\\s"';|&>,])`, 'i');
+  const SENSITIVE_CMD_SOURCE_RX = /(?:^|[;&|\n(`]\s*)(?:source|\.)\s+['"]?(?:[^\s'"|;&>]*[\\/])?(?:\.env(?:\.[a-zA-Z0-9_-]+)?|\.secret[^\s"'`|;&>]*|[^\s/"'`]*secret[^\s/"'`]*\.env)(?=$|[\s"';|&>,])/i;
+  const SENSITIVE_CMD_ENV_RX = /(?:^|[;&|\n(`]\s*)(?:printenv|env(?:\s+-0)?\s*(?:$|[|;&>\n])|set\s*(?:$|[|;&>\n])|(?:declare|typeset)\s+-[a-zA-Z]*p\b|export\s+-p\b|aws\s+configure\s+get|gcloud\s+auth\s+print-access-token)/i;
+  const PRIVACYSCRUBBER_LOCAL_TOOLS_RX = /^(?:(?:mcp[_-])?(?:privacyscrubber|ztds)(?:__|_|-)?)?(?:sanitize_text|sanitize_file|scrub_text|scrub_file|reveal_text|guard_read_file|guard_exec|guard_git_diff|guard_apply_patch|guard_unmask_args|guard_session_info|guard_session_reset|mark_false_positive|audit_context|ztds_sanitize|ztds_restore|ztds_audit|ztds_info|ztds_reset_session)$/i;
+
+  const isSensitiveShellCommand = (cmd) => {
+    if (!cmd || typeof cmd !== 'string') return false;
+    const cmdForScan = cmd.replace(SAFE_CMD_TEMPLATE_TOKEN_RX, '__SAFE_TEMPLATE__');
+    return SENSITIVE_CMD_FILES_RX.test(cmdForScan) ||
+      SENSITIVE_CMD_REDIR_RX.test(cmdForScan) ||
+      SENSITIVE_CMD_DD_RX.test(cmdForScan) ||
+      SENSITIVE_CMD_SOURCE_RX.test(cmdForScan) ||
+      SENSITIVE_CMD_ENV_RX.test(cmdForScan);
+  };
+
+  const findFirstDevOpsSecret = (text) => {
+    if (!text || typeof text !== 'string') return null;
+    for (const rule of DEVOPS_SECRETS_DETECTOR) {
+      const rx = new RegExp(rule.regex.source, rule.regex.flags);
+      if (rx.test(text)) return rule;
+    }
+    return null;
+  };
+
+  const inspectMcpValue = (node, keyName = '', depth = 0, seen = new Set()) => {
+    if (depth > 20 || node === null || node === undefined) return null;
+    if (typeof node === 'string') {
+      const trimmed = node.trim();
+      if (!trimmed) return null;
+      if (SENSITIVE_FILE_RX.test(trimmed) && !SAFE_TEMPLATE_RX.test(trimmed)) {
+        return { kind: 'file', detail: path.basename(trimmed) };
+      }
+      if (/^(?:command|cmd|CommandLine)$/i.test(keyName) && isSensitiveShellCommand(trimmed)) {
+        return { kind: 'command', detail: trimmed.slice(0, 60) };
+      }
+      const secretRule = findFirstDevOpsSecret(node);
+      if (secretRule) {
+        return { kind: 'secret', detail: secretRule.name };
+      }
+      return null;
+    }
+    if (typeof node === 'object') {
+      if (seen.has(node)) return null;
+      seen.add(node);
+      if (Array.isArray(node)) {
+        for (const item of node) {
+          const hit = inspectMcpValue(item, keyName, depth + 1, seen);
+          if (hit) return hit;
+        }
+        return null;
+      }
+      for (const [k, v] of Object.entries(node)) {
+        const hit = inspectMcpValue(v, k, depth + 1, seen);
+        if (hit) return hit;
+      }
+    }
+    return null;
+  };
+
+  const emitCursorDeny = (userMsg, agentMsg, extra = {}) => {
+    process.stdout.write(JSON.stringify({
+      permission: "deny",
+      userMessage: userMsg,
+      user_message: userMsg,
+      agentMessage: agentMsg,
+      agent_message: agentMsg,
+      ...extra
+    }) + "\n");
+    process.exit(0);
+  };
+
+  const emitPreToolDeny = (eventName, reason) => {
+    process.stdout.write(JSON.stringify({
+      permission: "deny",
+      hookSpecificOutput: {
+        hookEventName: eventName || "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: reason
+      }
+    }) + "\n");
+    process.stderr.write(reason + "\n");
+    process.exit(2);
+  };
 
   const evaluateHookPayload = (rawStr) => {
+    const cleanRaw = typeof rawStr === 'string' ? rawStr.replace(/^\uFEFF/, '') : '';
     let payload = {};
-    if (rawStr && rawStr.trim()) {
+    if (cleanRaw && cleanRaw.trim()) {
       try {
-        payload = JSON.parse(rawStr);
+        payload = JSON.parse(cleanRaw);
       } catch (_) {
         const denyReason = 'Blocked by PrivacyScrubber ZTDS policy: malformed hook payload JSON (fail-closed).';
         process.stdout.write(JSON.stringify({
@@ -140,63 +260,134 @@ if (isHookMode) {
 
     const eventName = String(payload.hook_event_name || payload.hookEventName || payload.event || "");
     const toolName = String(payload.tool_name || payload.toolName || "");
-    const toolInput = (payload.tool_input || payload.toolInput || payload) || {};
+    let rawToolInput = payload.tool_input ?? payload.toolInput ?? payload.arguments ?? payload;
+    if (typeof rawToolInput === 'string' && rawToolInput.trim().startsWith('{')) {
+      try { rawToolInput = JSON.parse(rawToolInput); } catch (_) {}
+    }
+    const toolInput = (rawToolInput && typeof rawToolInput === 'object') ? rawToolInput : {};
 
     const candidatePath = String(
-      toolInput.file_path || toolInput.path || toolInput.target_file || payload.file_path || payload.path || ""
+      toolInput.file_path ??
+      toolInput.path ??
+      toolInput.target_file ??
+      toolInput.Path ??
+      toolInput.AbsolutePath ??
+      toolInput.TargetFile ??
+      toolInput.filePath ??
+      toolInput.SearchPath ??
+      toolInput.directory ??
+      toolInput.notebook_path ??
+      payload.file_path ??
+      payload.path ??
+      payload.target_file ??
+      payload.Path ??
+      payload.AbsolutePath ??
+      payload.TargetFile ??
+      payload.filePath ??
+      payload.SearchPath ??
+      payload.directory ??
+      payload.notebook_path ??
+      ""
     ).trim();
     const candidateCmd = String(
-      toolInput.command || toolInput.cmd || payload.command || ""
+      toolInput.command ??
+      toolInput.cmd ??
+      toolInput.CommandLine ??
+      payload.command ??
+      payload.cmd ??
+      payload.CommandLine ??
+      ""
     ).trim();
 
-    const isCursorEvent = /^(?:beforeReadFile|beforeShellExecution|beforeSubmitPrompt|beforeMCPExecution)$/i.test(eventName) ||
-      (!toolName && (payload.file_path !== undefined || payload.command !== undefined || payload.attachments !== undefined));
-
-    const isReadTool = /^(?:Read|View|read_file|view_file|ReadFile)$/i.test(toolName) || /^beforeReadFile$/i.test(eventName) || (!toolName && Boolean(candidatePath));
-    const isShellTool = /^(?:Bash|Execute|run_command|run_terminal_cmd)$/i.test(toolName) || /^beforeShellExecution$/i.test(eventName) || (!toolName && Boolean(candidateCmd));
-
-    if (isReadTool && candidatePath && SENSITIVE_FILE_RX.test(candidatePath) && !SAFE_TEMPLATE_RX.test(candidatePath)) {
-      const reason = `Blocked by PrivacyScrubber ZTDS policy: Direct read of sensitive file '${path.basename(candidatePath)}' is prohibited. Call the PrivacyScrubber MCP tool 'guard_read_file' or 'sanitize_file' instead so secrets are tokenized in local RAM.`;
-      if (isCursorEvent) {
-        process.stdout.write(JSON.stringify({
-          permission: "deny",
-          userMessage: `[PrivacyScrubber ZTDS] Direct read of ${path.basename(candidatePath)} blocked to prevent cloud egress.`,
-          agentMessage: reason
-        }) + "\n");
-        process.exit(0);
+    if (/^beforeSubmitPrompt$/i.test(eventName)) {
+      const promptText = String(payload.prompt ?? payload.text ?? payload.user_prompt ?? toolInput.prompt ?? toolInput.text ?? "");
+      const secretHit = findFirstDevOpsSecret(promptText);
+      if (secretHit) {
+        const reason = `Blocked by PrivacyScrubber ZTDS policy: Raw credential (${secretHit.name}) detected in prompt. Tokenize via PrivacyScrubber ('sanitize_text') before submitting to cloud LLM.`;
+        emitCursorDeny(`[PrivacyScrubber ZTDS] Prompt blocked: detected raw ${secretHit.name}.`, reason, { continue: false });
       }
-      process.stdout.write(JSON.stringify({
-        permission: "deny",
-        hookSpecificOutput: {
-          hookEventName: eventName || "PreToolUse",
-          permissionDecision: "deny",
-          permissionDecisionReason: reason
+      if (Array.isArray(payload.attachments)) {
+        for (const att of payload.attachments) {
+          const attPath = String(att?.file_path ?? att?.path ?? att?.filePath ?? att?.Path ?? "").trim();
+          if (attPath && SENSITIVE_FILE_RX.test(attPath) && !SAFE_TEMPLATE_RX.test(attPath)) {
+            const reason = `Blocked by PrivacyScrubber ZTDS policy: Sensitive attachment '${path.basename(attPath)}' cannot be submitted raw. Call 'guard_read_file' or 'sanitize_file' instead.`;
+            emitCursorDeny(`[PrivacyScrubber ZTDS] Sensitive attachment ${path.basename(attPath)} blocked.`, reason, { continue: false });
+          }
         }
-      }) + "\n");
-      process.stderr.write(reason + "\n");
-      process.exit(2);
+      }
+      process.stdout.write(JSON.stringify({ permission: "allow", continue: true }) + "\n");
+      process.exit(0);
     }
 
-    if (isShellTool && candidateCmd && SENSITIVE_CMD_RX.test(candidateCmd)) {
+    if (/^beforeMCPExecution$/i.test(eventName)) {
+      if (!PRIVACYSCRUBBER_LOCAL_TOOLS_RX.test(toolName)) {
+        const mcpArgs = payload.arguments ?? payload.tool_input ?? payload.toolInput ?? {};
+        let parsedMcpArgs = mcpArgs;
+        if (typeof mcpArgs === 'string' && mcpArgs.trim().startsWith('{')) {
+          try { parsedMcpArgs = JSON.parse(mcpArgs); } catch (_) {}
+        }
+        const hit = inspectMcpValue(parsedMcpArgs) || (candidatePath && SENSITIVE_FILE_RX.test(candidatePath) && !SAFE_TEMPLATE_RX.test(candidatePath) ? { kind: 'file', detail: path.basename(candidatePath) } : null);
+        if (hit) {
+          const reason = `Blocked by PrivacyScrubber ZTDS policy: 3rd-party MCP tool '${toolName || 'unknown'}' attempted to pass sensitive ${hit.kind} ('${hit.detail}'). Route through PrivacyScrubber RAM guard tools instead.`;
+          emitCursorDeny(`[PrivacyScrubber ZTDS] MCP call '${toolName || 'unknown'}' blocked (${hit.kind}: ${hit.detail}).`, reason, { continue: false });
+        }
+      }
+      process.stdout.write(JSON.stringify({ permission: "allow", continue: true }) + "\n");
+      process.exit(0);
+    }
+
+    const isCursorEvent = /^(?:beforeReadFile|beforeShellExecution|beforeSubmitPrompt|beforeMCPExecution)$/i.test(eventName) ||
+      (!toolName && (payload.file_path !== undefined || payload.command !== undefined || payload.attachments !== undefined || payload.prompt !== undefined));
+
+    const isReadTool = /^(?:Read|View|read_file|view_file|ReadFile|Grep|grep_search|Ripgrep|Search|Glob|find_by_name|Edit|Write|MultiEdit|edit_file|write_file|write_to_file|replace_file_content|multi_replace_file_content|NotebookRead)$/i.test(toolName) ||
+      /^beforeReadFile$/i.test(eventName) ||
+      (!toolName && Boolean(candidatePath));
+    const isShellTool = /^(?:Bash|Execute|Shell|run_command|run_terminal_cmd|execute_command)$/i.test(toolName) ||
+      /^beforeShellExecution$/i.test(eventName) ||
+      (!toolName && Boolean(candidateCmd));
+
+    const extraSearchPaths = [];
+    if (/^(?:Grep|grep_search|Ripgrep|Search|Glob|find_by_name)$/i.test(toolName)) {
+      if (typeof toolInput.glob === 'string' && toolInput.glob.trim()) extraSearchPaths.push(toolInput.glob.trim());
+      if (Array.isArray(toolInput.Includes)) {
+        for (const inc of toolInput.Includes) {
+          if (typeof inc === 'string' && inc.trim()) extraSearchPaths.push(inc.trim());
+        }
+      }
+      if (/^(?:Glob|find_by_name)$/i.test(toolName)) {
+        const pat = toolInput.pattern ?? toolInput.Pattern;
+        if (typeof pat === 'string' && pat.trim()) extraSearchPaths.push(pat.trim());
+      }
+    }
+
+    const blockedReadPath = (() => {
+      if (!isReadTool) return null;
+      if (candidatePath && SENSITIVE_FILE_RX.test(candidatePath) && !SAFE_TEMPLATE_RX.test(candidatePath)) {
+        return candidatePath;
+      }
+      for (const p of extraSearchPaths) {
+        const norm = p.replace(/\*+$/, '');
+        if (norm && SENSITIVE_FILE_RX.test(norm) && !SAFE_TEMPLATE_RX.test(norm)) {
+          return p;
+        }
+      }
+      return null;
+    })();
+
+    if (blockedReadPath) {
+      const reason = `Blocked by PrivacyScrubber ZTDS policy: Direct read of sensitive file '${path.basename(blockedReadPath)}' is prohibited. Call the PrivacyScrubber MCP tool 'guard_read_file' or 'sanitize_file' instead so secrets are tokenized in local RAM.`;
+      if (isCursorEvent) {
+        emitCursorDeny(`[PrivacyScrubber ZTDS] Direct read of ${path.basename(blockedReadPath)} blocked to prevent cloud egress.`, reason);
+      }
+      emitPreToolDeny(eventName, reason);
+    }
+
+    if (isShellTool && candidateCmd && isSensitiveShellCommand(candidateCmd)) {
       const reason = `Blocked by PrivacyScrubber ZTDS policy: Shell command exposing raw credentials ('${candidateCmd.slice(0, 60)}') is prohibited. Call the PrivacyScrubber MCP tool 'guard_exec' instead so stdout/stderr are sanitized in local RAM.`;
       if (isCursorEvent) {
-        process.stdout.write(JSON.stringify({
-          permission: "deny",
-          userMessage: `[PrivacyScrubber ZTDS] Shell command exposing raw credentials blocked.`,
-          agentMessage: reason
-        }) + "\n");
-        process.exit(0);
+        emitCursorDeny(`[PrivacyScrubber ZTDS] Shell command exposing raw credentials blocked.`, reason);
       }
-      process.stdout.write(JSON.stringify({
-        permission: "deny",
-        hookSpecificOutput: {
-          hookEventName: eventName || "PreToolUse",
-          permissionDecision: "deny",
-          permissionDecisionReason: reason
-        }
-      }) + "\n");
-      process.stderr.write(reason + "\n");
-      process.exit(2);
+      emitPreToolDeny(eventName, reason);
     }
 
     process.stdout.write(JSON.stringify({ permission: "allow", continue: true }) + "\n");
@@ -227,38 +418,6 @@ const colors = {
   cyan: '\x1b[36m',
   reset: '\x1b[0m'
 };
-
-const DEVOPS_SECRETS_DETECTOR = [
-    { name: 'Private Cryptographic Key (PEM Block)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----[\s\S]{10,8192}?-----END (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g, label: 'SECRET' },
-    { name: 'Private Cryptographic Key (Header)', regex: /-----BEGIN (?:RSA |EC |PGP |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g, label: 'SECRET' },
-    { name: 'AWS Credentials', regex: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA)[A-Z0-9]{12,28}\b/g, label: 'AWS_KEY' },
-    { name: 'Google Cloud / Gemini API Key', regex: /\bAIza[0-9A-Za-z_-]{35}\b/g, label: 'API_TOKEN' },
-    { name: 'Anthropic API Key', regex: /\bsk-ant-(?:api\d{2}|admin\d{2}|sid\d{2})-[a-zA-Z0-9_-]{16,128}\b/g, label: 'API_TOKEN' },
-    { name: 'HuggingFace / Perplexity API Key', regex: /\b(?:hf_[a-zA-Z0-9]{20,64}|pplx-[a-zA-Z0-9]{24,64})\b/g, label: 'API_TOKEN' },
-    { name: 'SendGrid API Key', regex: /\bSG\.[a-zA-Z0-9_-]{16,32}\.[a-zA-Z0-9_-]{32,64}\b/g, label: 'API_TOKEN' },
-    { name: 'Postman API Key', regex: /\bPMAK-[a-fA-F0-9]{24}-[a-fA-F0-9]{34}\b/g, label: 'API_TOKEN' },
-    { name: 'GitHub Fine-Grained PAT', regex: /\bgithub_pat_[a-zA-Z0-9]{20,30}_[a-zA-Z0-9]{40,80}\b/g, label: 'API_TOKEN' },
-    { name: 'Slack Enterprise / Refresh Token', regex: /\bxoxe\.xox[baprs]-\d-[a-zA-Z0-9-]{10,}\b|\bxox[eapbrs]-[a-zA-Z0-9-]{10,}\b/g, label: 'API_TOKEN' },
-    { name: 'Telegram Bot API Token', regex: /\b\d{8,10}:AA[A-Za-z0-9_-]{33}\b/g, label: 'API_TOKEN' },
-    { name: 'Age Encryption Secret Key', regex: /\bAGE-SECRET-KEY-1[A-Z0-9]{58}\b/g, label: 'SECRET' },
-    { name: 'Modern Cloud & AI Platform Key', regex: /\b(?:sbp_[a-fA-F0-9]{40}|dop_v1_[a-fA-F0-9]{64}|doo_v1_[a-fA-F0-9]{64}|dp\.(?:st|pt|ct|sa)\.[a-zA-Z0-9_-]{20,}|lin_api_[a-zA-Z0-9]{32,64}|ntn_[a-zA-Z0-9]{32,64}|secret_[a-zA-Z0-9]{32,64}|gsk_[a-zA-Z0-9]{32,64}|r8_[a-zA-Z0-9]{24,64}|tvly-[a-zA-Z0-9_-]{20,64}|fc-[a-fA-F0-9]{32}|dapi[a-fA-F0-9]{32}(?:-\d)?|re_[a-zA-Z0-9_]{20,64}|napi_[a-zA-Z0-9]{32,64}|[a-zA-Z0-9]{14}\.atlasv1\.[a-zA-Z0-9]{50,80}|pypi-[A-Za-z0-9_-]{16,128}|whsec_[A-Za-z0-9+/=_-]{24,128}|shpat_[a-fA-F0-9]{32}|shpss_[a-fA-F0-9]{32}|shpca_[a-fA-F0-9]{32}|shppa_[a-fA-F0-9]{32}|hvs\.[A-Za-z0-9_-]{24,128}|hvb\.[A-Za-z0-9_-]{24,128}|glsa_[A-Za-z0-9]{32}_[A-Fa-f0-9]{8}|glc_[A-Za-z0-9+/=_-]{20,128}|pscale_tkn_[A-Za-z0-9_.-]{20,64}|pscale_pw_[A-Za-z0-9_.-]{20,64}|pat[A-Za-z0-9]{14}\.[a-fA-F0-9]{64}|pat-(?:na1|eu1)-[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}|sq0atp-[A-Za-z0-9_-]{22,64}|sq0csp-[A-Za-z0-9_-]{32,64}|NRAK-[A-Z0-9]{27}|v1\.0-[a-fA-F0-9]{24}-[a-fA-F0-9]{16,160}|ATATT3xFfGF0[A-Za-z0-9+/=_-]{24,128}|tskey-(?:auth|api|client)-[A-Za-z0-9_-]{20,96}|sntry[su]_[A-Za-z0-9+/=_-]{32,160}|(?:pk|sk)\.eyJ1[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{16,}|key-[a-f0-9]{32}|[a-fA-F0-9]{32}-us\d{1,2})\b/g, label: 'API_TOKEN' },
-    { name: 'Twilio Account SID / API Key', regex: /\b(?:AC|SK)[a-fA-F0-9]{32}\b/g, label: 'API_TOKEN' },
-    { name: 'Bcrypt / Argon2 Password Hash', regex: /(?<![A-Za-z0-9])(?:\$2[aby]\$\d{2}\$[./A-Za-z0-9=]{20,60}|\$argon2(?:id|i|d)\$[^\s"']{15,120})/g, label: 'SECRET' },
-    { name: 'JSON Web Token (JWT)', regex: /\beyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b/g, label: 'JWT_TOKEN' },
-    { name: 'API Token/Key (GitHub/Slack/NPM)', regex: /\b(?:ghp|gho|ghu|ghs|ghr|glpat|npm|xox[baprs])[-_][A-Za-z0-9_-]{10,}\b/g, label: 'API_TOKEN' },
-    { name: 'Stripe API Key', regex: /\b(?:[rs]k)_(?:test|live)_[a-zA-Z0-9]{10,}\b/g, label: 'STRIPE_KEY' },
-    { name: 'OpenAI Project API Key', regex: /\b(?:sk|pk)-(?:proj-)?[a-zA-Z0-9_-]{16,}\b/gi, label: 'OPENAI_KEY' },
-    { name: 'Slack / Discord Incoming Webhook URL', regex: /\bhttps:\/\/(?:hooks\.slack\.com\/services\/T[A-Z0-9_]+\/B[A-Z0-9_]+\/[A-Za-z0-9_-]+|(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d{17,20}\/[A-Za-z0-9_-]{60,70})\b/gi, label: 'SECRET' },
-    { name: 'Azure Connection String / SAS Token', regex: /(?:DefaultEndpointsProtocol=https?;AccountName=[^;\s"']+;AccountKey=[A-Za-z0-9+/=]{20,}(?:;EndpointSuffix=[^;\s"']+)?|Endpoint=sb:\/\/[^;\s"']+;SharedAccessKeyName=[^;\s"']+;SharedAccessKey=[A-Za-z0-9+/=]{16,}|\bSharedAccessSignature=sr=[^\s"']+&sig=[A-Za-z0-9%/+=]{16,}|\bAccountKey=[A-Za-z0-9+/=]{40,88}==)/gi, label: 'SECRET' },
-    { name: 'Database Connection URI', regex: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|mssql):\/\/[^\s"']+/gi, label: 'DB_URI' },
-    { name: 'Embedded Credentials URI', regex: /\b(?:h(?:tt|xx)ps?|s?f(?:t|x)p|wss?):\/\/[a-zA-Z0-9_.%+-]+:[^\s/@:"']+@[a-zA-Z0-9_.-]+(?:(?:\[\.\]|\(\.\))[a-zA-Z0-9_.-]+)*(?::\d+)?(?:\/[^\s"']*)?/gi, label: 'SECRET' },
-    { name: 'URL Query Parameter Secret', regex: /(?<=[?&](?:api_key|apikey|access_token|client_secret|auth_token|token|secret|password|private_key)=)[^\s"'\x26#)>]{8,}/gi, label: 'SECRET' },
-    { name: 'CLI Credential Flag / Curl User Auth', regex: /(?:\bcurl\b[^\r\n]*?\s(?:-u|--user)\s+["']?[A-Za-z0-9_.+-]+:[^\s"']+|\b(?:--password|--api-key|--apikey|--access-token|--auth-token|--client-secret|--secret-key|--private-key)(?:=|\s+)["']?[^\s"']{6,}["']?)/gi, label: 'SECRET' },
-    { name: 'HTTP API Key Header', regex: /\b(?:X-API-Key|X-Amz-Security-Token|X-Functions-Key|X-Shopify-Access-Token|X-Auth-Token|Api-Key)\s*:\s*["']?[A-Za-z0-9_.\-~+/=]{12,}["']?/gi, label: 'SECRET' },
-    { name: 'Docker Registry Auth / K8s Secret Base64', regex: /(?<=["']?(?:auth|identitytoken|registrytoken|\.dockerconfigjson)["']?\s*:\s*["'])[A-Za-z0-9+/=]{16,}(?=["'])/gi, label: 'SECRET' },
-    { name: 'Bearer / Basic Auth Header Token', regex: /(?:(?<=\b(?:Bearer|Token)\s+)[a-zA-Z0-9_\-\.~+/=]{16,}(?![a-zA-Z0-9_\-\.~+/=])|(?<=\bAuthorization\s*:\s*Basic\s+)[A-Za-z0-9+/=]{8,}(?![A-Za-z0-9+/=]))/gi, label: 'SECRET' },
-    { name: 'Database/API Secret', regex: /(?<![?&])\b(?:(?:DB|POSTGRES|REDIS|MYSQL|DATABASE)[-_]?(?:PASSWORD|PASS|SECRET|KEY|PWD|CREDENTIALS?|TOKEN|AUTH)|AWS[-_]?(?:SECRET_ACCESS_KEY|SECRET_KEY|SESSION_TOKEN|SECURITY_TOKEN)|API[-_]?(?:KEY|SECRET|TOKEN|PASS|PASSWORD|AUTH|CREDENTIALS?)|[A-Za-z0-9_]*SECRET[A-Za-z0-9_]*|[A-Za-z0-9_]*PASSWORD[A-Za-z0-9_]*|[A-Za-z0-9_]*PASSWD[A-Za-z0-9_]*|[A-Za-z0-9_]*TOKEN[A-Za-z0-9_]*|ENCRYPTION[-_]KEY)[ \t]*[:=][ \t]*["']?(?:Bearer\s+)?(?!\[[A-Z0-9_]+_\d+\])([^\s"'&;\r\n,]{6,}?)(?=[.)?:]*(?:["'\s&;\r\n,]|$))/gi, label: 'SECRET' }
-];
 
 let LicenseManager;
 try {
@@ -357,7 +516,7 @@ function isCatastrophicRegex(pat) {
 
     const ch = pat[i];
     if (inCharClass) {
-      if (ch === '\\') { i += 2; continue; }
+      if (ch === '\x5C') { i += 2; continue; }
       if (ch === ']') {
         inCharClass = false;
         lastToken = { type: 'atom', atomText: pat.slice(charClassStart, i + 1) };
@@ -368,7 +527,7 @@ function isCatastrophicRegex(pat) {
 
     if (lastToken) flushUnquantified();
 
-    if (ch === '\\') {
+    if (ch === '\x5C') {
       const escaped = pat.slice(i, i + 2);
       const isBackref = /^\\[1-9]$/.test(escaped);
       if (isBackref) stack[stack.length - 1].hasBackref = true;
@@ -496,6 +655,7 @@ if (key) {
 
 const customRules = loadCustomRules();
 const localSessionMap = {};
+const MAX_WRAP_SESSION_TOKENS = 5000;
 let sessionWasTruncated = false;
 let sessionTruncatedLimit = 15000;
 
@@ -531,6 +691,15 @@ function performSanitization(text) {
 
   if (result && result.tokenMap) {
     Object.assign(localSessionMap, result.tokenMap);
+  }
+  if (isWrapMode) {
+    const keys = Object.keys(localSessionMap);
+    if (keys.length > MAX_WRAP_SESSION_TOKENS) {
+      const pruneCount = keys.length - MAX_WRAP_SESSION_TOKENS;
+      for (let i = 0; i < pruneCount; i++) {
+        delete localSessionMap[keys[i]];
+      }
+    }
   }
 
   return result.scrubbedText + (wasTruncated ? `\n\n[PrivacyScrubber Free Tier: Payload truncated to ${limit.toLocaleString()} characters. Upgrade to PRO ($15/mo or $110 Lifetime) or Developer SDK ($299/mo) for unlimited payload processing: https://privacyscrubber.com/pricing]` : '');
@@ -1027,28 +1196,47 @@ if (isWrapMode) {
     return node;
   };
 
-  const deepSanitizeResult = (node, keyName = '', depth = 0) => {
+  const deepSanitizeResult = (node, keyName = '', depth = 0, strictErrorMode = false) => {
     if (depth > 20 || node === null || node === undefined) return node;
     if (typeof node === 'string') {
-      if (SKIP_SANITIZE_KEYS.has(keyName) || node.length < 4) return node;
+      const skip = strictErrorMode ? (keyName === 'jsonrpc' || keyName === 'id' || keyName === 'code') : SKIP_SANITIZE_KEYS.has(keyName);
+      if (skip || node.length < 4) return node;
       return performSanitization(node);
     }
     if (Array.isArray(node)) {
-      return node.map(item => deepSanitizeResult(item, keyName, depth + 1));
+      return node.map(item => deepSanitizeResult(item, keyName, depth + 1, strictErrorMode));
     }
     if (typeof node === 'object') {
       const out = {};
       for (const [k, v] of Object.entries(node)) {
         if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
-        if (k === 'inputSchema' || k === 'outputSchema' || k === 'capabilities' || k === 'serverInfo' || k === '_meta') {
+        if (!strictErrorMode && (k === 'inputSchema' || k === 'outputSchema' || k === 'capabilities' || k === 'serverInfo' || k === '_meta')) {
           out[k] = v;
         } else {
-          out[k] = deepSanitizeResult(v, k, depth + 1);
+          out[k] = deepSanitizeResult(v, k, depth + 1, strictErrorMode);
         }
       }
       return out;
     }
     return node;
+  };
+
+  const sanitizeErrorPayload = (errNode) => {
+    if (errNode === null || errNode === undefined) return errNode;
+    if (typeof errNode === 'string') return performSanitization(errNode);
+    if (typeof errNode !== 'object') return errNode;
+    const out = {};
+    for (const [k, v] of Object.entries(errNode)) {
+      if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+      if (k === 'code') {
+        out[k] = v;
+      } else if (k === 'message' && typeof v === 'string') {
+        out[k] = performSanitization(v);
+      } else {
+        out[k] = deepSanitizeResult(v, k, 0, true);
+      }
+    }
+    return out;
   };
 
   const zeroizeSessionMap = () => {
@@ -1131,6 +1319,9 @@ if (isWrapMode) {
           }
         } else if (msg.params && typeof msg.params === 'object') {
           msg.params = deepSanitizeResult(msg.params);
+        }
+        if (msg.error !== undefined && msg.error !== null) {
+          msg.error = sanitizeErrorPayload(msg.error);
         }
         process.stdout.write(JSON.stringify(msg) + '\n');
         return;

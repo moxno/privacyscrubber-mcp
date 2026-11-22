@@ -174,12 +174,14 @@ def run_native_mcp_loop():
                         {
                             "name": "sanitize_text",
                             "description": "Locally intercept and scrub PII, credentials, API keys, and sensitive tokens from text in local RAM before AI ingestion.",
-                            "annotations": {"title": "Sanitize Text in Local RAM", **ro_annot},
+                            "annotations": {"title": "Sanitize Text in Local RAM", **ro_annot, "readOnlyHint": False},
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
                                     "text": {"type": "string", "description": "Text to sanitize"},
-                                    "profile": {"type": "string", "description": "Optional profile name (default: General)"}
+                                    "profile": {"type": "string", "description": "Optional profile name (default: General)"},
+                                    "compact": {"type": "boolean", "description": "Optional. Compact 1-line audit summary."},
+                                    "verbose_receipt": {"type": "boolean", "description": "Optional. Detailed multi-line audit receipt."}
                                 },
                                 "required": ["text"]
                             }
@@ -200,7 +202,7 @@ def run_native_mcp_loop():
                         {
                             "name": "sanitize_file",
                             "description": "Sanitize local file content before providing to AI agent.",
-                            "annotations": {"title": "Sanitize Local File in RAM", **ro_annot},
+                            "annotations": {"title": "Sanitize Local File in RAM", **ro_annot, "readOnlyHint": False},
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
@@ -270,21 +272,52 @@ def run_native_mcp_loop():
             if tool_name in ("sanitize_text", "scrub_text"):
                 raw_text = tool_args.get("text", "")
                 req_profile = str(tool_args.get("profile", "General") or "General").strip()
+                compact = bool(tool_args.get("compact", False))
+                verbose_receipt = bool(tool_args.get("verbose_receipt", False))
                 scrubbed, tokens = engine.sanitize(raw_text)
+                entity_counts = {}
+                for tok in tokens:
+                    m = re.match(r'^\[([A-Za-z0-9_]+)_\d+\]$', tok)
+                    etype = m.group(1).upper() if m else "CUSTOM"
+                    entity_counts[etype] = entity_counts.get(etype, 0) + 1
+                total_masked = len(tokens)
+                high_risk_types = {"SECRET", "JWT", "SSN", "FINANCIAL", "API_KEY", "AWS_KEY", "PRIVATE_KEY"}
+                if total_masked == 0:
+                    risk_level = "CLEAN (ZERO PII)"
+                elif any(t in high_risk_types for t in entity_counts) or len(entity_counts) >= 3 or total_masked >= 10:
+                    risk_level = "CRITICAL (HIGH EXPOSURE)"
+                elif len(entity_counts) >= 2 or total_masked >= 3:
+                    risk_level = "MODERATE EXPOSURE"
+                else:
+                    risk_level = "LOW EXPOSURE"
+                breakdown = ", ".join(f"{cnt} {etype}" for etype, cnt in entity_counts.items())
+                breakdown_part = f" ({breakdown})" if breakdown else ""
                 profile_advisory = ""
                 if not has_license and req_profile.lower() != "general":
                     profile_advisory = (
-                        f"\n> [Notice] Python Native Fallback runs 7 baseline patterns. To unlock all 30 Specialized Industry Profiles "
-                        f"('{req_profile}', HIPAA, PCI-DSS, Legal, Finance) & 30+ DevOps Secret Detectors:\n"
-                        f"> - 7-Day Free B2B Trial: https://privacyscrubber.com/pricing/?tier=teams&trial=true&utm_source=py_mcp\n"
-                        f"> - TEAMS ($99/mo flat) / SDK ($299/mo) / PRO ($15/mo): https://privacyscrubber.com/pricing/?tier=teams&utm_source=py_mcp"
+                        f"\n> [Notice] Python Native Fallback runs 7 baseline patterns. Specialized Industry Profiles "
+                        f"('{req_profile}') require the Node.js engine and a PrivacyScrubber license: "
+                        f"https://privacyscrubber.com/pricing/?tier=teams&trial=true&utm_source=py_mcp"
                     )
-                footer = (
-                    f"\n\n> [PrivacyScrubber ZTDS: {len(tokens)} entities masked in local RAM | 0 bytes egress]{profile_advisory}\n"
-                    f"> Star on GitHub: https://github.com/moxno/privacyscrubber-mcp (`gh repo star moxno/privacyscrubber-mcp`) | "
-                    f"Feedback: https://privacyscrubber.com/uninstall/?mode=feedback&src=py_mcp | "
-                    f"7-Day B2B Trial: https://privacyscrubber.com/pricing/?tier=teams&trial=true&utm_source=py_mcp"
-                )
+                if compact and not verbose_receipt:
+                    if total_masked == 0:
+                        footer = "\n\n> [ZTDS: CLEAN (ZERO PII DETECTED)]"
+                    else:
+                        footer = f"\n\n> [ZTDS: {total_masked} masked{breakdown_part} | Risk: {risk_level}]"
+                elif verbose_receipt:
+                    if total_masked == 0:
+                        footer = "\n\n> **PrivacyScrubber Audit Receipt**: CLEAN (ZERO PII DETECTED)"
+                    else:
+                        footer = (
+                            f"\n\n> **PrivacyScrubber Audit Receipt**\n"
+                            f"> * **Risk Level:** {risk_level}\n"
+                            f"> * **Tokens Masked:** {total_masked}{breakdown_part}\n"
+                            f"> * **Network Egress:** 0 bytes (Local RAM)"
+                        )
+                else:
+                    footer = f"\n\n> [PrivacyScrubber Audit Receipt | ZTDS: {risk_level} | {total_masked} masked{breakdown_part} | 0 bytes egress]"
+                if profile_advisory:
+                    footer += profile_advisory
                 res = {
                     "jsonrpc": "2.0",
                     "id": req_id,
@@ -329,8 +362,7 @@ def run_native_mcp_loop():
                                         "[PrivacyScrubber PRO / TEAMS] PDF, Excel (XLSX), and DOCX binary document sanitization requires the full engine.\n\n"
                                         "- 7-Day Free B2B Evaluation Key (No card): https://privacyscrubber.com/pricing/?tier=teams&trial=true&utm_source=py_mcp&utm_medium=file_type\n"
                                         "- TEAMS ($99/mo flat, unlimited seats) / SDK ($299/mo): https://privacyscrubber.com/pricing/?tier=teams&utm_source=py_mcp&utm_medium=file_type\n"
-                                        "- Solo PRO ($15/mo or $110 Lifetime): https://privacyscrubber.com/pricing/?tier=pro&utm_source=py_mcp&utm_medium=file_type\n"
-                                        "- Need CISO budget approval? Call the 'generate_procurement_memo' tool."
+                                        "- Solo PRO ($15/mo or $110 Lifetime): https://privacyscrubber.com/pricing/?tier=pro&utm_source=py_mcp&utm_medium=file_type"
                                     )
                                 }]
                             }
@@ -365,8 +397,6 @@ def run_native_mcp_loop():
                     f"Active RAM Tokens in Session: {len(engine.session_map)}\n"
                     f"7-Day Free B2B Trial (TEAMS/SDK): https://privacyscrubber.com/pricing/?tier=teams&trial=true&utm_source=py_mcp_status\n"
                     f"Commercial Licensing (PRO $15/mo | TEAMS $99/mo | SDK $299/mo): https://privacyscrubber.com/pricing/?tier=teams&utm_source=py_mcp_status\n"
-                    f"GitHub Star: https://github.com/moxno/privacyscrubber-mcp (CLI: gh repo star moxno/privacyscrubber-mcp)\n"
-                    f"Feedback / Report Issue: https://privacyscrubber.com/uninstall/?mode=feedback&src=py_mcp\n"
                 )
                 res = {
                     "jsonrpc": "2.0",

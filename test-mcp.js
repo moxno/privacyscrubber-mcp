@@ -294,6 +294,43 @@ try {
   }
   console.log("✅ Test 10 passed: Quota enforcement (5k vertical trial, 15k universal, unlimited PRO & profile-aware trial funnel) verified.");
 
+  // Test Case 11: Toolset Resolution Precedence & AWS Secret Access Key Detection
+  console.log("\n[Test 11] Testing resolveActiveToolset precedence and AWS Secret Access Key rule...");
+  const { resolveActiveToolset, TOOLSET_NAMES } = indexModule;
+  if (typeof resolveActiveToolset !== 'function' || !TOOLSET_NAMES) {
+    console.error("❌ Test 11 failed: resolveActiveToolset / TOOLSET_NAMES not exported.");
+    process.exit(1);
+  }
+  if (TOOLSET_NAMES.core.size !== 5 || TOOLSET_NAMES.agent.size !== 10 || TOOLSET_NAMES.ztds.size !== 5 || TOOLSET_NAMES.full !== null) {
+    console.error("❌ Test 11 failed: TOOLSET_NAMES sizes invalid.");
+    process.exit(1);
+  }
+  if (resolveActiveToolset([], {}) !== 'agent') {
+    console.error("❌ Test 11 failed: default toolset must be 'agent'.");
+    process.exit(1);
+  }
+  if (resolveActiveToolset([], { PLUGIN_ROOT: '/tmp/plugin' }) !== 'full') {
+    console.error("❌ Test 11 failed: PLUGIN_ROOT must default to 'full'.");
+    process.exit(1);
+  }
+  if (resolveActiveToolset([], { PRIVACYSCRUBBER_TOOLSET: 'core', PLUGIN_ROOT: '/tmp/plugin' }) !== 'core') {
+    console.error("❌ Test 11 failed: PRIVACYSCRUBBER_TOOLSET must override PLUGIN_ROOT.");
+    process.exit(1);
+  }
+  if (resolveActiveToolset(['--toolset=ztds'], { PRIVACYSCRUBBER_TOOLSET: 'core', PLUGIN_ROOT: '/tmp/plugin' }) !== 'ztds') {
+    console.error("❌ Test 11 failed: --toolset CLI flag must override env vars.");
+    process.exit(1);
+  }
+  const fakeAwsKeyId = 'AKIA' + 'IOSFODNN7EXAMPLE';
+  const fakeAwsSecret = 'wJalrXUtnFEMI' + '/K7MDENG/' + 'bPxRfiCYEXAMPLEKEY';
+  const awsSession = {};
+  const awsRes = performSanitization(`aws_secret_access_key=${fakeAwsSecret} and ${fakeAwsKeyId} / ${fakeAwsSecret}`, 'Dev', null, awsSession);
+  if (awsRes.scrubbedText.includes(fakeAwsSecret) || awsRes.scrubbedText.includes(fakeAwsKeyId)) {
+    console.error("❌ Test 11 failed: AWS Secret Access Key leaked in sanitized output:", awsRes.scrubbedText);
+    process.exit(1);
+  }
+  console.log("✅ Test 11 passed: resolveActiveToolset precedence and AWS Secret Access Key detection verified.");
+
   console.log("\n🎉 All local cryptographic and MCP Quality Assurance tests passed!");
   process.exit(0);
 
