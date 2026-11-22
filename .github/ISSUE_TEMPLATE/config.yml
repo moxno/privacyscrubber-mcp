@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation & Commercial Licensing
+    url: https://privacyscrubber.com/pii-mcp/
+    about: Setup instructions, license tiers (PRO / TEAMS / SDK), and enterprise air-gapped onboarding.
+  - name: Technical Support & Procurement
+    url: https://privacyscrubber.com/support/
+    about: Direct support for commercial installations, TEAMS keys, and CISO security documentation.
+  - name: Vulnerability Disclosure
+    url: https://privacyscrubber.com/vulnerability-disclosure/
+    about: Responsible security vulnerability reporting. Never post security vulnerabilities in public issues.
+  - name: ZTDS Open Standard & Spec
+    url: https://ztds.ai/
+    about: Vendor-neutral Zero-Trust Data Sanitization RFC v1.0 specification and conformance tools.

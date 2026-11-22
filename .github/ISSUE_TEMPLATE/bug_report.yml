@@ -1,0 +1,42 @@
+name: Bug Report (Synthetic Inputs Only)
+description: Report a defect in @privacyscrubber/mcp-server without including any real PII, PHI, or live credentials.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **ZERO-PII POLICY**: Never paste real customer PII, patient health data, production API keys, or private repository details into GitHub issues. Use **synthetic placeholder data** (e.g. `test.user@example.com`, `000-00-0000`, `sk-proj-EXAMPLE0000000000`).
+  - type: input
+    id: version
+    attributes:
+      label: Package Version & MCP Client
+      description: Output of `npx @privacyscrubber/mcp-server --help` or your IDE client (Cursor, Claude Desktop, Windsurf, Antigravity).
+      placeholder: "@privacyscrubber/mcp-server 2.5.2 | Node v22.x | Cursor / Claude Desktop"
+    validations:
+      required: true
+  - type: dropdown
+    id: toolset
+    attributes:
+      label: Active Toolset Mode
+      options:
+        - agent (default)
+        - core
+        - ztds
+        - full
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Synthetic Reproduction Steps
+      description: Describe tool inputs and expected vs actual behavior using synthetic examples only.
+    validations:
+      required: true
+  - type: checkboxes
+    id: zero_pii_confirm
+    attributes:
+      label: Zero-PII Confirmation
+      options:
+        - label: I confirm this issue contains 100% synthetic test data and zero real PII, PHI, or active secrets.
+          required: true

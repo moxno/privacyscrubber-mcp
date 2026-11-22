@@ -13,11 +13,10 @@ const path = require("path");
 const { execSync } = require("child_process");
 
 const REPO_ROOT = path.resolve(__dirname, "..");
+const assert = require("assert");
 const OBFUSCATED_ENGINES = [
   "ps-pii-engine.cjs",
-  "ps-pii-engine.js",
   "ps-license-manager.cjs",
-  "ps-license-manager.js",
   "scrubber-core.cjs",
 ];
 const ANTIGRAVITY_RUNTIME = "scripts/antigravity-mcp-server.cjs";
@@ -122,8 +121,43 @@ function main() {
     process.exit(1);
   }
 
+  // Runtime IP & cryptographic license-gate assertions
+  const savedKeys = {
+    PRIVACYSCRUBBER_KEY: process.env.PRIVACYSCRUBBER_KEY,
+    PRIVACYSCRUBBER_LICENSE_KEY: process.env.PRIVACYSCRUBBER_LICENSE_KEY,
+    ZTDS_LICENSE: process.env.ZTDS_LICENSE,
+    ZTDS_LICENSE_KEY: process.env.ZTDS_LICENSE_KEY,
+  };
+  delete process.env.PRIVACYSCRUBBER_KEY;
+  delete process.env.PRIVACYSCRUBBER_LICENSE_KEY;
+  delete process.env.ZTDS_LICENSE;
+  delete process.env.ZTDS_LICENSE_KEY;
+  try {
+    const lm = require(path.join(REPO_ROOT, "ps-license-manager.cjs"));
+    assert.strictEqual(typeof lm.generateKey, "undefined", "LicenseManager.generateKey must be stripped from public repo");
+
+    const eng = require(path.join(REPO_ROOT, "ps-pii-engine.cjs"));
+    assert.strictEqual(eng.PROFILE_RULES, undefined, "engine.PROFILE_RULES must be undefined");
+    assert.strictEqual(eng.REGEX_RULES, undefined, "engine.REGEX_RULES must be undefined");
+    assert.strictEqual(eng.getActiveRules, undefined, "engine.getActiveRules must be undefined");
+    assert.strictEqual(eng.getRulesMap, undefined, "engine.getRulesMap must be undefined");
+
+    const sc = require(path.join(REPO_ROOT, "scrubber-core.cjs"));
+    sc.init();
+    assert.strictEqual(sc.getRules, undefined, "scrubberCore.getRules must be undefined");
+    assert.throws(
+      () => sc.scrubText("A".repeat(16000), [], {}, "General", {}, true),
+      /Free Tier limit exceeded/i,
+      "Boolean isPro=true must not bypass Free Tier limit in hardened scrubber-core.cjs"
+    );
+  } finally {
+    for (const [k, v] of Object.entries(savedKeys)) {
+      if (v !== undefined) process.env[k] = v;
+    }
+  }
+
   console.log(
-    `[IP Guard] PASS (${scanAll ? "full repository" : "changed files"}): obfuscation, bundle minification, watermark, and hygiene verified.`
+    `[IP Guard] PASS (${scanAll ? "full repository" : "changed files"}): obfuscation, runtime license gates, bundle minification, watermark, and hygiene verified.`
   );
 }
 

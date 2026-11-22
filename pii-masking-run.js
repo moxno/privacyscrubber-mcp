@@ -432,14 +432,25 @@ if (!LicenseManager || typeof LicenseManager.validate !== 'function') {
 }
 
 function checkLicenseStatus() {
-  const key = (process.env.PRIVACYSCRUBBER_KEY || "").trim();
-  if (!key) return { isPro: false, type: null, error: "No license key provided." };
+  const key = (
+    process.env.PRIVACYSCRUBBER_KEY ||
+    process.env.PRIVACYSCRUBBER_LICENSE_KEY ||
+    process.env.ZTDS_LICENSE ||
+    process.env.ZTDS_LICENSE_KEY ||
+    ""
+  ).trim();
+  if (!key) return { isPro: false, key: '', type: null, error: "No license key provided." };
 
   const result = LicenseManager.validate(key);
   if (!result.valid) {
-    return { isPro: false, type: null, error: result.reason || "Invalid license format or signature." };
+    return { isPro: false, key: '', type: null, error: result.reason || "Invalid license format or signature." };
   }
-  return { isPro: true, type: result.tier, error: null };
+  const rawTier = String(result.tier || '').toUpperCase();
+  const isEval = rawTier === 'EVAL' || rawTier === 'EVALUATION';
+  if (isEval) {
+    return { isPro: false, key: '', type: result.tier, error: null };
+  }
+  return { isPro: true, key: key, type: result.tier, error: null };
 }
 
 function resolveConfigPath() {
@@ -684,7 +695,7 @@ function performSanitization(text) {
 
   let result;
   try {
-    result = PrivacyScrubberCore.scrubText(textToScrub, activeRules, {}, normalizedProfile, localSessionMap, license.isPro);
+    result = PrivacyScrubberCore.scrubText(textToScrub, activeRules, {}, normalizedProfile, localSessionMap, license.isPro ? (license.key || '') : '');
   } catch (err) {
     return text;
   }

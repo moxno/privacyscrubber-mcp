@@ -869,7 +869,7 @@ function checkLicenseStatus() {
     process.env.ZTDS_LICENSE_KEY ||
     ""
   ).trim();
-  if (!key) return { isPro: false, isEval: false, type: null, error: "No license key provided." };
+  if (!key) return { isPro: false, isEval: false, key: '', type: null, error: "No license key provided." };
 
   const result = LicenseManager.validate(key);
   
@@ -882,7 +882,7 @@ function checkLicenseStatus() {
     } else if (process.env.DEBUG_PRIVACYSCRUBBER) {
       mcpLog(`[License] Key validation notice: ${reason}`);
     }
-    return { isPro: false, isEval: false, type: null, expired: isExpired, error: reason };
+    return { isPro: false, isEval: false, key: '', type: null, expired: isExpired, error: reason };
   }
 
   const rawTier = String(result.tier || '').toUpperCase();
@@ -909,6 +909,7 @@ function checkLicenseStatus() {
   return {
     isPro: !isEval,
     isEval,
+    key: !isEval ? key : '',
     type: result.tier,
     rawTier: result.rawTier || result.tier,
     format: result.format || 'PS',
@@ -3433,7 +3434,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // Read-only dry-run map: NEVER mutates global token map
       const dryRunMap = {};
-      const result = PrivacyScrubberCore.scrubText(text, customRules, {}, normalizedProfile, dryRunMap, license.isPro);
+      const result = PrivacyScrubberCore.scrubText(text, customRules, {}, normalizedProfile, dryRunMap, license.isPro ? (license.key || '') : '');
       const telemetry = buildCisoAuditTelemetry(result.tokenMap || {});
 
       const structuredAudit = {
@@ -4158,7 +4159,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         const localSessionMap = {};
         
-        const result = PrivacyScrubberCore.scrubText(content, activeRules, {}, normalizedProfile, localSessionMap, license.isPro);
+        const result = PrivacyScrubberCore.scrubText(content, activeRules, {}, normalizedProfile, localSessionMap, license.isPro ? (license.key || '') : '');
         
         let isSecretLeak = false;
         if (!license.isPro && result.tokenMap) {
@@ -4426,7 +4427,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const content = buffer.toString('utf8');
 
           const localSessionMap = {};
-          const result = PrivacyScrubberCore.scrubText(content, activeRules, {}, normalizedProfile, localSessionMap, license.isPro);
+          const result = PrivacyScrubberCore.scrubText(content, activeRules, {}, normalizedProfile, localSessionMap, license.isPro ? (license.key || '') : '');
           
           Object.assign(totalTokensForDirectory, localSessionMap);
           
@@ -5595,7 +5596,7 @@ Before reading sensitive files, running terminal commands that may print credent
       const charLimit = (normalizedProfile !== "general" && !license.isPro) ? 5000 : 15000;
       const auditInput = (!license.isPro && text.length > charLimit) ? text.slice(0, charLimit) : text;
       const dryRunMap = {};
-      const result = PrivacyScrubberCore.scrubText(auditInput, customRules, {}, normalizedProfile, dryRunMap, license.isPro);
+      const result = PrivacyScrubberCore.scrubText(auditInput, customRules, {}, normalizedProfile, dryRunMap, license.isPro ? (license.key || '') : '');
       const telemetry = buildCisoAuditTelemetry(result.tokenMap || {}, { licenseTier: license.type || "FREE" });
       const totalEntitiesFound = telemetry.totalCount || Object.keys(result.tokenMap || {}).length;
       const riskLevel = totalEntitiesFound === 0 ? "CLEAN" : totalEntitiesFound < 5 ? "MODERATE" : "CRITICAL";
@@ -5915,7 +5916,7 @@ export function performSanitization(text, profile, ignoreList = null, customToke
   const normalizedProfile = (profile || "general").trim().toLowerCase();
   const license = checkLicenseStatus();
   const targetMap = customTokenMap || activeTokenMap;
-  const result = PrivacyScrubberCore.scrubText(text, customRules, {}, normalizedProfile, targetMap, license.isPro, ignoreList);
+  const result = PrivacyScrubberCore.scrubText(text, customRules, {}, normalizedProfile, targetMap, license.isPro ? (license.key || '') : '', ignoreList);
 
   const newTokens = {};
   // Update our volatile map with new matches

@@ -1,0 +1,70 @@
+name: Detection Feedback (False Positive / Missed Entity)
+description: Suggest a detection improvement across General or any specialized profile using synthetic examples only.
+title: "[Detection]: "
+labels: ["detection-feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **ZERO-PII POLICY**: All examples MUST be completely synthetic (e.g. `jane.doe@example.org`, synthetic invoice formats). Issues containing real personal data or live secrets are closed and deleted immediately.
+  - type: dropdown
+    id: feedback_kind
+    attributes:
+      label: Feedback Type
+      options:
+        - False Positive (non-sensitive term masked unexpectedly)
+        - False Negative (synthetic sensitive pattern missed)
+        - Restoration / Token Boundary Issue (split tokens, suffix, delimiter)
+    validations:
+      required: true
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Profile Used
+      options:
+        - General
+        - Dev
+        - Medical
+        - Pharma
+        - Biotech
+        - Telecom
+        - Legal
+        - Compliance
+        - CCPA
+        - Finance
+        - Bizops
+        - Sales
+        - WealthMgmt
+        - Insurance
+        - Accounting
+        - Underwriting
+        - Automotive
+        - Energy
+        - Hospitality
+        - HR
+        - Security
+        - Marketing
+        - Support
+        - RealEstate
+        - Agents
+        - Academic
+        - Creative
+        - Tech
+        - Personal
+        - Engineering
+    validations:
+      required: true
+  - type: textarea
+    id: synthetic_sample
+    attributes:
+      label: Minimal Synthetic Input & Observed Behavior
+      description: Provide a short synthetic snippet showing what happened and what you expected.
+    validations:
+      required: true
+  - type: checkboxes
+    id: zero_pii_confirm
+    attributes:
+      label: Zero-PII Confirmation
+      options:
+        - label: I confirm this sample is 100% synthetic and contains zero real personal data or live credentials.
+          required: true
