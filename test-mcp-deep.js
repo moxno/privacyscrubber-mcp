@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn, execFileSync } from 'child_process';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -119,6 +119,14 @@ async function runMcpSession() {
     }
     if (!initResponse.result?.instructions || !initResponse.result.instructions.includes('AUTOMATIC INTERCEPTION RULES')) {
       throw new Error('Initialize response missing MCP system instructions');
+    }
+    if (initResponse.result.instructions.includes('guard_unmask_args')) {
+      throw new Error('Initialize instructions must NOT advertise guard_unmask_args when --unsafe-expose-unmask-rpc is disabled');
+    }
+    for (const expectedToolRef of ['guard_apply_patch', 'guard_exec', 'reveal_text']) {
+      if (!initResponse.result.instructions.includes(expectedToolRef)) {
+        throw new Error(`Initialize instructions missing required tool guidance: ${expectedToolRef}`);
+      }
     }
     const expectedToolNames = [
       'audit_context', 'sanitize_text', 'reveal_text', 'stream_reveal_text', 'sanitize_file',
@@ -1400,6 +1408,40 @@ async function runMcpSession() {
         throw new Error(`Toolset counts mismatch: core=${coreToolsRes.result?.tools?.length}, ztds=${ztdsToolsRes.result?.tools?.length}, plugin=${pluginToolsRes.result?.tools?.length}, optInAgent=${optInAgentToolsRes.result?.tools?.length}, optInFull=${optInFullToolsRes.result?.tools?.length}`);
       }
       console.log("[PASS] Wave 3 toolset variants (--toolset=core=5, ztds=5, PLUGIN_ROOT=27, opt-in agent=10, opt-in full=28) verified.");
+
+      // 15b.1 Verify --help accuracy and opt-in initialize.instructions
+      const helpOut = execFileSync(process.execPath, [indexScript, '--help'], { encoding: 'utf8' });
+      if (!helpOut.includes('core (5), agent (9, default), ztds (5), full (27)') || !helpOut.includes('--unsafe-expose-unmask-rpc')) {
+        throw new Error(`--help output inaccurate: ${helpOut}`);
+      }
+      const optInInitInstructions = await new Promise((resolve, reject) => {
+        const p = spawn(process.execPath, [indexScript, '--unsafe-expose-unmask-rpc'], {
+          env: { ...process.env, HOME: tempWave3Home, USERPROFILE: tempWave3Home }
+        });
+        let b = '';
+        const t = setTimeout(() => { p.kill(); reject(new Error('opt-in initialize check timed out')); }, 10000);
+        p.stdout.on('data', (c) => {
+          b += c.toString();
+          const lines = b.split('\n');
+          b = lines.pop() || '';
+          for (const l of lines) {
+            if (!l.trim()) continue;
+            try {
+              const m = JSON.parse(l);
+              if (m.id === 1) {
+                clearTimeout(t);
+                p.kill();
+                resolve(m.result?.instructions || '');
+              }
+            } catch (_) {}
+          }
+        });
+        p.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'w3-help', version: '1.0' } } }) + '\n');
+      });
+      if (!optInInitInstructions.includes('guard_unmask_args')) {
+        throw new Error('Opt-in initialize.instructions should include guard_unmask_args when --unsafe-expose-unmask-rpc is set');
+      }
+      console.log("[PASS] Wave 3 --help counts and conditional initialize.instructions verified.");
 
       // 15b.2 F-10 16MB single-line stdio frame returns clean JSON-RPC error instead of hanging
       const oversizeRpcRes = await new Promise((resolve, reject) => {

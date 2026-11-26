@@ -109,7 +109,8 @@ if (rawCliArgs.includes('--help') || rawCliArgs.includes('-h') || rawCliArgs.inc
   console.log(`PrivacyScrubber MCP Server v${MCP_VERSION} — Zero-Trust Data Sanitization (ZTDS)`);
   console.log('\nUsage:');
   console.log('  npx @privacyscrubber/mcp-server                  Start MCP stdio server (default toolset: agent)');
-  console.log('  npx @privacyscrubber/mcp-server --toolset=<mode> Select exposed tools: core (5), agent (10, default), ztds (5), full (28)');
+  console.log('  npx @privacyscrubber/mcp-server --toolset=<mode> Select exposed tools: core (5), agent (9, default), ztds (5), full (27)');
+  console.log('  npx @privacyscrubber/mcp-server --unsafe-expose-unmask-rpc  Expose guard_unmask_args (agent: 10, full: 28)');
   console.log('  npx @privacyscrubber/mcp-server doctor           Run diagnostics (Node, engine, MCP RPC, hooks, license, IDE configs)');
   console.log('  npx @privacyscrubber/mcp-server --wrap <cmd>     Transparent ZTDS proxy for any 3rd-party MCP server');
   console.log('  npx @privacyscrubber/mcp-server init             Auto-configure Claude, Cursor, Windsurf, Cline, Codex');
@@ -173,31 +174,45 @@ if (rawCliArgs.some(arg => ['init', 'install', '--install', 'setup', '--setup', 
   process.exit(0);
 }
 
-// Import the production core engine with 100% parity
+// Lazy engine initialization — defers ~720KB regex & core engine load until first tool/engine use
 const scrubberCorePath = path.resolve(__dirname, './scrubber-core.cjs');
-const PrivacyScrubberCore = require(scrubberCorePath);
-let LicenseManager;
-try {
-  LicenseManager = require('./ps-license-manager.cjs');
-} catch (e) {
+let PrivacyScrubberCore = null;
+let LicenseManager = null;
+let piiEngine = null;
+let _engineInitialized = false;
+
+function ensureLicenseManager() {
+  if (LicenseManager && typeof LicenseManager.validate === 'function') {
+    return LicenseManager;
+  }
   try {
-    LicenseManager = require('./ps-license-manager.js');
-  } catch (err) {}
-}
-if (!LicenseManager || typeof LicenseManager.validate !== 'function') {
-  LicenseManager = global.LicenseManager;
+    LicenseManager = require('./ps-license-manager.cjs');
+  } catch (e) {
+    try {
+      LicenseManager = require('./ps-license-manager.js');
+    } catch (err) {}
+  }
+  if (!LicenseManager || typeof LicenseManager.validate !== 'function') {
+    LicenseManager = global.LicenseManager;
+  }
+  return LicenseManager;
 }
 
-// Initialize core engine
-PrivacyScrubberCore.init();
-
-let piiEngine;
-try {
-  piiEngine = require('./ps-pii-engine.cjs');
-} catch (e) {
-  try {
-    piiEngine = require('./ps-pii-engine.js');
-  } catch (err) {}
+function ensureEngineInitialized() {
+  if (!_engineInitialized) {
+    PrivacyScrubberCore = require(scrubberCorePath);
+    ensureLicenseManager();
+    PrivacyScrubberCore.init();
+    try {
+      piiEngine = require('./ps-pii-engine.cjs');
+    } catch (e) {
+      try {
+        piiEngine = require('./ps-pii-engine.js');
+      } catch (err) {}
+    }
+    _engineInitialized = true;
+  }
+  return { PrivacyScrubberCore, LicenseManager, piiEngine };
 }
 
 export const CANONICAL_INDUSTRY_PROFILES = [
@@ -231,6 +246,7 @@ export function resolveRequestedProfile(args, defaultProfile = 'General') {
 
   const lower = candidate.toLowerCase();
   if (lower === 'auto') {
+    ensureEngineInitialized();
     if (typeof args.text === 'string' && piiEngine && typeof piiEngine.detectVerticalProfileCandidates === 'function') {
       try {
         const candidates = piiEngine.detectVerticalProfileCandidates(args.text);
@@ -258,13 +274,16 @@ export function resolveRequestedProfile(args, defaultProfile = 'General') {
   }
 
   // Canonical normalization via PROFILE_ALIAS_MAP if available
-  if (candidate && candidate.toLowerCase() !== 'general' && piiEngine && piiEngine.PROFILE_ALIAS_MAP) {
-    const mapped = piiEngine.PROFILE_ALIAS_MAP[candidate.toLowerCase()];
-    if (mapped) {
-      if (candidate.toLowerCase() === mapped.toLowerCase()) {
-        return candidate;
+  if (candidate && candidate.toLowerCase() !== 'general') {
+    ensureEngineInitialized();
+    if (piiEngine && piiEngine.PROFILE_ALIAS_MAP) {
+      const mapped = piiEngine.PROFILE_ALIAS_MAP[candidate.toLowerCase()];
+      if (mapped) {
+        if (candidate.toLowerCase() === mapped.toLowerCase()) {
+          return candidate;
+        }
+        return mapped.charAt(0).toUpperCase() + mapped.slice(1);
       }
-      return mapped.charAt(0).toUpperCase() + mapped.slice(1);
     }
   }
 
@@ -386,6 +405,7 @@ function getStreamLabelAliases(label) {
   };
   addAlias(label);
   addAlias(upper);
+  ensureEngineInitialized();
   if (piiEngine && typeof piiEngine.getLabelAliases === 'function') {
     try {
       const list = piiEngine.getLabelAliases(label);
@@ -886,6 +906,7 @@ export function getStreamDetokenizer(sessionId = 'default') {
 
 function reverseTokens(text, map) {
   if (!text || typeof text !== 'string' || !map || Object.keys(map).length === 0) return text;
+  ensureEngineInitialized();
   if (PrivacyScrubberCore && typeof PrivacyScrubberCore.unscrubText === 'function') {
     const res = PrivacyScrubberCore.unscrubText(text, map);
     return (res && typeof res.restoredText === 'string') ? res.restoredText : (typeof res === 'string' ? res : text);
@@ -1031,6 +1052,7 @@ function canonicalProfileSlug(profileName) {
   if (!lower || lower === 'universal' || lower === 'baseline' || lower === 'general') return 'general';
   if (lower === 'dev_secrets') return 'dev';
   if (lower === 'privilege') return 'legal';
+  ensureEngineInitialized();
   if (piiEngine && piiEngine.PROFILE_ALIAS_MAP && piiEngine.PROFILE_ALIAS_MAP[lower]) {
     return String(piiEngine.PROFILE_ALIAS_MAP[lower]).trim().toLowerCase();
   }
@@ -1064,7 +1086,8 @@ function checkLicenseStatus() {
     };
   }
 
-  const result = LicenseManager.validate(key);
+  const lm = ensureLicenseManager();
+  const result = lm.validate(key);
 
   if (!result.valid) {
     const reason = result.reason || "Invalid license format or signature.";
@@ -2296,7 +2319,9 @@ const MCP_SYSTEM_INSTRUCTIONS = [
   "1. FILE READS: Before reading .env, configs, logs, database dumps, or documents (DOCX/PDF/XLSX/CSV/JSON), call 'guard_read_file' (or 'sanitize_file') instead of native file read tools.",
   "2. SHELL & GIT: Route terminal commands that may output secrets or PII through 'guard_exec', and inspect diffs via 'guard_git_diff'.",
   "3. RAW TEXT & RAG: Sanitize raw user PII/secrets in prompts via 'sanitize_text' (or 'guard_rag_chunk' for vector chunks) before external reasoning.",
-  "4. LOCAL RESTORATION: Keep placeholders like [EMAIL_1], [API_KEY_1], [NAME_1] intact during reasoning. Call 'reveal_text' to restore final answers, 'guard_apply_patch' to write unmasked code/configs to disk, or 'guard_unmask_args' for local tool calls."
+  allowExposeUnmaskRpc
+    ? "4. LOCAL RESTORATION: Keep placeholders like [EMAIL_1], [API_KEY_1], [NAME_1] intact during reasoning. Call 'reveal_text' to restore final answers, 'guard_apply_patch' to write unmasked code/configs to disk, 'guard_exec' for local command execution, or 'guard_unmask_args' for local tool calls."
+    : "4. LOCAL RESTORATION: Keep placeholders like [EMAIL_1], [API_KEY_1], [NAME_1] intact during reasoning. Call 'reveal_text' to restore final answers, 'guard_apply_patch' to write unmasked code/configs to disk, or 'guard_exec' for local command execution."
 ].join("\n");
 
 // Create the MCP server
@@ -4035,6 +4060,7 @@ function extractXlsxTextSafely(buf) {
 
 // Handle tool execution calls
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  ensureEngineInitialized();
   const { name, arguments: args } = request.params;
   const toolStart = Date.now();
 
@@ -5295,46 +5321,72 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
       const resolvedPath = safeTarget.resolvedPath;
-      if (!fs.existsSync(resolvedPath)) {
-        return {
-          isError: true,
-          content: [{ type: "text", text: `Error: File not found at path: ${resolvedPath}` }]
-        };
+      const noFollowFlag = (fs.constants && typeof fs.constants.O_NOFOLLOW === 'number') ? fs.constants.O_NOFOLLOW : 0;
+      const nonBlockFlag = (fs.constants && typeof fs.constants.O_NONBLOCK === 'number') ? fs.constants.O_NONBLOCK : 0;
+      let fd;
+      try {
+        fd = fs.openSync(resolvedPath, fs.constants.O_RDONLY | noFollowFlag | nonBlockFlag);
+      } catch (openErr) {
+        if (openErr && openErr.code === 'ENOENT') {
+          return {
+            isError: true,
+            content: [{ type: "text", text: `Error: File not found at path: ${resolvedPath}` }]
+          };
+        }
+        if (openErr && openErr.code === 'EISDIR') {
+          return {
+            isError: true,
+            content: [{ type: "text", text: `Error: Path is a directory. Use audit_directory_for_pii to scan directories.` }]
+          };
+        }
+        if (openErr && (openErr.code === 'ELOOP' || openErr.code === 'ENXIO' || openErr.code === 'ENODEV')) {
+          return {
+            isError: true,
+            content: [{ type: "text", text: `Error: Path '${file_path}' must be a regular non-symlink file (FIFOs/devices/sockets blocked).` }]
+          };
+        }
+        throw openErr;
       }
-      const stat = fs.lstatSync(resolvedPath);
-      if (stat.isDirectory()) {
-        return {
-          isError: true,
-          content: [{ type: "text", text: `Error: Path is a directory. Use audit_directory_for_pii to scan directories.` }]
-        };
-      }
-      if (stat.isSymbolicLink() || !stat.isFile()) {
-        return {
-          isError: true,
-          content: [{ type: "text", text: `Error: Path '${file_path}' must be a regular non-symlink file (FIFOs/devices/sockets blocked).` }]
-        };
-      }
-      if (stat.size > 10 * 1024 * 1024) {
-        return {
-          isError: true,
-          content: [{ type: "text", text: `Error: File is too large (${(stat.size / 1024 / 1024).toFixed(2)}MB). Maximum allowed size is 10MB.` }]
-        };
-      }
+
+      let rawBuffer;
       const ext = path.extname(resolvedPath).toLowerCase();
-      if ((ext === '.pdf' || ext === '.xlsx' || ext === '.xls') && !license.isPro) {
-        return {
-          isError: true,
-          content: [{
-            type: "text",
-            text: `[PrivacyScrubber PRO / TEAMS] PDF and Excel file sanitization is a PRO feature (${ext === '.pdf' ? 'PDF' : 'Excel/XLSX'} detected).\n\n- 7-Day Free B2B Trial (No card): https://privacyscrubber.com/pricing/?tier=teams&trial=true&utm_source=mcp_cli&utm_medium=file_type&utm_campaign=b2b_trial`
-          }]
-        };
+      try {
+        const stat = fs.fstatSync(fd);
+        if (stat.isDirectory()) {
+          return {
+            isError: true,
+            content: [{ type: "text", text: `Error: Path is a directory. Use audit_directory_for_pii to scan directories.` }]
+          };
+        }
+        if (!stat.isFile()) {
+          return {
+            isError: true,
+            content: [{ type: "text", text: `Error: Path '${file_path}' must be a regular non-symlink file (FIFOs/devices/sockets blocked).` }]
+          };
+        }
+        if (stat.size > 10 * 1024 * 1024) {
+          return {
+            isError: true,
+            content: [{ type: "text", text: `Error: File is too large (${(stat.size / 1024 / 1024).toFixed(2)}MB). Maximum allowed size is 10MB.` }]
+          };
+        }
+        if ((ext === '.pdf' || ext === '.xlsx' || ext === '.xls') && !license.isPro) {
+          return {
+            isError: true,
+            content: [{
+              type: "text",
+              text: `[PrivacyScrubber PRO / TEAMS] PDF and Excel file sanitization is a PRO feature (${ext === '.pdf' ? 'PDF' : 'Excel/XLSX'} detected).\n\n- 7-Day Free B2B Trial (No card): https://privacyscrubber.com/pricing/?tier=teams&trial=true&utm_source=mcp_cli&utm_medium=file_type&utm_campaign=b2b_trial`
+            }]
+          };
+        }
+        const limitStatus = checkFreeTierLimit(license.isPro, license.isEval);
+        if (limitStatus.blocked) {
+          return buildDailyLimitBlockedResponse(limitStatus);
+        }
+        rawBuffer = fs.readFileSync(fd);
+      } finally {
+        fs.closeSync(fd);
       }
-      const limitStatus = checkFreeTierLimit(license.isPro, license.isEval);
-      if (limitStatus.blocked) {
-        return buildDailyLimitBlockedResponse(limitStatus);
-      }
-      const rawBuffer = fs.readFileSync(resolvedPath);
 
       let rawContent = '';
       if (ext === '.docx') {
@@ -6821,6 +6873,7 @@ function neutralizePreExistingTokens(text) {
 }
 
 export function performSanitization(text, profile, ignoreList = null, customTokenMap = null, options = null) {
+  ensureEngineInitialized();
   const customRules = loadCustomRules();
   const normalizedProfile = (profile || "general").trim().toLowerCase();
   const license = checkLicenseStatus();
