@@ -19,7 +19,7 @@ import zipfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
-VERSION = "2.5.3"
+VERSION = "2.5.5"
 
 FREE_TIER_DAILY_LIMIT = 100
 EVAL_TIER_DAILY_LIMIT = 250
@@ -219,7 +219,14 @@ def _parse_iso_ms(val: str):
 def validate_license_offline(raw_key: str) -> dict:
     if not raw_key or not isinstance(raw_key, str):
         return {"valid": False, "is_pro": False, "is_eval": False, "tier": None, "allowed_profiles": None, "reason": "No license key"}
-    key = raw_key.strip()
+    key = raw_key.strip().strip("\"'").strip()
+    url_m = re.search(r"(?:[?&#](?:restore|team_restore|key|ps_pro)=)([^&#\s]+)", key, re.IGNORECASE)
+    if url_m:
+        try:
+            from urllib.parse import unquote
+            key = unquote(url_m.group(1)).strip()
+        except Exception:
+            key = url_m.group(1).strip()
     if not key:
         return {"valid": False, "is_pro": False, "is_eval": False, "tier": None, "allowed_profiles": None, "reason": "No license key"}
 
@@ -1042,7 +1049,7 @@ def run_native_mcp_loop():
                             if not lic["is_pro"] and p_chk["normalized_profile"] != "general":
                                 footer += f"\n> [Notice] Python Native Fallback runs baseline rules. Specialized profiles require the Node.js engine & commercial license."
                             if tool_name == "ztds_sanitize":
-                                receipt_hex = hashlib.sha256(text_in.encode("utf-8", errors="replace")).hexdigest()[:12].upper()
+                                receipt_hex = hashlib.sha256(scrubbed.encode("utf-8", errors="replace")).hexdigest()[:16].upper()
                                 struct_out = {
                                     "sanitizedText": scrubbed,
                                     "entitiesMasked": total_masked,

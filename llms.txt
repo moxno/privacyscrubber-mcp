@@ -1,37 +1,27 @@
-# PrivacyScrubber MCP Server
+# @privacyscrubber/mcp-server (v2.5.3)
 
-> Zero-Trust Data Sanitization (ZTDS) Model Context Protocol (MCP) Server. Locally scrubs PII, secrets, credentials, and custom patterns from text and files before they reach remote LLM APIs.
+> CISO-Approved Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Claude Desktop, Claude Code, Windsurf, VS Code, Cline, Zed, and Google Antigravity. Implements ZTDS RFC v1.0 (`draft-sibiryakov-ztds-protocol`) 100% locally in ephemeral RAM with zero outbound network egress.
 
-## Main URL
-- Repository: https://github.com/moxno/privacyscrubber-mcp
-- Web sandbox: https://privacyscrubber.com/
-- Chrome extension: https://chromewebstore.google.com/detail/privacyscrubber-%E2%80%94-pii-red/pimoejgefeilajmmbpghifdmhdlkgjol
+- **Package Version (SSOT):** `v2.5.3` (`npm`: `@privacyscrubber/mcp-server`, `pypi`: `privacyscrubber-mcp`, MCP Registry: `io.github.moxno/privacyscrubber-mcp`)
+- **Homepage & Docs:** https://privacyscrubber.com/pii-mcp/
+- **Markdown Docs Mirror:** https://privacyscrubber.com/pii-mcp.md
+- **Public Repository:** https://github.com/moxno/privacyscrubber-mcp
+- **ZTDS Open Standard:** https://ztds.ai/ · https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/
 
-## Provided Tools
+## Installation & CLI Entrypoints
+- **Auto-Install All IDEs:** `npx -y @privacyscrubber/mcp-server install --all`
+- **Project Hooks & Rules:** `npx -y @privacyscrubber/mcp-server install --workspace`
+- **Google Antigravity Plugin:** `agy plugin install https://github.com/moxno/privacyscrubber-mcp`
+- **Stdio Run (Node / Python):** `npx -y @privacyscrubber/mcp-server` or `uvx privacyscrubber-mcp`
+- **CLI Guard Bins:** `mcp-server`, `privacyscrubber-mcp`, `ps-mcp`, `pii-masking-run`, `ps-guard`, `agentic-guard`, `privacyscrubber-mcp-install`
 
-The server runs locally in StdIO transport and exposes three tools:
+## 28 Local Stdio MCP Tools
+- **Core PII, Files & Compliance (11):** `audit_context`, `sanitize_text`, `reveal_text`, `stream_reveal_text`, `sanitize_file`, `audit_directory_for_pii`, `redact_file`, `create_default_config`, `generate_compliance_report`, `mark_false_positive`, `check_status`
+- **Agentic Guard, RAG & Procurement (12):** `guard_exec`, `guard_read_file`, `guard_git_diff`, `guard_apply_patch`, `create_agent_rules`, `guard_unmask_args`, `guard_session_info`, `guard_session_reset`, `guard_rag_chunk`, `guard_rag_restore`, `export_audit_log`, `generate_procurement_memo`
+- **ZTDS Protocol Standard Tools (5):** `ztds_sanitize`, `ztds_restore`, `ztds_audit`, `ztds_info`, `ztds_reset_session`
 
-### sanitize_text
-Scrubs PII (names, emails, phones, locations), API keys, and passwords from input text.
-- Inputs:
-  - `text` (string, required): Raw text block or log segment to sanitize.
-  - `profile` (string, optional): Gated industry detection profile (e.g. 'General', 'Dev', 'Medical', 'Legal', 'Compliance'). Defaults to 'General'.
-- Output: Masked template string containing placeholders (e.g. `[EMAIL_1]`).
-
-### reveal_text
-Detokenizes AI responses by restoring original PII values locally in-memory.
-- Inputs:
-  - `text` (string, required): Response from the LLM containing tokens like `[EMAIL_1]`.
-- Output: Detokenized restored string.
-
-### sanitize_file
-Reads a local file, checks format compatibility, extracts raw text, and redacts PII.
-- Supported Formats: Source code files, CSV, JSON, markdown, text logs, and Microsoft Word (`.docx`) documents.
-- Binary formats (like PDF, ZIP) are automatically rejected with a redirection notice to prevent corrupting inputs.
-- Inputs:
-  - `filePath` (string, required): Absolute local file path.
-  - `profile` (string, optional): Industry detection profile.
-- Output: Sanitized file text template.
-
-## Environment Variables
-- `PRIVACYSCRUBBER_KEY` (string, optional): License key to unlock advanced industry detection profiles. If not set, the server runs on the Free tier and defaults all sanitizations to the 'General' profile.
+## Architectural Guarantees
+- **Stdio Air-Gapped Transport:** Zero listening ports, zero external subprocessors, and zero outbound prompt/file transmissions.
+- **Volatile RAM Token Map:** Surrogate placeholders (`[NAME_1]`, `[EMAIL_1]`, `[API_TOKEN_1]`) stay strictly in local process memory and zeroize on `ztds_reset_session` / exit.
+- **Offline License Activation:** Supports free General baseline (`15,000` chars) and offline Ed25519 keys via `PRIVACYSCRUBBER_KEY` unlocking all 30 specialized industry profiles (`PRO $15/mo` or `$110` Lifetime, `TEAMS $99/mo` flat, `Developer SDK $299/mo` or `$2,990/yr`).
+- **Companion Developer SDK:** https://github.com/moxno/privacyscrubber-sdk · https://privacyscrubber.com/sdk/

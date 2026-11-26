@@ -12,7 +12,7 @@ Use of this software within commercial organizations, production automated pipel
 - **PrivacyScrubber Developer SDK**: Headless Node.js/WASM runtime for internal backend nodes and RAG pipelines ($299/mo or $2,990/yr).
 - **PrivacyScrubber Enterprise / Air-Gapped**: Dedicated corporate VPC clusters, Nitro Enclaves, and custom profile calibration (Custom Enterprise Licensing).
 
-Licensing and key activation: https://privacyscrubber.com/pricing
+Licensing and key activation: https://privacyscrubber.com/pricing/
 
 ### 3. Restrictions on Reverse-Engineering & Redistribution
 Except as expressly authorized herein, you may not:

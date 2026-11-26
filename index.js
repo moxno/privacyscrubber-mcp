@@ -62,7 +62,6 @@ export const TOOLSET_NAMES = {
     'guard_exec',
     'guard_git_diff',
     'guard_apply_patch',
-    'guard_unmask_args',
     'guard_session_info',
     'guard_session_reset',
     'mark_false_positive'
@@ -103,6 +102,8 @@ export function resolveActiveToolset(args = rawCliArgs, env = process.env) {
 }
 
 const activeToolset = resolveActiveToolset(rawCliArgs, process.env);
+const allowExposeUnmaskRpc = rawCliArgs.includes('--unsafe-expose-unmask-rpc') || process.env.PRIVACYSCRUBBER_EXPOSE_UNMASK_RPC === '1';
+const allowExecUnmask = rawCliArgs.includes('--allow-exec-unmask') || process.env.PRIVACYSCRUBBER_ALLOW_EXEC_UNMASK === '1';
 
 if (rawCliArgs.includes('--help') || rawCliArgs.includes('-h') || rawCliArgs.includes('help')) {
   console.log(`PrivacyScrubber MCP Server v${MCP_VERSION} — Zero-Trust Data Sanitization (ZTDS)`);
@@ -466,6 +467,10 @@ export function buildStreamReplacer(tokenMap = {}, options = {}) {
     unifiedRegex.lastIndex = 0;
     return text.replace(unifiedRegex, (match, suffix) => {
       const coreMatch = suffix ? match.slice(0, match.length - suffix.length) : match;
+      const hasOuterDelimiter = /^(?:\[|\\u005[Bb]|%5[Bb]|&(?:amp;)?#0*91;|&(?:amp;)?#[xX]0*5[Bb];|&(?:amp;)?(?:lbrack|lsqb);|\u3010|\uFF3B|\u3014|\u300C|\u300E|<|\{\{?|__)/i.test(coreMatch);
+      if (!hasOuterDelimiter && /[a-z\u0430-\u044f\u0451]/.test(coreMatch)) {
+        return match;
+      }
       let restored = null;
 
       if (lookup.has(coreMatch)) {
@@ -1173,7 +1178,7 @@ function resolveProfileWithEntitlement(args, license, defaultProfile = 'General'
           code: 'PROFILE_NOT_LICENSED',
           profile: requestedProfile,
           normalizedProfile: normRequested,
-          error: `Error: PROFILE_NOT_LICENSED - Profile '${requestedProfile}' is not permitted under your active license (${license.type || 'SCOPED'}; allowed: ${permittedList}). Upgrade at https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp&utm_medium=profile_scope`
+          error: `Error: PROFILE_NOT_LICENSED - Profile '${requestedProfile}' is not permitted under your active license (${license.type || 'SCOPED'}; allowed: ${permittedList}). Upgrade at https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp&utm_medium=profile_scope`
         };
       }
       const normDefault = canonicalProfileSlug(defaultProfile);
@@ -1464,7 +1469,7 @@ function checkFreeTierLimit(isPro, isEval = false) {
   }
 
   if (count >= FREE_TIER_DAILY_LIMIT) {
-    mcpLog(`${colors.redBold}[PrivacyScrubber] Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Request BLOCKED.${colors.reset}\n${colors.cyan}7-Day Free B2B Trial (TEAMS/SDK): https://privacyscrubber.com/pricing/?tier=teams&trial=true&utm_source=mcp&utm_medium=daily_limit&utm_campaign=b2b_trial${colors.reset}\n${colors.cyan}TEAMS ($99/mo flat) / PRO ($15/mo or $110 Lifetime): https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp&utm_medium=daily_limit&utm_campaign=pro_upgrade${colors.reset}\n`);
+    mcpLog(`${colors.redBold}[PrivacyScrubber] Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Request BLOCKED.${colors.reset}\n${colors.cyan}7-Day Free B2B Trial (TEAMS/SDK): https://privacyscrubber.com/pricing/?tier=teams&trial=true&utm_source=mcp&utm_medium=daily_limit&utm_campaign=b2b_trial${colors.reset}\n${colors.cyan}TEAMS ($99/mo flat) / PRO ($15/mo or $110 Lifetime): https://privacyscrubber.com/pricing/?tier=pro&utm_source=mcp&utm_medium=daily_limit&utm_campaign=pro_upgrade${colors.reset}\n`);
     return { blocked: true, count };
   }
 
@@ -1502,7 +1507,7 @@ function buildDailyLimitBlockedResponse(limitStatus = null) {
           `[1] Convert Pilot to Commercial TEAMS ($99/mo flat, unlimited seats) or Developer SDK ($299/mo, unlimited backend nodes):`,
           `    https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp&utm_medium=pilot_expired&utm_campaign=pilot_conversion`,
           `[2] Convert to Solo Developer PRO ($15/mo or $110 Lifetime):`,
-          `    https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp&utm_medium=pilot_expired&utm_campaign=pro_upgrade`
+          `    https://privacyscrubber.com/pricing/?tier=pro&utm_source=mcp&utm_medium=pilot_expired&utm_campaign=pro_upgrade`
         ].join('\n')
       }]
     };
@@ -1519,7 +1524,7 @@ function buildDailyLimitBlockedResponse(limitStatus = null) {
         `[2] TEAMS ($99/mo flat, unlimited seats) & Developer SDK ($299/mo, unlimited backend nodes):`,
         `    https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp&utm_medium=daily_limit&utm_campaign=teams_upgrade`,
         `[3] Solo Developer PRO ($15/mo or $110 Lifetime):`,
-        `    https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp&utm_medium=daily_limit&utm_campaign=pro_upgrade`
+        `    https://privacyscrubber.com/pricing/?tier=pro&utm_source=mcp&utm_medium=daily_limit&utm_campaign=pro_upgrade`
       ].join('\n')
     }]
   };
@@ -1616,7 +1621,7 @@ function buildCisoAuditTelemetry(currentTokenMap = {}, extraStats = {}) {
     }));
 
     const ipHoldings = {
-        standard: 'IETF draft-sibiryakov-ztds-protocol-01',
+        standard: 'IETF draft-sibiryakov-ztds-protocol-02',
         standardUrl: 'https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/',
         patent: "U.S. & Int'l Patents Pending (Paris Convention Priority)",
         trademark: 'ZTDS™ Reg. #182655957 (ILPO Cl 9 & 42)'
@@ -1834,16 +1839,16 @@ function formatAuditReceipt(telemetry, compact = false, wasTruncated = false, ch
   if (isCompact) {
     if (telemetry.totalCount === 0) {
       return wasTruncated
-        ? `\n\n> [ZTDS: CLEAN (ZERO PII DETECTED) | TRUNCATED (${charLimit.toLocaleString()} chars) | Upgrade: https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp&utm_medium=truncation_compact&utm_campaign=pro_upgrade]\n`
+        ? `\n\n> [ZTDS: CLEAN (ZERO PII DETECTED) | TRUNCATED (${charLimit.toLocaleString()} chars) | Upgrade: https://privacyscrubber.com/pricing/?tier=pro&utm_source=mcp&utm_medium=truncation_compact&utm_campaign=pro_upgrade]\n`
         : "\n\n> [ZTDS: CLEAN (ZERO PII DETECTED)]\n";
     }
-    const truncNotice = wasTruncated ? ` | TRUNCATED (${charLimit.toLocaleString()} chars) | Upgrade: https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp&utm_medium=truncation_compact&utm_campaign=pro_upgrade` : '';
+    const truncNotice = wasTruncated ? ` | TRUNCATED (${charLimit.toLocaleString()} chars) | Upgrade: https://privacyscrubber.com/pricing/?tier=pro&utm_source=mcp&utm_medium=truncation_compact&utm_campaign=pro_upgrade` : '';
     return `\n\n> [ZTDS: ${telemetry.totalCount} masked (${entitiesList}) | Risk: ${telemetry.riskLevel} | Compliance: ${telemetry.frameworksList.join(', ')}${truncNotice}]\n`;
   }
 
   if (isVerbose) {
     const truncationLine = wasTruncated
-      ? `> * **Notice:** Input truncated to ${charLimit.toLocaleString()} chars (Free Tier Limit). Upgrade to PRO ($15/mo or $110 Lifetime), TEAMS ($99/mo) or Developer SDK ($299/mo): [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp&utm_medium=truncation&utm_campaign=teams_upgrade)\n`
+      ? `> * **Notice:** Input truncated to ${charLimit.toLocaleString()} chars (Free Tier Limit). Upgrade to PRO ($15/mo or $110 Lifetime), TEAMS ($99/mo) or Developer SDK ($299/mo): [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp&utm_medium=truncation&utm_campaign=teams_upgrade)\n`
       : '';
     if (telemetry.totalCount === 0) {
       return `\n\n> **PrivacyScrubber Audit Receipt**: CLEAN (ZERO PII DETECTED)\n${truncationLine}`;
@@ -1853,7 +1858,7 @@ function formatAuditReceipt(telemetry, compact = false, wasTruncated = false, ch
 
   const breakdownPart = entitiesList ? ` (${entitiesList})` : '';
   const truncPart = wasTruncated
-    ? ` | Notice: Input truncated to ${charLimit.toLocaleString()} chars (Free Tier Limit) — https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp&utm_medium=truncation&utm_campaign=teams_upgrade`
+    ? ` | Notice: Input truncated to ${charLimit.toLocaleString()} chars (Free Tier Limit) — https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp&utm_medium=truncation&utm_campaign=teams_upgrade`
     : '';
   return `\n\n> [PrivacyScrubber Audit Receipt | ZTDS: ${telemetry.riskLevel} | ${telemetry.totalCount} masked${breakdownPart} | 0 bytes egress${truncPart}]`;
 }
@@ -2033,7 +2038,7 @@ Pre-configured for 30 specialized industry profiles and compliance frameworks:
 5. ACTION REQUESTED
 Approve commercial license upgrade for ${developer} (${teamSize} engineers, unlimited backend nodes):
 * License Tier: Developer SDK ($299/month flat or $2,990/year)
-* Direct Procurement & License Activation: https://privacyscrubber.com/pricing?tier=sdk&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=sdk_procurement
+* Direct Procurement & License Activation: https://privacyscrubber.com/pricing/?tier=sdk&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=sdk_procurement
 * Enterprise / Invoicing Contact: enterprise@privacyscrubber.com
 `;
     }
@@ -2091,7 +2096,7 @@ The SDK enforces out-of-the-box sanitization matching mandatory compliance contr
 ### 5. Procurement Recommendation
 We request approval to acquire a **Developer SDK License** (\$299/month flat or \$2,990/year) to unlock unlimited throughput across all microservices and CI/CD pipelines.
 
-* **Direct Procurement Portal:** [https://privacyscrubber.com/pricing?tier=sdk&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=sdk_procurement](https://privacyscrubber.com/pricing?tier=sdk&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=sdk_procurement)
+* **Direct Procurement Portal:** [https://privacyscrubber.com/pricing/?tier=sdk&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=sdk_procurement](https://privacyscrubber.com/pricing/?tier=sdk&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=sdk_procurement)
 * **Procurement / Invoicing Contact:** \`enterprise@privacyscrubber.com\`
 `;
   }
@@ -2127,8 +2132,8 @@ Pre-configured for 30 specialized industry profiles: GDPR, CCPA/CPRA, HIPAA Safe
 
 5. ACTION REQUESTED
 Approve enterprise commercial license activation ($398/month flat):
-* TEAMS Portal ($99/mo): https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=bundle_procurement
-* SDK Portal ($299/mo): https://privacyscrubber.com/pricing?tier=sdk&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=bundle_procurement
+* TEAMS Portal ($99/mo): https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=bundle_procurement
+* SDK Portal ($299/mo): https://privacyscrubber.com/pricing/?tier=sdk&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=bundle_procurement
 * Enterprise Contact: enterprise@privacyscrubber.com
 `;
     }
@@ -2174,8 +2179,8 @@ Combined TCO is **\$398/month flat**, replacing **\$4,000–\$8,000/month** in l
 
 ### 4. Procurement Recommendation
 We request approval to activate the enterprise bundle:
-* **TEAMS License (\$99/mo flat):** [https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=bundle_procurement](https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=bundle_procurement)
-* **Developer SDK License (\$299/mo flat):** [https://privacyscrubber.com/pricing?tier=sdk&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=bundle_procurement](https://privacyscrubber.com/pricing?tier=sdk&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=bundle_procurement)
+* **TEAMS License (\$99/mo flat):** [https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=bundle_procurement](https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=bundle_procurement)
+* **Developer SDK License (\$299/mo flat):** [https://privacyscrubber.com/pricing/?tier=sdk&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=bundle_procurement](https://privacyscrubber.com/pricing/?tier=sdk&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=bundle_procurement)
 * **Enterprise / Invoicing Contact:** \`enterprise@privacyscrubber.com\`
 `;
   }
@@ -2222,7 +2227,7 @@ Pre-configured for 30 specialized industry profiles and compliance frameworks:
 5. ACTION REQUESTED
 Approve commercial license upgrade for ${developer} (~${teamSize} engineers, unlimited seats):
 * License Tier: PrivacyScrubber TEAMS ($99/month flat)
-* Direct Procurement & License Activation: https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=teams_procurement
+* Direct Procurement & License Activation: https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=teams_procurement
 * Enterprise / Invoicing Contact: enterprise@privacyscrubber.com
 `;
   }
@@ -2280,7 +2285,7 @@ PrivacyScrubber enforces out-of-the-box sanitization matching mandatory complian
 ### 5. Procurement Recommendation
 We request approval to acquire a **PrivacyScrubber TEAMS License** (\$99/month flat) to unlock centralized governance and unlimited protection for our engineering team.
 
-* **Direct Procurement Portal:** [https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=teams_procurement](https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=teams_procurement)
+* **Direct Procurement Portal:** [https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=teams_procurement](https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp_memo&utm_medium=ciso_memo&utm_campaign=teams_procurement)
 * **Procurement / Invoicing Contact:** \`enterprise@privacyscrubber.com\`
 `;
 }
@@ -2702,6 +2707,10 @@ const ALL_TOOLS = [
             verbose_receipt: {
               type: "boolean",
               description: "Optional. Detailed multi-line audit receipt breakdown."
+            },
+            unmask: {
+              type: "boolean",
+              description: "Optional. Substitute session tokens into command before local execution (requires server started with --allow-exec-unmask)."
             },
             session_id: {
               type: "string",
@@ -3233,7 +3242,12 @@ const ALL_TOOLS = [
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   const allowSet = TOOLSET_NAMES[activeToolset];
-  const exposedTools = allowSet ? ALL_TOOLS.filter(t => allowSet.has(t.name)) : ALL_TOOLS;
+  const exposedTools = ALL_TOOLS.filter((t) => {
+    if (t.name === 'guard_unmask_args') {
+      return allowExposeUnmaskRpc && (activeToolset === 'agent' || activeToolset === 'full');
+    }
+    return allowSet ? allowSet.has(t.name) : true;
+  });
   return {
     tools: exposedTools
   };
@@ -3494,24 +3508,33 @@ function getEffectiveWorkspaceRoots() {
     const trimmed = dir.trim();
     if (!trimmed) return;
     try {
-      const resolved = fs.existsSync(trimmed) ? fs.realpathSync(trimmed) : path.resolve(trimmed);
-      if (!roots.includes(resolved)) roots.push(resolved);
-    } catch (_) {
-      const fallback = path.resolve(trimmed);
-      if (!roots.includes(fallback)) roots.push(fallback);
-    }
+      if (fs.existsSync(trimmed)) {
+        const resolved = fs.realpathSync(trimmed);
+        if (!roots.includes(resolved)) roots.push(resolved);
+      }
+    } catch (_) {}
   };
 
-  addCandidate(process.cwd());
-  addCandidate(process.env.PRIVACYSCRUBBER_WORKSPACE);
-  addCandidate(process.env.CURSOR_WORKSPACE_PATH);
-  addCandidate(process.env.VSCODE_CWD);
-  addCandidate(process.env.PROJECT_ROOT);
-  addCandidate(process.env.INIT_CWD);
-  if (process.env.WORKSPACE_FOLDER_PATHS) {
-    for (const part of process.env.WORKSPACE_FOLDER_PATHS.split(path.delimiter)) {
+  let cwdValid = false;
+  try {
+    const cwd = process.cwd();
+    if (cwd && fs.existsSync(cwd)) {
+      const resolvedCwd = fs.realpathSync(cwd);
+      roots.push(resolvedCwd);
+      cwdValid = true;
+    }
+  } catch (_) {}
+
+  if (process.env.PRIVACYSCRUBBER_WORKSPACE_ROOTS) {
+    for (const part of process.env.PRIVACYSCRUBBER_WORKSPACE_ROOTS.split(path.delimiter)) {
       addCandidate(part);
     }
+  }
+  if (process.env.PRIVACYSCRUBBER_WORKSPACE) {
+    addCandidate(process.env.PRIVACYSCRUBBER_WORKSPACE);
+  }
+  if (!cwdValid && roots.length === 0 && process.env.INIT_CWD) {
+    addCandidate(process.env.INIT_CWD);
   }
   return roots;
 }
@@ -4160,7 +4183,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const finalIsAdvanced = canonicalProfileSlug(finalProfile) !== "general";
       const charLimit = (finalIsAdvanced && !license.isPro) ? 5000 : 15000;
       if (finalIsAdvanced && !license.isPro) {
-        mcpLog(`${colors.yellowBold}[PrivacyScrubber] Profile '${finalProfile}' active on Free Tier (5,000 char trial quota).${colors.reset}\n${colors.cyan}[Upgrade] 7-Day B2B Trial / TEAMS ($99/mo flat) & Developer SDK ($299/mo): https://privacyscrubber.com/pricing?tier=teams&trial=true&profile=${encodeURIComponent(finalProfile)}&utm_source=mcp&utm_medium=profile_quota&utm_campaign=teams_upgrade (or run: npx @privacyscrubber/mcp-server trial)${colors.reset}\n`);
+        mcpLog(`${colors.yellowBold}[PrivacyScrubber] Profile '${finalProfile}' active on Free Tier (5,000 char trial quota).${colors.reset}\n${colors.cyan}[Upgrade] 7-Day B2B Trial / TEAMS ($99/mo flat) & Developer SDK ($299/mo): https://privacyscrubber.com/pricing/?tier=teams&trial=true&profile=${encodeURIComponent(finalProfile)}&utm_source=mcp&utm_medium=profile_quota&utm_campaign=teams_upgrade (or run: npx @privacyscrubber/mcp-server trial)${colors.reset}\n`);
       }
 
       const { processedText, wasTruncated } = truncateIfFree(text, license.isPro, charLimit, finalProfile);
@@ -4450,7 +4473,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
           const charLimit = (isAdvanced && !license.isPro) ? 5000 : 15000;
           if (isAdvanced && !license.isPro) {
-            mcpLog(`${colors.yellowBold}[PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char trial quota).${colors.reset}\n${colors.cyan}[Upgrade] 7-Day B2B Trial / TEAMS ($99/mo flat) & Developer SDK ($299/mo): https://privacyscrubber.com/pricing?tier=teams&trial=true&profile=${encodeURIComponent(targetProfile)}&utm_source=mcp&utm_medium=profile_quota&utm_campaign=teams_upgrade (or run: npx @privacyscrubber/mcp-server trial)${colors.reset}\n`);
+            mcpLog(`${colors.yellowBold}[PrivacyScrubber] Profile '${targetProfile}' active on Free Tier (5,000 char trial quota).${colors.reset}\n${colors.cyan}[Upgrade] 7-Day B2B Trial / TEAMS ($99/mo flat) & Developer SDK ($299/mo): https://privacyscrubber.com/pricing/?tier=teams&trial=true&profile=${encodeURIComponent(targetProfile)}&utm_source=mcp&utm_medium=profile_quota&utm_campaign=teams_upgrade (or run: npx @privacyscrubber/mcp-server trial)${colors.reset}\n`);
           }
 
           const { processedText: processedContent, wasTruncated } = truncateIfFree(content, license.isPro, charLimit, finalProfile);
@@ -4487,7 +4510,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             content: [
               {
                 type: "text",
-                text: `[PrivacyScrubber PRO / TEAMS] PDF and Excel file sanitization is a PRO feature (${isPdf ? 'PDF' : 'Excel/XLSX'} detected).\n\n- 7-Day Free B2B Trial (No card): https://privacyscrubber.com/pricing/?tier=teams&trial=true&utm_source=mcp_cli&utm_medium=file_type&utm_campaign=b2b_trial\n- TEAMS ($99/mo flat, unlimited seats) / PRO ($15/mo or $110 Lifetime): https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp_cli&utm_medium=file_type&utm_campaign=pro_upgrade\n- Alternatively, sanitize plain text, code, CSV, and DOCX files for free.`
+                text: `[PrivacyScrubber PRO / TEAMS] PDF and Excel file sanitization is a PRO feature (${isPdf ? 'PDF' : 'Excel/XLSX'} detected).\n\n- 7-Day Free B2B Trial (No card): https://privacyscrubber.com/pricing/?tier=teams&trial=true&utm_source=mcp_cli&utm_medium=file_type&utm_campaign=b2b_trial\n- TEAMS ($99/mo flat, unlimited seats) / PRO ($15/mo or $110 Lifetime): https://privacyscrubber.com/pricing/?tier=pro&utm_source=mcp_cli&utm_medium=file_type&utm_campaign=pro_upgrade\n- Alternatively, sanitize plain text, code, CSV, and DOCX files for free.`
               }
             ]
           };
@@ -4643,7 +4666,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const finalIsAdvanced = canonicalProfileSlug(finalProfile) !== "general";
       const charLimit = (finalIsAdvanced && !license.isPro) ? 5000 : 15000;
       if (finalIsAdvanced && !license.isPro) {
-        mcpLog(`${colors.yellowBold}[PrivacyScrubber] Profile '${finalProfile}' active on Free Tier (5,000 char trial quota).${colors.reset}\n${colors.cyan}[Upgrade] 7-Day B2B Trial / TEAMS ($99/mo flat) & Developer SDK ($299/mo): https://privacyscrubber.com/pricing?tier=teams&trial=true&profile=${encodeURIComponent(finalProfile)}&utm_source=mcp&utm_medium=profile_quota&utm_campaign=teams_upgrade (or run: npx @privacyscrubber/mcp-server trial)${colors.reset}\n`);
+        mcpLog(`${colors.yellowBold}[PrivacyScrubber] Profile '${finalProfile}' active on Free Tier (5,000 char trial quota).${colors.reset}\n${colors.cyan}[Upgrade] 7-Day B2B Trial / TEAMS ($99/mo flat) & Developer SDK ($299/mo): https://privacyscrubber.com/pricing/?tier=teams&trial=true&profile=${encodeURIComponent(finalProfile)}&utm_source=mcp&utm_medium=profile_quota&utm_campaign=teams_upgrade (or run: npx @privacyscrubber/mcp-server trial)${colors.reset}\n`);
       }
 
       const { processedText: processedContent2, wasTruncated } = truncateIfFree(content, license.isPro, charLimit, finalProfile);
@@ -4754,7 +4777,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             isError: true,
             content: [{
               type: "text",
-              text: `Error: Free Tier redact_file supports up to ${charLimit.toLocaleString()} characters for profile '${profCheck.profile}' (file has ${content.length.toLocaleString()} characters). In-place file truncation is unsafe. Upgrade to PRO/TEAMS/SDK: https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp&utm_medium=redact_file_limit`
+              text: `Error: Free Tier redact_file supports up to ${charLimit.toLocaleString()} characters for profile '${profCheck.profile}' (file has ${content.length.toLocaleString()} characters). In-place file truncation is unsafe. Upgrade to PRO/TEAMS/SDK: https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp&utm_medium=redact_file_limit`
             }]
           };
         }
@@ -4806,7 +4829,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
 
         if (isSecretLeak) {
-          return { isError: true, content: [{ type: "text", text: `Error: API Key or Secret detected. Sanitization of raw secrets requires PRO Profile. Upgrade at https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp_cli&utm_medium=secrets_detected&utm_campaign=pro_upgrade` }] };
+          return { isError: true, content: [{ type: "text", text: `Error: API Key or Secret detected. Sanitization of raw secrets requires PRO Profile. Upgrade at https://privacyscrubber.com/pricing/?tier=pro&utm_source=mcp_cli&utm_medium=secrets_detected&utm_campaign=pro_upgrade` }] };
         }
 
         if (!no_backup) {
@@ -4954,18 +4977,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         lines.push(
           `Status: ${tier} active.${license.allowedProfiles ? ` Allowed profiles: ${license.allowedProfiles.join(', ')}.` : ' All features unlocked.'}`,
           ...(license.expiringSoon ? [
-            `Pilot expires in ~${String(license.hoursLeft)}h. Lock in TEAMS ($99/mo): https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_status`
+            `Pilot expires in ~${String(license.hoursLeft)}h. Lock in TEAMS ($99/mo): https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp_status`
           ] : []),
-          'Billing / key management: https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp_status&utm_medium=terminal'
+          'Billing / key management: https://privacyscrubber.com/pricing/?tier=pro&utm_source=mcp_status&utm_medium=terminal'
         );
       } else if (license.isEval) {
         lines.push(
           `Status: EVAL evaluation key active (${license.allowedProfiles ? license.allowedProfiles.join(', ') : 'general'} baseline, max ${EVAL_TIER_DAILY_LIMIT} req/day).`,
           ...(license.expiringSoon ? [
-            `Evaluation key expires in ~${String(license.hoursLeft)}h. Upgrade to TEAMS ($99/mo) or SDK ($299/mo): https://privacyscrubber.com/pricing?tier=sdk&utm_source=mcp_eval_status`
+            `Evaluation key expires in ~${String(license.hoursLeft)}h. Upgrade to TEAMS ($99/mo) or SDK ($299/mo): https://privacyscrubber.com/pricing/?tier=sdk&utm_source=mcp_eval_status`
           ] : []),
           'Commercial Tiers: TEAMS ($99/mo flat) | Developer SDK ($299/mo) | Solo PRO ($15/mo or $110 Lifetime)',
-          'Upgrade: https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_eval_status&utm_medium=terminal'
+          'Upgrade: https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp_eval_status&utm_medium=terminal'
         );
       } else {
         if (license.expired) {
@@ -4976,7 +4999,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         lines.push(
           'Commercial Tiers: TEAMS ($99/mo flat) | Developer SDK ($299/mo) | Solo PRO ($15/mo or $110 Lifetime)',
-          'Upgrade / Trial: https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_status&utm_medium=terminal',
+          'Upgrade / Trial: https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp_status&utm_medium=terminal',
           'Config env var: "PRIVACYSCRUBBER_KEY": "<your-key-here>"',
           'Docs: https://privacyscrubber.com/features/mcp/?utm_source=mcp_cli&utm_medium=terminal'
         );
@@ -5168,15 +5191,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const targetSession = getSessionMap(session_id);
       const targetIgnoreList = getSessionIgnoreList(session_id);
-      // Transparent in-memory shell-safe unmasking of any token placeholders before local execution
-      let rawExecutableCommand;
-      try {
-        rawExecutableCommand = reverseTokensShellSafe(command, targetSession);
-      } catch (shellErr) {
+      if (args?.unmask === true && !allowExecUnmask) {
         return {
           isError: true,
-          content: [{ type: "text", text: `Error: ${shellErr.message}` }]
+          content: [{
+            type: "text",
+            text: "Error: Security policy violation — shell token unmasking in 'guard_exec' is disabled by default under ZTDS Zero-Egress policy. Start the MCP server with '--allow-exec-unmask' (or PRIVACYSCRUBBER_ALLOW_EXEC_UNMASK=1) to authorize in-command secret substitution."
+          }]
         };
+      }
+      let rawExecutableCommand = command;
+      if (allowExecUnmask && args?.unmask !== false) {
+        try {
+          rawExecutableCommand = reverseTokensShellSafe(command, targetSession);
+        } catch (shellErr) {
+          return {
+            isError: true,
+            content: [{ type: "text", text: `Error: ${shellErr.message}` }]
+          };
+        }
       }
 
       let execCwd = process.cwd();
@@ -5708,6 +5741,15 @@ Before reading sensitive files, running terminal commands that may print credent
     }
 
     if (name === "guard_unmask_args") {
+      if (!allowExposeUnmaskRpc) {
+        return {
+          isError: true,
+          content: [{
+            type: "text",
+            text: "Error: Security policy violation — 'guard_unmask_args' is disabled by default under ZTDS Zero-Egress policy to prevent raw secret exfiltration into remote LLM context. Use 'guard_apply_patch' to restore tokens directly to local files, or start the MCP server with '--unsafe-expose-unmask-rpc' (or PRIVACYSCRUBBER_EXPOSE_UNMASK_RPC=1)."
+          }]
+        };
+      }
       const targetArgs = (args?.tool_args !== undefined) ? args.tool_args : args?.args;
       const { session_id = "default" } = args || {};
       if (targetArgs === undefined || targetArgs === null) {
@@ -5944,7 +5986,7 @@ Before reading sensitive files, running terminal commands that may print credent
               isError: true,
               content: [{
                 type: "text",
-                text: `Error: Free Tier batch budget exceeded for guard_rag_chunk (${totalBatchChars.toLocaleString()} total chars > ${charLimit.toLocaleString()} char limit for profile '${targetProfile}'). Reduce batch size or upgrade to PRO/TEAMS/SDK: https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp&utm_medium=rag_batch_limit`
+                text: `Error: Free Tier batch budget exceeded for guard_rag_chunk (${totalBatchChars.toLocaleString()} total chars > ${charLimit.toLocaleString()} char limit for profile '${targetProfile}'). Reduce batch size or upgrade to PRO/TEAMS/SDK: https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp&utm_medium=rag_batch_limit`
               }]
             };
           }
@@ -5959,13 +6001,13 @@ Before reading sensitive files, running terminal commands that may print credent
       for (let i = 0; i < chunks.length; i++) {
         const item = chunks[i];
         if (typeof item === 'string') {
-          const res = performSanitization(item, targetProfile, targetIgnoreList, targetSession);
+          const res = performSanitization(item, targetProfile, targetIgnoreList, targetSession, { escapeExistingTokens: true });
           totalTokensRedacted += Object.keys(res.newTokens || {}).length;
           sanitizedChunks.push(res.scrubbedText);
         } else if (item && typeof item === 'object') {
           const copy = { ...item };
           const rawText = copy.text || copy.pageContent || copy.document || '';
-          const res = performSanitization(rawText, targetProfile, targetIgnoreList, targetSession);
+          const res = performSanitization(rawText, targetProfile, targetIgnoreList, targetSession, { escapeExistingTokens: true });
           totalTokensRedacted += Object.keys(res.newTokens || {}).length;
 
           if (copy.text !== undefined) copy.text = res.scrubbedText;
@@ -6249,7 +6291,7 @@ Before reading sensitive files, running terminal commands that may print credent
       const telemetry = buildCisoAuditTelemetry(presentTokens, { licenseTier: license.type || "FREE" });
       const entitiesMasked = Math.max(telemetry.totalCount || 0, Object.keys(presentTokens).length);
       const categories = Object.keys(telemetry.entities || {});
-      const receiptHex = crypto.createHash("sha256").update(processedText).digest("hex").slice(0, 12).toUpperCase();
+      const receiptHex = crypto.createHash("sha256").update(scrubbedText).digest("hex").slice(0, 16).toUpperCase();
       const auditReceipt = `ZTDS-RECEIPT-${receiptHex}`;
       const executionUs = Math.max(1, Math.round(Number(process.hrtime.bigint() - startUs) / 1000));
 
@@ -6770,12 +6812,37 @@ function detectSecrets(text) {
   return detected;
 }
 
-export function performSanitization(text, profile, ignoreList = null, customTokenMap = null) {
+function neutralizePreExistingTokens(text) {
+  if (!text || typeof text !== 'string') return text;
+  const bracketedRx = /(?:\[|\\u005[Bb]|%5[Bb]|&(?:amp;)?#0*91;|&(?:amp;)?#[xX]0*5[Bb];|&(?:amp;)?(?:lbrack|lsqb);|\u3010|\uFF3B|\u3014|\u300C|\u300E|<|\{\{?|__)[\s*`_~\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\u061C\uFE00-\uFE0F]*([A-Za-z][A-Za-z0-9_-]{0,40}?)[\s*`_~\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\u061C\uFE00-\uFE0F]*[-_\\\s]+0*(\d+)[\s*`_~.,;:!?\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\u061C\uFE00-\uFE0F]*(?:\]|\\u005[Dd]|%5[Dd]|&(?:amp;)?#0*93;|&(?:amp;)?#[xX]0*5[Dd];|&(?:amp;)?(?:rbrack|rsqb);|\u3011|\uFF3D|\u3015|\u300D|\u300F|>|\}\}?|__)/g;
+  let safe = text.replace(bracketedRx, (_m, lbl, idx) => `(untrusted-ref-${String(lbl).toLowerCase().replace(/[^a-z0-9]/g, '')}#${idx})`);
+  safe = safe.replace(/\b([A-Z][A-Z0-9_]{1,35})[-_]+0*(\d+)\b/g, (_m, lbl, idx) => `(untrusted-ref-${lbl.toLowerCase().replace(/[^a-z0-9]/g, '')}#${idx})`);
+  return safe;
+}
+
+export function performSanitization(text, profile, ignoreList = null, customTokenMap = null, options = null) {
   const customRules = loadCustomRules();
   const normalizedProfile = (profile || "general").trim().toLowerCase();
   const license = checkLicenseStatus();
   const targetMap = customTokenMap || activeTokenMap;
-  const result = PrivacyScrubberCore.scrubText(text, customRules, {}, normalizedProfile, targetMap, license.isPro ? (license.key || '') : '', ignoreList);
+  const inputText = (options && options.escapeExistingTokens === true) ? neutralizePreExistingTokens(text) : text;
+  const scrubOptions = (options && options.escapeExistingTokens === true) ? { escapeExistingTokens: true } : undefined;
+  let seededTargetMap = targetMap;
+  if (targetMap && typeof targetMap === 'object') {
+    const entries = Object.entries(targetMap);
+    if (entries.length > 0) {
+      seededTargetMap = Object.create(null);
+      for (let i = 0; i < entries.length; i++) {
+        const [tk, tv] = entries[i];
+        const hm = String(tk).match(/^(?:\[|<|\{\{?|__)([A-Za-z0-9_]+?)_0*(\d+)(?:\]|>|\}\}?|__)$/);
+        if (hm) {
+          seededTargetMap[`[${hm[1]}-${hm[2]}]`] = `\0__ps_seed_${i}`;
+        }
+        seededTargetMap[tk] = tv;
+      }
+    }
+  }
+  const result = PrivacyScrubberCore.scrubText(inputText, customRules, {}, normalizedProfile, seededTargetMap, license.isPro ? (license.key || '') : '', ignoreList, null, false, scrubOptions);
 
   const newTokens = {};
   // Update our volatile map with new matches
@@ -6801,15 +6868,145 @@ export function performSanitization(text, profile, ignoreList = null, customToke
 export function truncateIfFree(text, isPro, charLimit = 15000, profile = 'general') {
   if (!isPro && text.length > charLimit) {
     const safeProf = encodeURIComponent(String(profile || 'general').toLowerCase());
-    mcpLog(`${colors.yellowBold}[PrivacyScrubber] Input truncated to ${charLimit.toLocaleString()} characters (Free Tier Limit for profile '${profile || 'general'}').${colors.reset}\n${colors.cyan}[Upgrade] Set PRIVACYSCRUBBER_KEY to your PRO/TEAMS/SDK license key or start a 7-day B2B trial ('npx @privacyscrubber/mcp-server trial'): https://privacyscrubber.com/pricing?tier=teams&trial=true&profile=${safeProf}&utm_source=mcp&utm_medium=truncation&utm_campaign=teams_upgrade${colors.reset}\n`);
-    const upsellNotice = `\n\n[PrivacyScrubber Free Tier: Payload truncated to ${charLimit.toLocaleString()} chars (${profile || 'general'}). Upgrade to PRO ($15/mo or $110 LT), TEAMS ($99/mo flat) or Developer SDK ($299/mo): https://privacyscrubber.com/pricing?tier=teams&trial=true&profile=${safeProf}&utm_source=mcp&utm_medium=truncation&utm_campaign=teams_upgrade | CLI Trial: npx @privacyscrubber/mcp-server trial]`;
+    mcpLog(`${colors.yellowBold}[PrivacyScrubber] Input truncated to ${charLimit.toLocaleString()} characters (Free Tier Limit for profile '${profile || 'general'}').${colors.reset}\n${colors.cyan}[Upgrade] Set PRIVACYSCRUBBER_KEY to your PRO/TEAMS/SDK license key or start a 7-day B2B trial ('npx @privacyscrubber/mcp-server trial'): https://privacyscrubber.com/pricing/?tier=teams&trial=true&profile=${safeProf}&utm_source=mcp&utm_medium=truncation&utm_campaign=teams_upgrade${colors.reset}\n`);
+    const upsellNotice = `\n\n[PrivacyScrubber Free Tier: Payload truncated to ${charLimit.toLocaleString()} chars (${profile || 'general'}). Upgrade to PRO ($15/mo or $110 LT), TEAMS ($99/mo flat) or Developer SDK ($299/mo): https://privacyscrubber.com/pricing/?tier=teams&trial=true&profile=${safeProf}&utm_source=mcp&utm_medium=truncation&utm_campaign=teams_upgrade | CLI Trial: npx @privacyscrubber/mcp-server trial]`;
     return { processedText: text.substring(0, charLimit), wasTruncated: true, upsellNotice, charLimit };
   }
   return { processedText: text, wasTruncated: false, upsellNotice: "", charLimit };
 }
 
+const MAX_MCP_STDIO_FRAME_BYTES = 10 * 1024 * 1024;
+
+function extractOversizedJsonRpcId(previewStr) {
+  if (!previewStr) return null;
+  const m = previewStr.match(/"id"\s*:\s*("(?:[^"\\]|\\.)*"|-?\d+|null)/);
+  if (!m) return null;
+  try {
+    return JSON.parse(m[1]);
+  } catch (_) {
+    return null;
+  }
+}
+
+function createGuardedMcpStdin(inputStream, outputStream, maxBytes = MAX_MCP_STDIO_FRAME_BYTES) {
+  let chunks = [];
+  let lineBytes = 0;
+  let droppingLine = false;
+  let errorEmitted = false;
+  let headPreview = '';
+  let tailPreview = '';
+  let stallTimer = null;
+
+  const clearStallTimer = () => {
+    if (stallTimer) {
+      clearTimeout(stallTimer);
+      stallTimer = null;
+    }
+  };
+
+  const emitOversizedError = () => {
+    if (errorEmitted) return;
+    errorEmitted = true;
+    clearStallTimer();
+    const id = extractOversizedJsonRpcId(headPreview) ?? extractOversizedJsonRpcId(tailPreview);
+    outputStream.write(JSON.stringify({
+      jsonrpc: '2.0',
+      id: id ?? null,
+      error: {
+        code: -32600,
+        message: `Invalid Request: JSON-RPC stdio frame exceeds ${Math.floor(maxBytes / (1024 * 1024))}MB maximum limit.`
+      }
+    }) + '\n');
+  };
+
+  const resetLineState = () => {
+    chunks = [];
+    lineBytes = 0;
+    droppingLine = false;
+    errorEmitted = false;
+    headPreview = '';
+    tailPreview = '';
+    clearStallTimer();
+  };
+
+  const guarded = new Transform({
+    transform(chunk, _enc, callback) {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      let offset = 0;
+      while (offset < buf.length) {
+        const nlIdx = buf.indexOf(0x0a, offset);
+        if (nlIdx === -1) {
+          const rem = buf.subarray(offset);
+          if (droppingLine) {
+            const s = rem.subarray(Math.max(0, rem.length - 512)).toString('utf8');
+            tailPreview = (tailPreview + s).slice(-512);
+          } else {
+            lineBytes += rem.length;
+            if (headPreview.length < 512) {
+              headPreview += rem.subarray(0, 512 - headPreview.length).toString('utf8');
+            }
+            if (lineBytes > maxBytes) {
+              droppingLine = true;
+              chunks = [];
+              const s = rem.subarray(Math.max(0, rem.length - 512)).toString('utf8');
+              tailPreview = s.slice(-512);
+              if (extractOversizedJsonRpcId(headPreview) !== null) {
+                emitOversizedError();
+              } else if (!stallTimer) {
+                stallTimer = setTimeout(emitOversizedError, 100);
+                if (typeof stallTimer.unref === 'function') stallTimer.unref();
+              }
+            } else {
+              chunks.push(rem);
+            }
+          }
+          break;
+        } else {
+          const seg = buf.subarray(offset, nlIdx + 1);
+          if (droppingLine) {
+            const s = seg.subarray(Math.max(0, seg.length - 512)).toString('utf8');
+            tailPreview = (tailPreview + s).slice(-512);
+            emitOversizedError();
+            resetLineState();
+          } else {
+            const totalLen = lineBytes + seg.length;
+            if (totalLen > maxBytes) {
+              if (headPreview.length < 512) {
+                headPreview += seg.subarray(0, 512 - headPreview.length).toString('utf8');
+              }
+              tailPreview = seg.subarray(Math.max(0, seg.length - 512)).toString('utf8');
+              emitOversizedError();
+              resetLineState();
+            } else {
+              chunks.push(seg);
+              this.push(chunks.length === 1 ? chunks[0] : Buffer.concat(chunks, totalLen));
+              resetLineState();
+            }
+          }
+          offset = nlIdx + 1;
+        }
+      }
+      callback();
+    },
+    flush(callback) {
+      if (droppingLine) {
+        emitOversizedError();
+      } else if (chunks.length > 0) {
+        this.push(Buffer.concat(chunks, lineBytes));
+      }
+      resetLineState();
+      callback();
+    }
+  });
+
+  inputStream.on('error', (err) => guarded.destroy(err));
+  inputStream.pipe(guarded);
+  return guarded;
+}
+
 // Start the server transport
-const transport = new StdioServerTransport();
+const guardedMcpStdin = createGuardedMcpStdin(process.stdin, process.stdout, MAX_MCP_STDIO_FRAME_BYTES);
+const transport = new StdioServerTransport(guardedMcpStdin, process.stdout);
 server.connect(transport).then(() => {
   const license = checkLicenseStatus();
   const tierName = (license.type || license.tier || 'PRO').toString().toUpperCase();
@@ -6824,7 +7021,7 @@ server.connect(transport).then(() => {
   mcpLog(`${colors.cyan}[Architecture] 100% Local In-Memory RAM | 0 Bytes Network Egress | Toolset: ${activeToolset}${colors.reset}\n`);
   mcpLog(`${licenseNotice}\n`);
   mcpLog(`${colors.dim}[Developer SDK] In-code headless redaction: npm install @privacyscrubber/sdk${colors.reset}\n`);
-  mcpLog(`${colors.dim}[TEAMS & Enterprise] Multi-seat governance & Air-gap: https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_banner&utm_medium=terminal&utm_campaign=teams_upgrade${colors.reset}\n`);
+  mcpLog(`${colors.dim}[TEAMS & Enterprise] Multi-seat governance & Air-gap: https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp_banner&utm_medium=terminal&utm_campaign=teams_upgrade${colors.reset}\n`);
   mcpLog(`${colors.yellow}[GitHub] Public Server Repository: https://github.com/moxno/privacyscrubber-mcp${colors.reset}\n`);
   mcpLog(`${colors.cyanBold}======================================================================${colors.reset}\n\n`);
 }).catch((error) => {

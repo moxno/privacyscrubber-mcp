@@ -24,7 +24,7 @@
 [![Parity: 100% Core Match](https://img.shields.io/badge/Parity-100%25%20Core%20Match-blueviolet)](https://privacyscrubber.com)
 [![Patent Pending](https://img.shields.io/badge/Patent-Pending%20(US%20%26%20Intl)-06b6d4.svg)](https://privacyscrubber.com/patents/)
 [![Developer SDK](https://img.shields.io/badge/Developer%20SDK-$299%2Fmo%20Flat-06b6d4.svg)](https://privacyscrubber.com/sdk/?utm_source=mcp_readme)
-[![TEAMS Plan](https://img.shields.io/badge/TEAMS-$99%2Fmo%20Flat-3b82f6.svg)](https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_readme)
+[![TEAMS Plan](https://img.shields.io/badge/TEAMS-$99%2Fmo%20Flat-3b82f6.svg)](https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp_readme)
 [![GitHub Stars](https://img.shields.io/github/stars/moxno/privacyscrubber-mcp?style=social)](https://github.com/moxno/privacyscrubber-mcp)
 
 **CISO-Approved Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Windsurf, and Claude Desktop.**
@@ -34,9 +34,9 @@ Locally scrubs PII, secrets, credentials, and custom regex rules from files and 
 
 > **Direct Commercial Licensing & Production Infrastructure:**  
 > Looking to automate zero-trust PII redaction inside backend microservices, ETL pipelines, or LangChain/LlamaIndex agents?  
-> - **Developer SDK ($299/mo flat or $2,990/yr):** Unlimited internal backend nodes, zero network egress, <1ms in-memory latency. **[Subscribe to Developer SDK](https://privacyscrubber.com/pricing?tier=sdk&utm_source=mcp_readme)** | **[Technical Specs](https://privacyscrubber.com/sdk/?utm_source=mcp_readme)**  
-> - **TEAMS ($99/mo flat):** Unlimited team seats across your entire domain with cryptographic P2P session handoff. **[Deploy TEAMS Plan](https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_readme)**  
-> - **PRO ($15/mo or $110 Lifetime):** Single-seat unlimited throughput across all 30 vertical profiles. **[Get PRO License](https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp_readme)**
+> - **Developer SDK ($299/mo flat or $2,990/yr):** Unlimited internal backend nodes, zero network egress, <1ms in-memory latency. **[Subscribe to Developer SDK](https://privacyscrubber.com/pricing/?tier=sdk&utm_source=mcp_readme)** | **[Technical Specs](https://privacyscrubber.com/sdk/?utm_source=mcp_readme)**  
+> - **TEAMS ($99/mo flat):** Unlimited team seats across your entire domain with cryptographic P2P session handoff. **[Deploy TEAMS Plan](https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp_readme)**  
+> - **PRO ($15/mo or $110 Lifetime):** Single-seat unlimited throughput across all 30 vertical profiles. **[Get PRO License](https://privacyscrubber.com/pricing/?tier=pro&utm_source=mcp_readme)**
 
 ---
 
@@ -234,8 +234,8 @@ const guardedTools = createGuardedTools(engine);
 ```
 
 > **Enterprise & Production Licensing:**  
-> - **Self-Serve Developer SDK ($299/mo flat or $2,990/yr):** Unlimited internal backend nodes, microservices, and RAG pipelines. **[Subscribe to Developer SDK](https://privacyscrubber.com/pricing?tier=sdk&utm_source=mcp_readme)** | **[Developer SDK Specs](https://privacyscrubber.com/sdk/?utm_source=mcp_readme)**  
-> - **PrivacyScrubber TEAMS ($99/mo flat):** Unlimited team seats, centralized policy enforcement, encrypted session handoff. **[Deploy TEAMS Plan](https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_readme)**  
+> - **Self-Serve Developer SDK ($299/mo flat or $2,990/yr):** Unlimited internal backend nodes, microservices, and RAG pipelines. **[Subscribe to Developer SDK](https://privacyscrubber.com/pricing/?tier=sdk&utm_source=mcp_readme)** | **[Developer SDK Specs](https://privacyscrubber.com/sdk/?utm_source=mcp_readme)**  
+> - **PrivacyScrubber TEAMS ($99/mo flat):** Unlimited team seats, centralized policy enforcement, encrypted session handoff. **[Deploy TEAMS Plan](https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp_readme)**  
 > - **Enterprise Air-Gapped License:** On-premise source code distribution, zero-network custom models. **[Contact Enterprise](https://privacyscrubber.com/enterprise?utm_source=mcp_readme)**
 
 #### 🛡️ Architecture & Security Deep-Dive (Zero-Trust vs Cloud DLP)
@@ -249,7 +249,7 @@ When AI IDEs (Cursor, Claude Desktop, Windsurf) connect to model providers, deve
 3. **Local ZTDS™ In-Memory Engine vs Cloud Proxy Overhead**:
    Unlike cloud DLP gateways (Nightfall, Skyflow) that add 200–400ms latency and transmit unencrypted code to third parties, `@privacyscrubber/mcp-server` runs locally in <2ms with zero data egress.
 4. **Permanent Standards & Academic Validation**:
-   - **IETF Specification**: [draft-sibiryakov-ztds-protocol-01](https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/) — Revision 01 · 2026-09-23 · 13 pages
+   - **IETF Specification**: [draft-sibiryakov-ztds-protocol-02](https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/) — Revision 02 · Standards Track Individual Submission
    - **CERN / Zenodo Foundation**: [DOI 10.5281/zenodo.22058770](https://doi.org/10.5281/zenodo.22058770)
    - **Center for Open Science (OSF)**: [DOI 10.17605/OSF.IO/5BYJF](https://doi.org/10.17605/OSF.IO/5BYJF)
    - **Patent Pending**: U.S. & International Patents Pending (Paris Convention / PCT Priority)
@@ -503,7 +503,7 @@ Returns a visual dashboard showing your current tier, session request count, act
 *   **Response Example (Free Tier):**
     ```
     ╔══════════════════════════════════════════════════╗
-    ║       PrivacyScrubber MCP Server v2.5.3          ║
+    ║       PrivacyScrubber MCP Server v2.5.5          ║
     ╠══════════════════════════════════════════════════╣
     ║  🔓 Tier: FREE                                   ║
     ║  📊 Session requests: 5                          ║
@@ -513,7 +513,7 @@ Returns a visual dashboard showing your current tier, session request count, act
     ║  📋 Custom rules: 🔒 Locked — requires PRO       ║
     ╠══════════════════════════════════════════════════╣
     ║  💳 Upgrade to PRO — $110 Lifetime               ║
-    ║     https://privacyscrubber.com/pricing?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server          ║
+    ║     https://privacyscrubber.com/pricing/?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server         ║
     ╠══════════════════════════════════════════════════╣
     ║  After purchase, add your key to MCP config:     ║
     ║  "PRIVACYSCRUBBER_KEY": "<your-key-here>"        ║
@@ -602,15 +602,15 @@ By default, the server runs under the **Free Tier** (15,000 characters per reque
 | **Microservice / RAG Export** | No | No | No | Yes (`@privacyscrubber/sdk`) |
 | **Subprocessor Liability** | 0 (Client-side) | 0 (Client-side) | 0 (Client-side) | 0 (In-Process Node/WASM) |
 | **Licensing Cost** | $0 | **$15/mo or $110 Lifetime** | **$99/mo Flat Rate** | **$299/mo or $2,990/yr** |
-| **Direct Activation** | Default included | [Acquire PRO](https://privacyscrubber.com/pricing?tier=pro&utm_source=mcp_readme) | [Deploy TEAMS](https://privacyscrubber.com/pricing?tier=teams&utm_source=mcp_readme) | [Subscribe SDK](https://privacyscrubber.com/pricing?tier=sdk&utm_source=mcp_readme) |
+| **Direct Activation** | Default included | [Acquire PRO](https://privacyscrubber.com/pricing/?tier=pro&utm_source=mcp_readme) | [Deploy TEAMS](https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp_readme) | [Subscribe SDK](https://privacyscrubber.com/pricing/?tier=sdk&utm_source=mcp_readme) |
 
-👉 **[Acquire a Commercial License Key at privacyscrubber.com/pricing](https://privacyscrubber.com/pricing?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server)**
+👉 **[Acquire a Commercial License Key at privacyscrubber.com/pricing](https://privacyscrubber.com/pricing/?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server)**
 
 ---
 
 ## 🔐 After Purchase: Activate PRO in Your MCP Client
 
-After purchasing a PRO license at [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server), you will receive a license key. Add it to your MCP client config as an environment variable: `PRIVACYSCRUBBER_KEY`.
+After purchasing a PRO license at [privacyscrubber.com/pricing](https://privacyscrubber.com/pricing/?utm_source=npm&utm_medium=readme&utm_campaign=mcp_server), you will receive a license key. Add it to your MCP client config as an environment variable: `PRIVACYSCRUBBER_KEY`.
 
 ### Claude Desktop
 
@@ -731,7 +731,7 @@ The Zero-Trust Data Sanitization (ZTDS) architecture, in-memory deterministic to
 - **Specification Title:** *The Zero-Trust Data Sanitization (ZTDS) Protocol for Frontier Artificial Intelligence Ingestion*
 - **Document Category:** IETF Internet-Draft (Individual Submission)
 - **IETF Datatracker:** [https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/](https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/)
-- **Archive Plaintext:** [https://www.ietf.org/archive/id/draft-sibiryakov-ztds-protocol-01.txt](https://www.ietf.org/archive/id/draft-sibiryakov-ztds-protocol-01.txt)
+- **Archive Plaintext:** [https://www.ietf.org/archive/id/draft-sibiryakov-ztds-protocol-02.txt](https://www.ietf.org/archive/id/draft-sibiryakov-ztds-protocol-02.txt)
 
 
 

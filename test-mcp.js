@@ -301,7 +301,7 @@ try {
     console.error("❌ Test 11 failed: resolveActiveToolset / TOOLSET_NAMES not exported.");
     process.exit(1);
   }
-  if (TOOLSET_NAMES.core.size !== 5 || TOOLSET_NAMES.agent.size !== 10 || TOOLSET_NAMES.ztds.size !== 5 || TOOLSET_NAMES.full !== null) {
+  if (TOOLSET_NAMES.core.size !== 5 || TOOLSET_NAMES.agent.size !== 9 || TOOLSET_NAMES.agent.has('guard_unmask_args') || TOOLSET_NAMES.ztds.size !== 5 || TOOLSET_NAMES.full !== null) {
     console.error("❌ Test 11 failed: TOOLSET_NAMES sizes invalid.");
     process.exit(1);
   }

@@ -28,7 +28,7 @@ const cmdIndex = args.indexOf("--");
 
 if (args.includes("--version") || args.includes("-v")) {
   const pkgPath = path.resolve(__dirname, './package.json');
-  let version = '2.5.3';
+  let version = '2.5.5';
   try { version = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version; } catch (_) {}
   console.log(`ps-guard / pii-masking-run v${version} (PrivacyScrubber MCP)`);
   process.exit(0);
@@ -145,21 +145,79 @@ const DEVOPS_SECRETS_DETECTOR = [
 ];
 
 // Fast-path Mode 0: Deterministic IDE Lifecycle Hook (--hook) for Claude Code & Cursor v1.7+
+const MAX_CLI_STDIO_BYTES = 10 * 1024 * 1024;
+const INVISIBLE_CHARS_RX = /[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\u061C\uFE00-\uFE0F\u180E\u034F]/g;
+
 if (isHookMode) {
-  const SENSITIVE_FILE_RX = /(?:^|[\\/])(?:\.env(?:\.[a-zA-Z0-9_-]+)?|id_rsa|id_ed25519|id_ecdsa|id_dsa|.*\.pem|.*\.key|.*\.p12|.*\.pfx|.*credentials.*\.json|.*secret.*\.(?:json|ya?ml|env)|secrets?\.txt|\.secret[^\\/]*|\.npmrc|\.pypirc|\.netrc|\.git-credentials|\.pgpass|\.my\.cnf|(?:.*)?\.tfstate(?:\.backup)?|\.vault-token|\.aws[\\/](?:credentials|config)|\.kube[\\/]config|\.docker[\\/]config\.json)$/i;
+  let cachedHookPiiEngine = undefined;
+  const getHookPiiEngine = () => {
+    if (cachedHookPiiEngine !== undefined) return cachedHookPiiEngine;
+    try {
+      cachedHookPiiEngine = require(path.resolve(__dirname, './ps-pii-engine.cjs'));
+    } catch (_) {
+      try {
+        cachedHookPiiEngine = require(path.resolve(__dirname, './ps-pii-engine.js'));
+      } catch (_e) {
+        cachedHookPiiEngine = null;
+      }
+    }
+    return cachedHookPiiEngine;
+  };
+
+  const normalizeHookText = (str) => {
+    if (!str || typeof str !== 'string') return '';
+    let cleaned = str.replace(INVISIBLE_CHARS_RX, '');
+    try {
+      cleaned = cleaned.normalize('NFKC');
+    } catch (_) {}
+    if (/[^\x00-\x7F]/.test(cleaned)) {
+      const eng = getHookPiiEngine();
+      if (eng && typeof eng.normalizeForDetection === 'function') {
+        try {
+          cleaned = eng.normalizeForDetection(cleaned).replace(INVISIBLE_CHARS_RX, '');
+        } catch (_) {}
+      }
+    }
+    return cleaned;
+  };
+
+  const SENSITIVE_FILE_RX = /(?:^|[\\/])(?:\.env(?:\.[a-zA-Z0-9_-]+)?|\.en[?*\[]|\.env[*?\[]|\.e[?*\[]v|\.\?nv|\*\.env|id_rsa|id_rs[?*\[]|id_ed25519|id_ed2551[?*\[]|id_ecdsa|id_ecds[?*\[]|id_dsa|.*\.pem|.*\.key|.*\.p12|.*\.pfx|.*credentials.*\.json|.*secret.*\.(?:json|ya?ml|env)|secrets?\.txt|\.secret[^\\/]*|\.npmrc|\.pypirc|\.netrc|\.git-credentials|\.pgpass|\.my\.cnf|(?:.*)?\.tfstate(?:\.backup)?|\.vault-token|\.aws[\\/](?:credentials|config|[*?\[]+)|\.kube[\\/]config|\.docker[\\/]config\.json)$/i;
   const SAFE_TEMPLATE_RX = /\.(?:example|sample|template|dist|schema)$/i;
-  const SAFE_CMD_TEMPLATE_TOKEN_RX = /(?:^|(?<=[\s"'`=<,;:|&]))[^\s"'`;|&<>]*\.(?:example|sample|template|dist|schema)(?=$|[\s"'`;|&>,])/gi;
-  const SENSITIVE_CMD_TARGET = `(?:(?:^|(?<=[\\s/\\\\"'\`=:,]))(?:\\.env(?:\\.[a-zA-Z0-9_-]+)?\\b|id_rsa(?=$|[\\s"';|&>,])|id_ed25519(?=$|[\\s"';|&>,])|id_ecdsa(?=$|[\\s"';|&>,])|id_dsa(?=$|[\\s"';|&>,])|\\.npmrc\\b|\\.pypirc\\b|\\.netrc\\b|\\.git-credentials\\b|\\.pgpass\\b|\\.my\\.cnf\\b|(?:[^\\s/"'\`]*\\.)?tfstate(?:\\.backup)?\\b|\\.vault-token\\b|secrets?\\.txt(?=$|[\\s"';|&>,])|\\.secret[^\\s"'\`|;&>]*|\\.aws[\\\\/](?:credentials|config)\\b|\\.kube[\\\\/]config\\b|\\.docker[\\\\/]config\\.json\\b|[^\\s/"'\`]*credentials[^\\s/"'\`]*\\.json\\b|[^\\s/"'\`]*secret[^\\s/"'\`]*\\.(?:json|ya?ml|env)\\b)|[^\\s"'\`|;&>]+\\.(?:pem|key|p12|pfx)(?=$|[\\s"';|&>,]))`;
-  const SENSITIVE_CMD_FILES_RX = new RegExp(`(?:^|[;&|\\n(\`]\\s*)(?:cat|type|head|tail|less|more|bat|sed|awk|grep|egrep|fgrep|rg|ag|sort|uniq|cut|paste|diff|cmp|comm|tar|zip|unzip|gzip|base64|xxd|od|cp|mv|nl|tr|strings|xargs|tac|rev|tee|python3?|node|ruby|perl|jq|yq|curl|wget|scp|bash|sh|zsh)\\s+[^\\n|;&]*${SENSITIVE_CMD_TARGET}`, 'i');
-  const SENSITIVE_CMD_REDIR_RX = new RegExp(`(?<!<)<\\s*(?!<)['"]?(?:[^\\s'"|;&>]*[\\\\/])?(?:\\.env(?:\\.[a-zA-Z0-9_-]+)?\\b|id_rsa(?=$|[\\s"';|&>,])|id_ed25519(?=$|[\\s"';|&>,])|id_ecdsa(?=$|[\\s"';|&>,])|id_dsa(?=$|[\\s"';|&>,])|\\.npmrc\\b|\\.pypirc\\b|\\.netrc\\b|\\.git-credentials\\b|\\.pgpass\\b|\\.my\\.cnf\\b|(?:[^\\s/"'\`]*\\.)?tfstate(?:\\.backup)?\\b|\\.vault-token\\b|secrets?\\.txt(?=$|[\\s"';|&>,])|\\.secret[^\\s"'\`|;&>]*|\\.aws[\\\\/](?:credentials|config)\\b|\\.kube[\\\\/]config\\b|\\.docker[\\\\/]config\\.json\\b|[^\\s/"'\`]*credentials[^\\s/"'\`]*\\.json\\b|[^\\s/"'\`]*secret[^\\s/"'\`]*\\.(?:json|ya?ml|env)\\b|[^\\s"'\`|;&>]+\\.(?:pem|key|p12|pfx))(?=$|[\\s"';|&>,])`, 'i');
-  const SENSITIVE_CMD_DD_RX = new RegExp(`(?:^|[;&|\\n(\`]\\s*)dd\\b[^\\n|;&]*\\bif=['"]?(?:[^\\s'"|;&>]*[\\\\/])?(?:\\.env(?:\\.[a-zA-Z0-9_-]+)?\\b|id_rsa(?=$|[\\s"';|&>,])|id_ed25519(?=$|[\\s"';|&>,])|id_ecdsa(?=$|[\\s"';|&>,])|id_dsa(?=$|[\\s"';|&>,])|\\.npmrc\\b|\\.pypirc\\b|\\.netrc\\b|\\.git-credentials\\b|\\.pgpass\\b|\\.my\\.cnf\\b|(?:[^\\s/"'\`]*\\.)?tfstate(?:\\.backup)?\\b|\\.vault-token\\b|secrets?\\.txt(?=$|[\\s"';|&>,])|\\.secret[^\\s"'\`|;&>]*|\\.aws[\\\\/](?:credentials|config)\\b|\\.kube[\\\\/]config\\b|\\.docker[\\\\/]config\\.json\\b|[^\\s/"'\`]*credentials[^\\s/"'\`]*\\.json\\b|[^\\s/"'\`]*secret[^\\s/"'\`]*\\.(?:json|ya?ml|env)\\b|[^\\s"'\`|;&>]+\\.(?:pem|key|p12|pfx))(?=$|[\\s"';|&>,])`, 'i');
-  const SENSITIVE_CMD_SOURCE_RX = /(?:^|[;&|\n(`]\s*)(?:source|\.)\s+['"]?(?:[^\s'"|;&>]*[\\/])?(?:\.env(?:\.[a-zA-Z0-9_-]+)?|\.secret[^\s"'`|;&>]*|[^\s/"'`]*secret[^\s/"'`]*\.env)(?=$|[\s"';|&>,])/i;
-  const SENSITIVE_CMD_ENV_RX = /(?:^|[;&|\n(`]\s*)(?:printenv|env(?:\s+-0)?\s*(?:$|[|;&>\n])|set\s*(?:$|[|;&>\n])|(?:declare|typeset)\s+-[a-zA-Z]*p\b|export\s+-p\b|aws\s+configure\s+get|gcloud\s+auth\s+print-access-token)/i;
+  const SAFE_CMD_TEMPLATE_TOKEN_RX = /(?:^|(?<=[\s"'`=<,;:|&(\[]))[^\s"'`;|&<>()]*\.(?:example|sample|template|dist|schema)(?=$|[\s"'`;|&>,)\]])/gi;
+  const SENSITIVE_TARGET_ATOM = `(?:\\.env(?:\\.[a-zA-Z0-9_-]+)?(?=$|[\\s"';|&>,)\\]*?\\[])|\\.en[?*\\[][^\\s;|&\n]*|\\.e[?*\\[]v[^\\s;|&\n]*|\\.\\?nv\\b|\\.env[*?\\[][^\\s;|&\n]*|\\*\\.env\\b|id_rsa(?=$|[\\s"';|&>,)\\]])|id_rs[?*\\[][^\\s;|&\n]*|id_ed25519(?=$|[\\s"';|&>,)\\]])|id_ed2551[?*\\[][^\\s;|&\n]*|id_ecdsa(?=$|[\\s"';|&>,)\\]])|id_ecds[?*\\[][^\\s;|&\n]*|id_dsa(?=$|[\\s"';|&>,)\\]])|\\.npmrc\\b|\\.pypirc\\b|\\.netrc\\b|\\.git-credentials\\b|\\.pgpass\\b|\\.my\\.cnf\\b|(?:[^\\s/"'\`]*\\.)?tfstate(?:\\.backup)?\\b|\\*\\.tfstate\\b|\\.vault-token\\b|secrets?\\.txt(?=$|[\\s"';|&>,)\\]])|\\.secret[^\\s"'\`|;&>]*|\\.aws[\\\\/](?:credentials|config|[*?\\[]+)\\b|\\.kube[\\\\/]config\\b|\\.docker[\\\\/]config\\.json\\b|[^\\s/"'\`()]*credentials[^\\s/"'\`()]*\\.json\\b|[^\\s/"'\`()]*secret[^\\s/"'\`()]*\\.(?:json|ya?ml|env)\\b)`;
+  const SENSITIVE_CMD_TARGET = `(?:(?:^|(?<=[\\s/\\\\"'\`=:,(\\[$]))${SENSITIVE_TARGET_ATOM}|(?:[^\\s"'\`|;&>]+|\\*)\\.(?:pem|key|p12|pfx)(?=$|[\\s"';|&>,)\\]]))`;
+  const CMD_WRAPPER_PREFIX = `(?:(?:(?:\\/[A-Za-z0-9._-]+)+\\/)?(?:sudo(?:\\s+(?:-[nEkEH]|-[uUgC]\\s+\\S+))*\\s+|command(?:\\s+-[pvV]+)*\\s+|builtin\\s+|nohup\\s+|time(?:\\s+-[p]+)*\\s+|nice(?:\\s+-n\\s+\\S+|\\s+-\\d+)?\\s+|stdbuf(?:\\s+-[ioe]\\S+)*\\s+|timeout\\s+\\S+\\s+|env(?:\\s+(?:-[i0u]|--ignore-environment|--unset=\\S+))*(?:\\s+[A-Za-z_][A-Za-z0-9_]*=\\S+)+\\s+|env\\s+(?=(?:(?:\\.|(?:\\/[A-Za-z0-9._-]+)+)\\/)?[A-Za-z_][A-Za-z0-9._-]*\\b)))*`;
+  const CMD_BIN_PREFIX = `(?:(?:\\.|(?:\\/[A-Za-z0-9._-]+)+)\\/)?`;
+  const CMD_NAMES_ALT = `(?:git\\s+(?:show|diff|grep|archive|cat-file)|rg|ripgrep|grep|egrep|fgrep|ag|ack|awk|gawk|sed|perl|python3?|node|ruby|php|cat|type|head|tail|less|more|bat|nl|tac|rev|strings|xxd|od|hexdump|base64|cp|mv|tar|zip|unzip|gzip|curl|wget|scp|dd|source|\\.|sort|uniq|cut|paste|diff|cmp|comm|tr|xargs|tee|jq|yq|bash|sh|zsh)`;
+  const SENSITIVE_CMD_FILES_RX = new RegExp(`(?:^|[;&|\\n(\`]\\s*)${CMD_WRAPPER_PREFIX}${CMD_BIN_PREFIX}${CMD_NAMES_ALT}\\s+[^\\n|;&]*${SENSITIVE_CMD_TARGET}`, 'i');
+  const SENSITIVE_CMD_REDIR_RX = new RegExp(`(?<!<)<\\s*(?!<)['"]?(?:[^\\s'"|;&>]*[\\\\/])?(?:${SENSITIVE_TARGET_ATOM}|(?:[^\\s"'\`|;&>]+|\\*)\\.(?:pem|key|p12|pfx))(?=$|[\\s"';|&>,)\\]])`, 'i');
+  const SENSITIVE_CMD_DD_RX = new RegExp(`(?:^|[;&|\\n(\`]\\s*)${CMD_WRAPPER_PREFIX}${CMD_BIN_PREFIX}dd\\b[^\\n|;&]*\\bif=['"]?(?:[^\\s'"|;&>]*[\\\\/])?(?:${SENSITIVE_TARGET_ATOM}|(?:[^\\s"'\`|;&>]+|\\*)\\.(?:pem|key|p12|pfx))(?=$|[\\s"';|&>,)\\]])`, 'i');
+  const SENSITIVE_CMD_SOURCE_RX = new RegExp(`(?:^|[;&|\\n(\`]\\s*)${CMD_WRAPPER_PREFIX}(?:source|\\.)\\s+['"]?(?:[^\\s'"|;&>]*[\\\\/])?(?:\\.env(?:\\.[a-zA-Z0-9_-]+)?|\\.en[?*\\[][^\\s;|&\n]*|\\.env[*?\\[][^\\s;|&\n]*|\\.secret[^\\s"'\`|;&>]*|[^\\s/"'\`]*secret[^\\s/"'\`]*\\.env)(?=$|[\\s"';|&>,)\\]])`, 'i');
+  const SENSITIVE_CMD_ENV_RX = new RegExp(`(?:^|[;&|\\n(\`]\\s*)${CMD_WRAPPER_PREFIX}${CMD_BIN_PREFIX}(?:printenv\\b|env(?:\\s+-0)?\\s*(?:$|[|;&>\\n])|set\\s*(?:$|[|;&>\\n])|(?:declare|typeset)\\s+-[a-zA-Z]*p\\b|export\\s+-p\\b|aws\\s+configure\\s+get|gcloud\\s+auth\\s+print-access-token)`, 'i');
   const PRIVACYSCRUBBER_LOCAL_TOOLS_RX = /^(?:(?:mcp[_-])?(?:privacyscrubber|ztds)(?:__|_|-)?)?(?:sanitize_text|sanitize_file|scrub_text|scrub_file|reveal_text|guard_read_file|guard_exec|guard_git_diff|guard_apply_patch|guard_unmask_args|guard_session_info|guard_session_reset|mark_false_positive|audit_context|ztds_sanitize|ztds_restore|ztds_audit|ztds_info|ztds_reset_session)$/i;
+
+  const normalizeShellCommandForScan = (rawCmd) => {
+    let s = normalizeHookText(rawCmd);
+    // Decode ANSI-C $'...' hex/octal escapes before quote stripping
+    s = s.replace(/\$'((?:[^'\\]|\\.)*)'/g, (_m, inner) => {
+      return inner
+        .replace(/\\x([0-9a-fA-F]{2})/g, (__m, hex) => String.fromCharCode(parseInt(hex, 16)))
+        .replace(/\\([0-7]{1,3})/g, (__m, oct) => String.fromCharCode(parseInt(oct, 8)))
+        .replace(/\\(.)/g, '$1');
+    });
+    s = s.replace(/\$"((?:[^"\\]|\\.)*)"/g, '$1');
+    // Unescape shell character escapes like \cat or \.e\nv (preserving \n and Windows drive paths)
+    s = s.replace(/(^|[\s;&|(`])\\([a-zA-Z.])/g, '$1$2');
+    // Strip quotes inside arguments (.e'n'v -> .env, c"a"t -> cat, ".env.example" -> .env.example)
+    s = s.replace(/['"]/g, '');
+    // Replace safe template filenames (.env.example, .env.sample, etc.) after quote normalization
+    s = s.replace(SAFE_CMD_TEMPLATE_TOKEN_RX, '__SAFE_TEMPLATE__');
+    return s;
+  };
 
   const isSensitiveShellCommand = (cmd) => {
     if (!cmd || typeof cmd !== 'string') return false;
-    const cmdForScan = cmd.replace(SAFE_CMD_TEMPLATE_TOKEN_RX, '__SAFE_TEMPLATE__');
+    const cmdForScan = normalizeShellCommandForScan(cmd);
     return SENSITIVE_CMD_FILES_RX.test(cmdForScan) ||
       SENSITIVE_CMD_REDIR_RX.test(cmdForScan) ||
       SENSITIVE_CMD_DD_RX.test(cmdForScan) ||
@@ -169,17 +227,68 @@ if (isHookMode) {
 
   const findFirstDevOpsSecret = (text) => {
     if (!text || typeof text !== 'string') return null;
+    const normalized = normalizeHookText(text);
     for (const rule of DEVOPS_SECRETS_DETECTOR) {
       const rx = new RegExp(rule.regex.source, rule.regex.flags);
-      if (rx.test(text)) return rule;
+      if (rx.test(normalized)) return rule;
     }
     return null;
+  };
+
+  const directoryContainsSensitiveFile = (dirPath, maxDepth = 2, curDepth = 0) => {
+    if (curDepth > maxDepth) return null;
+    let entries;
+    try {
+      entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    } catch (_) {
+      return null;
+    }
+    for (const ent of entries) {
+      const name = ent.name;
+      if (name === '.git' || name === 'node_modules') continue;
+      const relCheck = '/' + name;
+      if (SENSITIVE_FILE_RX.test(relCheck) && !SAFE_TEMPLATE_RX.test(relCheck)) {
+        return name;
+      }
+      if (ent.isDirectory() && curDepth < maxDepth && (name === '.aws' || name === '.kube' || name === '.docker' || name === 'config' || name === 'secrets' || curDepth === 0)) {
+        const subHit = directoryContainsSensitiveFile(path.join(dirPath, name), maxDepth, curDepth + 1);
+        if (subHit) return subHit;
+      }
+    }
+    return null;
+  };
+
+  const hasSafeSearchScope = (toolInput, candidatePath) => {
+    if (candidatePath) {
+      const base = path.basename(candidatePath);
+      if (/\.[a-zA-Z0-9]{1,8}$/.test(base) && !SENSITIVE_FILE_RX.test(candidatePath)) {
+        return true;
+      }
+    }
+    const safeCodeGlobRx = /^(?:\*\*\/|[A-Za-z0-9_./-]+\/)?\*\.(?:[jt]sx?|mjs|cjs|py|go|rs|java|rb|php|cs|c|cpp|h|hpp|swift|kt|scala|vue|svelte|html|css|scss|md|sql|sh)$/i;
+    const globVal = typeof toolInput.glob === 'string' ? toolInput.glob.trim() : '';
+    if (globVal) {
+      if (safeCodeGlobRx.test(globVal)) return true;
+      if (/!\s*(?:\*\*\/)?\.env\*?/i.test(globVal)) return true;
+    }
+    if (typeof toolInput.type === 'string' && /^(?:js|ts|py|go|rust|java|ruby|php|cpp|c|csharp|md|html|css)$/i.test(toolInput.type.trim())) {
+      return true;
+    }
+    const excludes = [];
+    if (typeof toolInput.exclude === 'string') excludes.push(toolInput.exclude);
+    if (Array.isArray(toolInput.exclude)) excludes.push(...toolInput.exclude);
+    if (Array.isArray(toolInput.Excludes)) excludes.push(...toolInput.Excludes);
+    if (typeof toolInput.excludePattern === 'string') excludes.push(toolInput.excludePattern);
+    if (excludes.some(ex => typeof ex === 'string' && /\.env/i.test(ex))) {
+      return true;
+    }
+    return false;
   };
 
   const inspectMcpValue = (node, keyName = '', depth = 0, seen = new Set()) => {
     if (depth > 20 || node === null || node === undefined) return null;
     if (typeof node === 'string') {
-      const trimmed = node.trim();
+      const trimmed = normalizeHookText(node).trim();
       if (!trimmed) return null;
       if (SENSITIVE_FILE_RX.test(trimmed) && !SAFE_TEMPLATE_RX.test(trimmed)) {
         return { kind: 'file', detail: path.basename(trimmed) };
@@ -267,7 +376,7 @@ if (isHookMode) {
     }
     const toolInput = (rawToolInput && typeof rawToolInput === 'object') ? rawToolInput : {};
 
-    const candidatePath = String(
+    const candidatePath = normalizeHookText(String(
       toolInput.file_path ??
       toolInput.path ??
       toolInput.target_file ??
@@ -277,6 +386,7 @@ if (isHookMode) {
       toolInput.filePath ??
       toolInput.SearchPath ??
       toolInput.directory ??
+      toolInput.SearchDirectory ??
       toolInput.notebook_path ??
       payload.file_path ??
       payload.path ??
@@ -287,10 +397,11 @@ if (isHookMode) {
       payload.filePath ??
       payload.SearchPath ??
       payload.directory ??
+      payload.SearchDirectory ??
       payload.notebook_path ??
       ""
-    ).trim();
-    const candidateCmd = String(
+    )).trim();
+    const candidateCmd = normalizeHookText(String(
       toolInput.command ??
       toolInput.cmd ??
       toolInput.CommandLine ??
@@ -298,7 +409,7 @@ if (isHookMode) {
       payload.cmd ??
       payload.CommandLine ??
       ""
-    ).trim();
+    )).trim();
 
     if (/^beforeSubmitPrompt$/i.test(eventName)) {
       const promptText = String(payload.prompt ?? payload.text ?? payload.user_prompt ?? toolInput.prompt ?? toolInput.text ?? "");
@@ -340,7 +451,9 @@ if (isHookMode) {
     const isCursorEvent = /^(?:beforeReadFile|beforeShellExecution|beforeSubmitPrompt|beforeMCPExecution)$/i.test(eventName) ||
       (!toolName && (payload.file_path !== undefined || payload.command !== undefined || payload.attachments !== undefined || payload.prompt !== undefined));
 
-    const isReadTool = /^(?:Read|View|read_file|view_file|ReadFile|Grep|grep_search|Ripgrep|Search|Glob|find_by_name|Edit|Write|MultiEdit|edit_file|write_file|write_to_file|replace_file_content|multi_replace_file_content|NotebookRead)$/i.test(toolName) ||
+    const isSearchTool = /^(?:Grep|grep|grep_search|search_files|Search|ripgrep|Ripgrep|Glob|find_by_name)$/i.test(toolName);
+    const isReadTool = isSearchTool ||
+      /^(?:Read|View|read_file|view_file|ReadFile|Edit|Write|MultiEdit|edit_file|write_file|write_to_file|replace_file_content|multi_replace_file_content|NotebookRead)$/i.test(toolName) ||
       /^beforeReadFile$/i.test(eventName) ||
       (!toolName && Boolean(candidatePath));
     const isShellTool = /^(?:Bash|Execute|Shell|run_command|run_terminal_cmd|execute_command)$/i.test(toolName) ||
@@ -348,16 +461,17 @@ if (isHookMode) {
       (!toolName && Boolean(candidateCmd));
 
     const extraSearchPaths = [];
-    if (/^(?:Grep|grep_search|Ripgrep|Search|Glob|find_by_name)$/i.test(toolName)) {
-      if (typeof toolInput.glob === 'string' && toolInput.glob.trim()) extraSearchPaths.push(toolInput.glob.trim());
+    if (isSearchTool) {
+      if (typeof toolInput.glob === 'string' && toolInput.glob.trim()) extraSearchPaths.push(normalizeHookText(toolInput.glob).trim());
+      if (typeof toolInput.file_pattern === 'string' && toolInput.file_pattern.trim()) extraSearchPaths.push(normalizeHookText(toolInput.file_pattern).trim());
       if (Array.isArray(toolInput.Includes)) {
         for (const inc of toolInput.Includes) {
-          if (typeof inc === 'string' && inc.trim()) extraSearchPaths.push(inc.trim());
+          if (typeof inc === 'string' && inc.trim()) extraSearchPaths.push(normalizeHookText(inc).trim());
         }
       }
       if (/^(?:Glob|find_by_name)$/i.test(toolName)) {
         const pat = toolInput.pattern ?? toolInput.Pattern;
-        if (typeof pat === 'string' && pat.trim()) extraSearchPaths.push(pat.trim());
+        if (typeof pat === 'string' && pat.trim()) extraSearchPaths.push(normalizeHookText(pat).trim());
       }
     }
 
@@ -367,16 +481,33 @@ if (isHookMode) {
         return candidatePath;
       }
       for (const p of extraSearchPaths) {
+        if (SENSITIVE_FILE_RX.test(p) && !SAFE_TEMPLATE_RX.test(p)) {
+          return p;
+        }
         const norm = p.replace(/\*+$/, '');
         if (norm && SENSITIVE_FILE_RX.test(norm) && !SAFE_TEMPLATE_RX.test(norm)) {
           return p;
         }
       }
+      if (/^(?:Grep|grep|grep_search|search_files|Search|ripgrep|Ripgrep|find_by_name)$/i.test(toolName) && !hasSafeSearchScope(toolInput, candidatePath)) {
+        if (!candidatePath || candidatePath === '.' || candidatePath === './' || candidatePath === '..' || candidatePath.startsWith('../') || candidatePath === '/' || candidatePath === '~') {
+          return '.env (unscoped directory search)';
+        }
+        const resolvedCandidate = path.resolve(process.cwd(), candidatePath);
+        try {
+          if (fs.existsSync(resolvedCandidate) && fs.statSync(resolvedCandidate).isDirectory()) {
+            const sensitiveInDir = directoryContainsSensitiveFile(resolvedCandidate);
+            if (sensitiveInDir) {
+              return sensitiveInDir;
+            }
+          }
+        } catch (_) {}
+      }
       return null;
     })();
 
     if (blockedReadPath) {
-      const reason = `Blocked by PrivacyScrubber ZTDS policy: Direct read of sensitive file '${path.basename(blockedReadPath)}' is prohibited. Call the PrivacyScrubber MCP tool 'guard_read_file' or 'sanitize_file' instead so secrets are tokenized in local RAM.`;
+      const reason = `Blocked by PrivacyScrubber ZTDS policy: Direct read or unscoped search of sensitive file '${path.basename(blockedReadPath)}' is prohibited. Call the PrivacyScrubber MCP tool 'guard_read_file' or 'sanitize_file' (or pass an explicit non-secret glob/exclude) so secrets are tokenized in local RAM.`;
       if (isCursorEvent) {
         emitCursorDeny(`[PrivacyScrubber ZTDS] Direct read of ${path.basename(blockedReadPath)} blocked to prevent cloud egress.`, reason);
       }
@@ -399,8 +530,15 @@ if (isHookMode) {
     evaluateHookPayload(hookPayloadArg);
   } else if (!process.stdin.isTTY) {
     let buf = "";
+    let hookBytes = 0;
     process.stdin.setEncoding("utf8");
-    process.stdin.on("data", (c) => { buf += c; });
+    process.stdin.on("data", (c) => {
+      hookBytes += Buffer.byteLength(c, "utf8");
+      if (hookBytes > MAX_CLI_STDIO_BYTES) {
+        emitPreToolDeny("PreToolUse", "Blocked by PrivacyScrubber ZTDS policy: hook payload exceeds 10MB limit (fail-closed).");
+      }
+      buf += c;
+    });
     process.stdin.on("end", () => evaluateHookPayload(buf));
   } else {
     evaluateHookPayload("{}");
@@ -1168,7 +1306,7 @@ function performSanitization(text, { perCallQuota = false } = {}) {
     }
   }
 
-  return result.scrubbedText + (wasTruncated ? `\n\n[PrivacyScrubber Free Tier: Payload truncated to ${limit.toLocaleString()} characters. Upgrade to PRO ($15/mo or $110 Lifetime) or Developer SDK ($299/mo) for unlimited payload processing: https://privacyscrubber.com/pricing]` : '');
+  return result.scrubbedText + (wasTruncated ? `\n\n[PrivacyScrubber Free Tier: Payload truncated to ${limit.toLocaleString()} characters. Upgrade to PRO ($15/mo or $110 Lifetime) or Developer SDK ($299/mo) for unlimited payload processing: https://privacyscrubber.com/pricing/]` : '');
 }
 
 function buildCisoAuditTelemetry(currentTokenMap = {}) {
@@ -1238,7 +1376,7 @@ function buildCisoAuditTelemetry(currentTokenMap = {}) {
   }
 
   const ipHoldings = {
-    standard: 'IETF draft-sibiryakov-ztds-protocol-01',
+    standard: 'IETF draft-sibiryakov-ztds-protocol-02',
     standardUrl: 'https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/',
     patent: "U.S. & Int'l Patents Pending (Paris Convention Priority)",
     trademark: 'ZTDS™ Reg. #182655957 (ILPO Cl 9 & 42)'
@@ -1372,7 +1510,7 @@ function emitProofFeedback() {
   if (isQuiet) return;
 
   if (sessionWasTruncated) {
-    process.stderr.write(`\x1b[33m[ps-guard] Free Tier limit reached (${sessionTruncatedLimit.toLocaleString()} chars). Upgrade to PRO ($15/mo) or Developer SDK ($299/mo): https://privacyscrubber.com/pricing\x1b[0m\n`);
+    process.stderr.write(`\x1b[33m[ps-guard] Free Tier limit reached (${sessionTruncatedLimit.toLocaleString()} chars). Upgrade to PRO ($15/mo) or Developer SDK ($299/mo): https://privacyscrubber.com/pricing/\x1b[0m\n`);
   }
 
   const totalMasked = Object.keys(localSessionMap).length;
@@ -1409,10 +1547,15 @@ if (isRestoreMode) {
           if (lstat.isSymbolicLink() || !lstat.isFile()) {
             throw new Error('Security policy violation: --token-map must be a regular non-symlink file.');
           }
+          const realMapPath = fs.realpathSync(resolvedMapPath);
+          const realRelToRoot = path.relative(workspaceRoot, realMapPath);
+          if (realRelToRoot.startsWith('..') || path.isAbsolute(realRelToRoot)) {
+            throw new Error('Security policy violation: --token-map realpath escapes active workspace via symlink.');
+          }
           if (lstat.size > 10 * 1024 * 1024) {
             throw new Error('Token map file exceeds 10MB limit.');
           }
-          tokenMap = JSON.parse(fs.readFileSync(resolvedMapPath, 'utf8'), safeReviver);
+          tokenMap = JSON.parse(fs.readFileSync(realMapPath, 'utf8'), safeReviver);
         }
       }
     } catch (e) {
@@ -1447,8 +1590,16 @@ if (isRestoreMode) {
 
   if (hasStdin) {
     let rawStdin = '';
+    let restoreBytes = 0;
     process.stdin.setEncoding('utf8');
-    process.stdin.on('data', chunk => { rawStdin += chunk; });
+    process.stdin.on('data', chunk => {
+      restoreBytes += Buffer.byteLength(chunk, 'utf8');
+      if (restoreBytes > MAX_CLI_STDIO_BYTES) {
+        console.error('Error: Stdin payload exceeds 10MB limit.');
+        process.exit(1);
+      }
+      rawStdin += chunk;
+    });
     process.stdin.on('end', () => runUnscrub(rawStdin));
   } else if (nonFlagArgs.length > 0) {
     runUnscrub(nonFlagArgs.join(' '));
@@ -1629,6 +1780,121 @@ if (isDiffMode) {
   }
 }
 
+function attachBoundedLineReader(stream, { maxBytes = MAX_CLI_STDIO_BYTES, onLine, onOversize, onClose }) {
+  let chunks = [];
+  let lineBytes = 0;
+  let dropping = false;
+  let headPreview = '';
+  let tailPreview = '';
+  let notifiedOversize = false;
+  let stallTimer = null;
+
+  const clearTimer = () => {
+    if (stallTimer) {
+      clearTimeout(stallTimer);
+      stallTimer = null;
+    }
+  };
+
+  const resetLine = () => {
+    chunks = [];
+    lineBytes = 0;
+    dropping = false;
+    headPreview = '';
+    tailPreview = '';
+    notifiedOversize = false;
+    clearTimer();
+  };
+
+  const notifyOversize = () => {
+    if (notifiedOversize) return;
+    notifiedOversize = true;
+    clearTimer();
+    if (onOversize) onOversize(headPreview, tailPreview);
+  };
+
+  stream.on('data', (rawChunk) => {
+    const buf = Buffer.isBuffer(rawChunk) ? rawChunk : Buffer.from(String(rawChunk), 'utf8');
+    let offset = 0;
+    while (offset < buf.length) {
+      const nlIdx = buf.indexOf(0x0a, offset);
+      if (nlIdx === -1) {
+        const rem = buf.subarray(offset);
+        if (dropping) {
+          tailPreview = (tailPreview + rem.subarray(Math.max(0, rem.length - 512)).toString('utf8')).slice(-512);
+        } else {
+          lineBytes += rem.length;
+          if (headPreview.length < 512) {
+            headPreview += rem.subarray(0, 512 - headPreview.length).toString('utf8');
+          }
+          if (lineBytes > maxBytes) {
+            dropping = true;
+            chunks = [];
+            tailPreview = rem.subarray(Math.max(0, rem.length - 512)).toString('utf8').slice(-512);
+            if (/"id"\s*:/.test(headPreview)) {
+              notifyOversize();
+            } else if (!stallTimer) {
+              stallTimer = setTimeout(notifyOversize, 80);
+              if (typeof stallTimer.unref === 'function') stallTimer.unref();
+            }
+          } else {
+            chunks.push(rem);
+          }
+        }
+        break;
+      } else {
+        const seg = buf.subarray(offset, nlIdx);
+        if (dropping) {
+          tailPreview = (tailPreview + seg.subarray(Math.max(0, seg.length - 512)).toString('utf8')).slice(-512);
+          notifyOversize();
+          resetLine();
+        } else {
+          const totalLen = lineBytes + seg.length;
+          if (totalLen > maxBytes) {
+            if (headPreview.length < 512) {
+              headPreview += seg.subarray(0, 512 - headPreview.length).toString('utf8');
+            }
+            tailPreview = seg.subarray(Math.max(0, seg.length - 512)).toString('utf8');
+            notifyOversize();
+            resetLine();
+          } else {
+            chunks.push(seg);
+            let lineStr = (chunks.length === 1 ? chunks[0] : Buffer.concat(chunks, totalLen)).toString('utf8');
+            if (lineStr.endsWith('\r')) lineStr = lineStr.slice(0, -1);
+            resetLine();
+            if (onLine) onLine(lineStr);
+          }
+        }
+        offset = nlIdx + 1;
+      }
+    }
+  });
+
+  stream.on('end', () => {
+    if (dropping) {
+      notifyOversize();
+    } else if (chunks.length > 0) {
+      let lineStr = Buffer.concat(chunks, lineBytes).toString('utf8');
+      if (lineStr.endsWith('\r')) lineStr = lineStr.slice(0, -1);
+      resetLine();
+      if (onLine) onLine(lineStr);
+    }
+    resetLine();
+    if (onClose) onClose();
+  });
+}
+
+function extractRpcIdFromPreview(headStr, tailStr) {
+  for (const s of [headStr, tailStr]) {
+    if (!s) continue;
+    const m = s.match(/"id"\s*:\s*("(?:[^"\\]|\\.)*"|-?\d+|null)/);
+    if (m) {
+      try { return JSON.parse(m[1]); } catch (_) {}
+    }
+  }
+  return null;
+}
+
 // Mode 2.5: Transparent MCP JSON-RPC 2.0 Stdio Proxy Wrapper (--wrap)
 if (isWrapMode) {
   if (wrapCommandArgs.length === 0) {
@@ -1718,51 +1984,54 @@ if (isWrapMode) {
     shell: process.platform === 'win32'
   });
 
-  // Intercept client -> upstream MCP server (JSON-RPC requests on stdin)
-  const rlClientIn = readline.createInterface({
-    input: process.stdin,
-    terminal: false
-  });
-
-  rlClientIn.on('line', (line) => {
-    if (!child.stdin || child.stdin.destroyed) return;
-    const trimmed = line.trim();
-    if (!trimmed.startsWith('{')) {
-      child.stdin.write(line + '\n');
-      return;
-    }
-    try {
-      const msg = JSON.parse(trimmed);
-      if (msg && typeof msg === 'object' && msg.params && (msg.method === 'tools/call' || msg.method === 'prompts/get' || msg.method === 'resources/read' || msg.method === 'sampling/createMessage')) {
-        msg.params = deepDetokenizeParams(msg.params);
-        child.stdin.write(JSON.stringify(msg) + '\n');
-        return;
-      }
-    } catch (_) {}
-    child.stdin.write(line + '\n');
-  });
-
-  rlClientIn.on('close', () => {
-    if (child.stdin && !child.stdin.destroyed) {
-      child.stdin.end();
-    }
-  });
-
-  // Intercept upstream MCP server -> client (JSON-RPC responses/notifications on stdout)
-  const rlUpstreamOut = readline.createInterface({
-    input: child.stdout,
-    terminal: false
-  });
-
-  const emitWrapRpcError = (id, message) => {
+  const emitWrapRpcError = (id, message, code = -32603) => {
     process.stdout.write(JSON.stringify({
       jsonrpc: '2.0',
       id: id ?? null,
-      error: { code: -32603, message }
+      error: { code, message }
     }) + '\n');
   };
 
-  rlUpstreamOut.on('line', (line) => {
+  // Intercept client -> upstream MCP server (JSON-RPC requests on stdin) with 10MB frame guard
+  attachBoundedLineReader(process.stdin, {
+    maxBytes: MAX_CLI_STDIO_BYTES,
+    onOversize: (headStr, tailStr) => {
+      const id = extractRpcIdFromPreview(headStr, tailStr);
+      emitWrapRpcError(id, 'Invalid Request: JSON-RPC stdio frame exceeds 10MB maximum limit.', -32600);
+    },
+    onLine: (line) => {
+      if (!child.stdin || child.stdin.destroyed) return;
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('{')) {
+        child.stdin.write(line + '\n');
+        return;
+      }
+      try {
+        const msg = JSON.parse(trimmed);
+        if (msg && typeof msg === 'object' && msg.params && (msg.method === 'tools/call' || msg.method === 'prompts/get' || msg.method === 'resources/read' || msg.method === 'sampling/createMessage')) {
+          msg.params = deepDetokenizeParams(msg.params);
+          child.stdin.write(JSON.stringify(msg) + '\n');
+          return;
+        }
+      } catch (_) {}
+      child.stdin.write(line + '\n');
+    },
+    onClose: () => {
+      if (child.stdin && !child.stdin.destroyed) {
+        child.stdin.end();
+      }
+    }
+  });
+
+  // Intercept upstream MCP server -> client (JSON-RPC responses/notifications on stdout) with 10MB frame guard
+  attachBoundedLineReader(child.stdout, {
+    maxBytes: MAX_CLI_STDIO_BYTES,
+    onOversize: (headStr, tailStr) => {
+      const id = extractRpcIdFromPreview(headStr, tailStr);
+      process.stderr.write('[PrivacyScrubber FAIL-CLOSED] Upstream JSON-RPC frame exceeds 10MB limit.\n');
+      emitWrapRpcError(id, 'PrivacyScrubber blocked upstream response fail-closed: frame exceeds 10MB limit.', -32603);
+    },
+    onLine: (line) => {
     const trimmed = line.trim();
     if (!trimmed.startsWith('{')) {
       try {
@@ -1853,6 +2122,7 @@ if (isWrapMode) {
       process.stderr.write(`[PrivacyScrubber FAIL-CLOSED] ${err && err.message ? err.message : 'sanitization blocked'}\n`);
       process.stdout.write('[REDACTED - SANITIZATION FAIL-CLOSED]\n');
     }
+    }
   });
 
   const rlUpstreamErr = readline.createInterface({
@@ -1893,8 +2163,16 @@ if (isWrapMode) {
   // Mode 3: Stdin Stream Mode (pipe)
   if (isJsonMode) {
     let rawInput = '';
+    let stdinBytes = 0;
     process.stdin.setEncoding('utf8');
-    process.stdin.on('data', chunk => { rawInput += chunk; });
+    process.stdin.on('data', chunk => {
+      stdinBytes += Buffer.byteLength(chunk, 'utf8');
+      if (stdinBytes > MAX_CLI_STDIO_BYTES) {
+        process.stderr.write('Error [PrivacyScrubber FAIL-CLOSED]: Stdin payload exceeds 10MB maximum limit.\n');
+        process.exit(1);
+      }
+      rawInput += chunk;
+    });
     process.stdin.on('end', () => {
       try {
         const sanitized = performSanitization(rawInput);
@@ -1914,27 +2192,30 @@ if (isWrapMode) {
       }
     });
   } else {
-    const rlStdin = readline.createInterface({
-      input: process.stdin,
-      terminal: false
-    });
     let stdinFailed = false;
-    rlStdin.on('line', (line) => {
-      if (stdinFailed) return;
-      try {
-        const sanitized = performSanitization(line);
-        process.stdout.write(sanitized + '\n');
-      } catch (err) {
+    attachBoundedLineReader(process.stdin, {
+      maxBytes: MAX_CLI_STDIO_BYTES,
+      onOversize: () => {
         stdinFailed = true;
-        process.stderr.write(`Error [PrivacyScrubber FAIL-CLOSED]: ${err && err.message ? err.message : 'sanitization failed'}\n`);
-        rlStdin.close();
+        process.stderr.write('Error [PrivacyScrubber FAIL-CLOSED]: Stdin line exceeds 10MB maximum limit.\n');
         process.exit(1);
+      },
+      onLine: (line) => {
+        if (stdinFailed) return;
+        try {
+          const sanitized = performSanitization(line);
+          process.stdout.write(sanitized + '\n');
+        } catch (err) {
+          stdinFailed = true;
+          process.stderr.write(`Error [PrivacyScrubber FAIL-CLOSED]: ${err && err.message ? err.message : 'sanitization failed'}\n`);
+          process.exit(1);
+        }
+      },
+      onClose: () => {
+        if (stdinFailed) return;
+        emitProofFeedback();
+        process.exit(0);
       }
-    });
-    rlStdin.on('close', () => {
-      if (stdinFailed) return;
-      emitProofFeedback();
-      process.exit(0);
     });
   }
 } else if (hasCommand) {
@@ -1954,33 +2235,31 @@ if (isWrapMode) {
     process.exit(1);
   };
 
-  const rlStdout = readline.createInterface({
-    input: child.stdout,
-    terminal: false
-  });
-
-  rlStdout.on('line', (line) => {
-    if (cmdSanitizeFailed) return;
-    try {
-      const sanitized = performSanitization(line);
-      process.stdout.write(sanitized + '\n');
-    } catch (err) {
-      failClosedChild(err);
+  attachBoundedLineReader(child.stdout, {
+    maxBytes: MAX_CLI_STDIO_BYTES,
+    onOversize: () => failClosedChild(new Error('Child stdout line exceeds 10MB maximum limit.')),
+    onLine: (line) => {
+      if (cmdSanitizeFailed) return;
+      try {
+        const sanitized = performSanitization(line);
+        process.stdout.write(sanitized + '\n');
+      } catch (err) {
+        failClosedChild(err);
+      }
     }
   });
 
-  const rlStderr = readline.createInterface({
-    input: child.stderr,
-    terminal: false
-  });
-
-  rlStderr.on('line', (line) => {
-    if (cmdSanitizeFailed) return;
-    try {
-      const sanitized = performSanitization(line);
-      process.stderr.write(sanitized + '\n');
-    } catch (err) {
-      failClosedChild(err);
+  attachBoundedLineReader(child.stderr, {
+    maxBytes: MAX_CLI_STDIO_BYTES,
+    onOversize: () => failClosedChild(new Error('Child stderr line exceeds 10MB maximum limit.')),
+    onLine: (line) => {
+      if (cmdSanitizeFailed) return;
+      try {
+        const sanitized = performSanitization(line);
+        process.stderr.write(sanitized + '\n');
+      } catch (err) {
+        failClosedChild(err);
+      }
     }
   });
 

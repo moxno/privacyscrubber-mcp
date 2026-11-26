@@ -111,8 +111,11 @@ async function runMcpSession() {
     console.log(`<-- Tools list received. Total tools: ${tools.length}`);
     tools.forEach(t => console.log(`  - Tool: ${t.name} (${t.description.substring(0, 60)}...)`));
 
-    if (tools.length !== 28) {
-      throw new Error(`Expected 28 tools, got ${tools.length}`);
+    if (tools.length !== 27) {
+      throw new Error(`Expected 27 tools in default full toolset, got ${tools.length}`);
+    }
+    if (tools.some(t => t.name === 'guard_unmask_args')) {
+      throw new Error('guard_unmask_args must be excluded from default full toolset unless --unsafe-expose-unmask-rpc is passed');
     }
     if (!initResponse.result?.instructions || !initResponse.result.instructions.includes('AUTOMATIC INTERCEPTION RULES')) {
       throw new Error('Initialize response missing MCP system instructions');
@@ -121,7 +124,7 @@ async function runMcpSession() {
       'audit_context', 'sanitize_text', 'reveal_text', 'stream_reveal_text', 'sanitize_file',
       'check_status', 'create_default_config', 'mark_false_positive',
       'guard_exec', 'guard_read_file', 'guard_git_diff', 'guard_apply_patch', 'create_agent_rules',
-      'guard_unmask_args', 'guard_session_info', 'guard_session_reset',
+      'guard_session_info', 'guard_session_reset',
       'guard_rag_chunk', 'guard_rag_restore', 'export_audit_log', 'generate_procurement_memo',
       'ztds_sanitize', 'ztds_restore', 'ztds_audit', 'ztds_info', 'ztds_reset_session'
     ];
@@ -1176,20 +1179,89 @@ async function runMcpSession() {
       }
       const injToken = injTokenMatch[0];
 
-      // Execute inside double quotes AND unquoted; neither may execute $()
-      const execInjRes = await sendRequest('tools/call', {
+      // 14c. Verify default-deny on main server (no --allow-exec-unmask / --unsafe-expose-unmask-rpc), then verify shell-safe neutralization with --allow-exec-unmask
+      const defaultUnmaskDeny = await sendRequest('tools/call', {
+        name: 'guard_unmask_args',
+        arguments: { tool_args: { s: injToken } }
+      });
+      if (!defaultUnmaskDeny.result?.isError) {
+        throw new Error('Wave 2 Test 14c failed: guard_unmask_args must fail closed without --unsafe-expose-unmask-rpc');
+      }
+      const defaultExecUnmaskDeny = await sendRequest('tools/call', {
+        name: 'guard_exec',
+        arguments: { command: 'echo ok', unmask: true }
+      });
+      if (!defaultExecUnmaskDeny.result?.isError) {
+        throw new Error('Wave 2 Test 14c failed: guard_exec(unmask:true) must fail closed without --allow-exec-unmask');
+      }
+      const defaultExecLiteralRes = await sendRequest('tools/call', {
         name: 'guard_exec',
         arguments: {
-          command: `node -e "console.log('LEN_Q=' + process.argv[1].length + ',LEN_U=' + process.argv[2].length)" "${injToken}" ${injToken}`,
+          command: `node -e "console.log('IS_LITERAL=' + (process.argv[1] === '${injToken}'))" "${injToken}"`,
           profile: 'General'
         }
       });
-      const execInjText = execInjRes.result?.content?.[0]?.text || '';
+      if (!(defaultExecLiteralRes.result?.content?.[0]?.text || '').includes('IS_LITERAL=true')) {
+        throw new Error(`Wave 2 Test 14c failed: default guard_exec substituted token without --allow-exec-unmask: ${JSON.stringify(defaultExecLiteralRes)}`);
+      }
+
+      // Now verify reverseTokensShellSafe neutralizes shell injection when --allow-exec-unmask is explicitly enabled
+      const optInExecRes = await new Promise((resolve, reject) => {
+        const p = spawn(process.execPath, ['--require', preloadPath, indexScript, '--allow-exec-unmask'], {
+          env: {
+            ...process.env,
+            HOME: tempMainHome,
+            USERPROFILE: tempMainHome,
+            PRIVACYSCRUBBER_KEY: process.env.PS_CI_PRO_TEST_KEY || ephemeralToken,
+            PS_EPHEMERAL_TEST_TOKEN: ephemeralToken,
+            PS_LM_PATH: path.resolve(__dirname, 'ps-license-manager.cjs')
+          }
+        });
+        let b = '';
+        const pend = new Map();
+        p.stdout.on('data', (d) => {
+          b += d.toString();
+          let nl;
+          while ((nl = b.indexOf('\n')) !== -1) {
+            const line = b.slice(0, nl).trim();
+            b = b.slice(nl + 1);
+            if (!line) continue;
+            try {
+              const m = JSON.parse(line);
+              if (m.id && pend.has(m.id)) {
+                const fn = pend.get(m.id);
+                pend.delete(m.id);
+                fn(m);
+              }
+            } catch (_) {}
+          }
+        });
+        p.on('error', reject);
+        const call = (id, method, params) => new Promise(r => {
+          pend.set(id, r);
+          p.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
+        });
+        (async () => {
+          await call(1, 'initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'w2-exec', version: '1.0' } });
+          const rRead = await call(2, 'tools/call', { name: 'guard_read_file', arguments: { file_path: w2InjFile, profile: 'General' } });
+          const tok = ((rRead.result?.content?.[0]?.text || '').match(/\[SHELL_INJ_\d+\]/) || [injToken])[0];
+          const rExec = await call(3, 'tools/call', {
+            name: 'guard_exec',
+            arguments: {
+              command: `node -e "console.log('LEN_Q=' + process.argv[1].length + ',LEN_U=' + process.argv[2].length)" "${tok}" ${tok}`,
+              profile: 'General'
+            }
+          });
+          p.kill();
+          resolve(rExec);
+        })().catch(e => { p.kill(); reject(e); });
+      });
+      const execInjText = optInExecRes.result?.content?.[0]?.text || '';
       const expectedLen = injSecret.length;
       if (fs.existsSync(w2PwnFile) || !execInjText.includes(`LEN_Q=${expectedLen},LEN_U=${expectedLen}`)) {
         throw new Error(`Wave 2 Test 14c failed: shell injection executed or length mismatch (expected ${expectedLen}). Got: ${execInjText}`);
       }
-      console.log('✅ Wave 2 guard_exec shell-safe token neutralization pass.');
+      console.log('[PASS] Wave 2 guard_exec default-deny + opt-in shell-safe token neutralization pass.');
 
       // 14d. pii-masking-run.js --hook blocks run_terminal_cmd (.env) and fails closed on malformed JSON
       const hookRunTerm = await runCli(['--hook'], JSON.stringify({
@@ -1295,16 +1367,16 @@ async function runMcpSession() {
 
     const tempWave3Home = fs.mkdtempSync(path.join(os.tmpdir(), 'ps-w3-home-'));
     try {
-      // 15a. Default 'agent' toolset = 10 tools (<15KB JSON), ztds_sanitize still callable (no test-mode bypass env needed)
+      // 15a. Default 'agent' toolset = 9 tools (<15KB JSON, no guard_unmask_args), ztds_sanitize still callable
       const [agentToolsRes, agentZtdsCall] = await runMcpOneOff([], { HOME: tempWave3Home, USERPROFILE: tempWave3Home }, [
         { method: 'tools/list' },
         { method: 'tools/call', params: { name: 'ztds_sanitize', arguments: { text: 'Email alice@example.com' } } }
       ]);
       const agentTools = agentToolsRes.result?.tools || [];
       const agentJsonBytes = Buffer.byteLength(JSON.stringify(agentToolsRes.result), 'utf8');
-      const expectedAgentNames = ['sanitize_text', 'reveal_text', 'guard_read_file', 'guard_exec', 'guard_git_diff', 'guard_apply_patch', 'guard_unmask_args', 'guard_session_info', 'guard_session_reset', 'mark_false_positive'];
-      if (agentTools.length !== 10 || !expectedAgentNames.every(n => agentTools.some(t => t.name === n))) {
-        throw new Error(`Default agent toolset expected 10 exact tools, got ${agentTools.length}: ${agentTools.map(t => t.name).join(', ')}`);
+      const expectedAgentNames = ['sanitize_text', 'reveal_text', 'guard_read_file', 'guard_exec', 'guard_git_diff', 'guard_apply_patch', 'guard_session_info', 'guard_session_reset', 'mark_false_positive'];
+      if (agentTools.length !== 9 || !expectedAgentNames.every(n => agentTools.some(t => t.name === n)) || agentTools.some(t => t.name === 'guard_unmask_args')) {
+        throw new Error(`Default agent toolset expected 9 exact tools (without guard_unmask_args), got ${agentTools.length}: ${agentTools.map(t => t.name).join(', ')}`);
       }
       if (agentJsonBytes >= 15 * 1024) {
         throw new Error(`Default agent tools/list JSON exceeded 15KB limit: ${agentJsonBytes} bytes`);
@@ -1312,16 +1384,56 @@ async function runMcpSession() {
       if (agentZtdsCall.error || agentZtdsCall.result?.isError || !agentZtdsCall.result?.structuredContent?.zeroEgressAttested) {
         throw new Error(`ztds_sanitize failed backward-compat call under default agent toolset: ${JSON.stringify(agentZtdsCall)}`);
       }
-      console.log(`[PASS] Wave 3 default agent toolset verified (10 tools, ${agentJsonBytes} bytes < 15KB, full dispatch compat).`);
+      console.log(`[PASS] Wave 3 default agent toolset verified (9 tools, ${agentJsonBytes} bytes < 15KB, full dispatch compat).`);
 
-      // 15b. --toolset=core (5), PRIVACYSCRUBBER_TOOLSET=ztds (5), PLUGIN_ROOT -> full (28)
+      // 15b. --toolset=core (5), PRIVACYSCRUBBER_TOOLSET=ztds (5), PLUGIN_ROOT -> full (27), plus --unsafe-expose-unmask-rpc (10 / 28)
       const [coreToolsRes] = await runMcpOneOff(['--toolset=core'], { HOME: tempWave3Home, USERPROFILE: tempWave3Home }, [{ method: 'tools/list' }]);
       const [ztdsToolsRes] = await runMcpOneOff([], { HOME: tempWave3Home, USERPROFILE: tempWave3Home, PRIVACYSCRUBBER_TOOLSET: 'ztds' }, [{ method: 'tools/list' }]);
       const [pluginToolsRes] = await runMcpOneOff([], { HOME: tempWave3Home, USERPROFILE: tempWave3Home, PLUGIN_ROOT: '/tmp/fake-plugin' }, [{ method: 'tools/list' }]);
-      if ((coreToolsRes.result?.tools || []).length !== 5 || (ztdsToolsRes.result?.tools || []).length !== 5 || (pluginToolsRes.result?.tools || []).length !== 28) {
-        throw new Error(`Toolset counts mismatch: core=${coreToolsRes.result?.tools?.length}, ztds=${ztdsToolsRes.result?.tools?.length}, plugin=${pluginToolsRes.result?.tools?.length}`);
+      const [optInAgentToolsRes] = await runMcpOneOff(['--unsafe-expose-unmask-rpc'], { HOME: tempWave3Home, USERPROFILE: tempWave3Home }, [{ method: 'tools/list' }]);
+      const [optInFullToolsRes] = await runMcpOneOff(['--toolset=full', '--unsafe-expose-unmask-rpc'], { HOME: tempWave3Home, USERPROFILE: tempWave3Home }, [{ method: 'tools/list' }]);
+      if ((coreToolsRes.result?.tools || []).length !== 5 ||
+          (ztdsToolsRes.result?.tools || []).length !== 5 ||
+          (pluginToolsRes.result?.tools || []).length !== 27 ||
+          (optInAgentToolsRes.result?.tools || []).length !== 10 ||
+          (optInFullToolsRes.result?.tools || []).length !== 28) {
+        throw new Error(`Toolset counts mismatch: core=${coreToolsRes.result?.tools?.length}, ztds=${ztdsToolsRes.result?.tools?.length}, plugin=${pluginToolsRes.result?.tools?.length}, optInAgent=${optInAgentToolsRes.result?.tools?.length}, optInFull=${optInFullToolsRes.result?.tools?.length}`);
       }
-      console.log("[PASS] Wave 3 toolset variants (--toolset=core, PRIVACYSCRUBBER_TOOLSET=ztds, PLUGIN_ROOT=full) verified.");
+      console.log("[PASS] Wave 3 toolset variants (--toolset=core=5, ztds=5, PLUGIN_ROOT=27, opt-in agent=10, opt-in full=28) verified.");
+
+      // 15b.2 F-10 16MB single-line stdio frame returns clean JSON-RPC error instead of hanging
+      const oversizeRpcRes = await new Promise((resolve, reject) => {
+        const p = spawn(process.execPath, [indexScript], {
+          env: { ...process.env, HOME: tempWave3Home, USERPROFILE: tempWave3Home }
+        });
+        p.stdin.on('error', () => {});
+        let b = '';
+        const t = setTimeout(() => { p.kill(); reject(new Error('F-10 16MB stdio frame hung!')); }, 8000);
+        p.stdout.on('data', d => {
+          b += d.toString();
+          let nl;
+          while ((nl = b.indexOf('\n')) !== -1) {
+            const line = b.slice(0, nl).trim();
+            b = b.slice(nl + 1);
+            if (!line) continue;
+            try {
+              const msg = JSON.parse(line);
+              if (msg.id === 999) {
+                clearTimeout(t);
+                p.kill();
+                resolve(msg);
+              }
+            } catch (_) {}
+          }
+        });
+        p.on('error', e => { clearTimeout(t); reject(e); });
+        const hugeLine = '{"jsonrpc":"2.0","id":999,"method":"tools/call","params":{"name":"sanitize_text","arguments":{"text":"' + 'A'.repeat(12 * 1024 * 1024) + '"}}}\n';
+        p.stdin.write(hugeLine);
+      });
+      if (!oversizeRpcRes.error || oversizeRpcRes.error.code !== -32600) {
+        throw new Error(`F-10 oversized JSON-RPC frame expected -32600 error, got: ${JSON.stringify(oversizeRpcRes)}`);
+      }
+      console.log("[PASS] F-10 10MB stdio frame guard returned clean JSON-RPC -32600 error without hanging.");
     } finally {
       try { fs.rmSync(tempWave3Home, { recursive: true, force: true }); } catch (_) {}
     }
