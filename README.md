@@ -23,17 +23,19 @@
 [![Security: 100% Local](https://img.shields.io/badge/Security-100%25%20Local-emerald)](https://privacyscrubber.com)
 [![Parity: 100% Core Match](https://img.shields.io/badge/Parity-100%25%20Core%20Match-blueviolet)](https://privacyscrubber.com)
 [![Patent Pending](https://img.shields.io/badge/Patent-Pending%20(US%20%26%20Intl)-06b6d4.svg)](https://privacyscrubber.com/patents/)
+[![Free Tier](https://img.shields.io/badge/Free_Tier-$0_Local_RAM-10b981.svg)](https://privacyscrubber.com/?utm_source=mcp_readme)
 [![Developer SDK](https://img.shields.io/badge/Developer%20SDK-$299%2Fmo%20Flat-06b6d4.svg)](https://privacyscrubber.com/sdk/?utm_source=mcp_readme)
 [![TEAMS Plan](https://img.shields.io/badge/TEAMS-$99%2Fmo%20Flat-3b82f6.svg)](https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp_readme)
 [![GitHub Stars](https://img.shields.io/github/stars/moxno/privacyscrubber-mcp?style=social)](https://github.com/moxno/privacyscrubber-mcp)
 
-**CISO-Approved Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Windsurf, and Claude Desktop.**
-Locally scrubs PII, secrets, credentials, and custom regex rules from files and text contexts before they reach remote LLM providers to prevent API leaks and ensure HIPAA/SOC 2 compliance at the developer endpoint.
+**Airplane-Mode-Verified Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Windsurf, and Claude Desktop.**
+Locally scrubs PII, secrets, credentials, and custom regex rules from files and text contexts before they reach remote LLM providers to prevent API leaks and support technical risk minimization under GDPR Art. 32, HIPAA, and SOC 2 at the developer endpoint.
 
 > **Support Zero-Trust Open Source:** If PrivacyScrubber protects your API keys, source code, and developer credentials from model leaks, please **[Star this repository on GitHub](https://github.com/moxno/privacyscrubber-mcp)** or execute `gh repo star moxno/privacyscrubber-mcp`.
 
 > **Direct Commercial Licensing & Production Infrastructure:**  
 > Looking to automate zero-trust PII redaction inside backend microservices, ETL pipelines, or LangChain/LlamaIndex agents?  
+> - **Free ($0):** Local-RAM General Profile (up to 15,000 chars) and all 30 specialized industry profiles (up to 5,000 chars trial) across Web App, Chrome Extension, and MCP Server. **[Try Free Live](https://privacyscrubber.com/?utm_source=mcp_readme)**
 > - **Developer SDK ($299/mo flat or $2,990/yr):** Unlimited internal backend nodes, zero network egress, <1ms in-memory latency. **[Subscribe to Developer SDK](https://privacyscrubber.com/pricing/?tier=sdk&utm_source=mcp_readme)** | **[Technical Specs](https://privacyscrubber.com/sdk/?utm_source=mcp_readme)**  
 > - **TEAMS ($99/mo flat):** Unlimited team seats across your entire domain with cryptographic P2P session handoff. **[Deploy TEAMS Plan](https://privacyscrubber.com/pricing/?tier=teams&utm_source=mcp_readme)**  
 > - **PRO ($15/mo or $110 Lifetime):** Single-seat unlimited throughput across all 30 vertical profiles. **[Get PRO License](https://privacyscrubber.com/pricing/?tier=pro&utm_source=mcp_readme)**
