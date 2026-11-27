@@ -57,6 +57,9 @@ privacyscrubber-mcp = "privacyscrubber_mcp:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/privacyscrubber_mcp"]
+include = [
+    "src/privacyscrubber_mcp/**",
+]
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -71,5 +74,5 @@ exclude = [
     ".antigravity-plugin/**",
     "tests/**",
     "test-*.js",
-    "*.cjs",
+    "/*.cjs",
 ]

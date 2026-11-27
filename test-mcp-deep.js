@@ -1375,16 +1375,16 @@ async function runMcpSession() {
 
     const tempWave3Home = fs.mkdtempSync(path.join(os.tmpdir(), 'ps-w3-home-'));
     try {
-      // 15a. Default 'agent' toolset = 9 tools (<15KB JSON, no guard_unmask_args), ztds_sanitize still callable
+      // 15a. Default 'agent' toolset = 12 tools (<15KB JSON, no guard_unmask_args), ztds_sanitize still callable
       const [agentToolsRes, agentZtdsCall] = await runMcpOneOff([], { HOME: tempWave3Home, USERPROFILE: tempWave3Home }, [
         { method: 'tools/list' },
         { method: 'tools/call', params: { name: 'ztds_sanitize', arguments: { text: 'Email alice@example.com' } } }
       ]);
       const agentTools = agentToolsRes.result?.tools || [];
       const agentJsonBytes = Buffer.byteLength(JSON.stringify(agentToolsRes.result), 'utf8');
-      const expectedAgentNames = ['sanitize_text', 'reveal_text', 'guard_read_file', 'guard_exec', 'guard_git_diff', 'guard_apply_patch', 'guard_session_info', 'guard_session_reset', 'mark_false_positive'];
-      if (agentTools.length !== 9 || !expectedAgentNames.every(n => agentTools.some(t => t.name === n)) || agentTools.some(t => t.name === 'guard_unmask_args')) {
-        throw new Error(`Default agent toolset expected 9 exact tools (without guard_unmask_args), got ${agentTools.length}: ${agentTools.map(t => t.name).join(', ')}`);
+      const expectedAgentNames = ['sanitize_text', 'reveal_text', 'sanitize_file', 'audit_context', 'check_status', 'guard_read_file', 'guard_exec', 'guard_git_diff', 'guard_apply_patch', 'guard_session_info', 'guard_session_reset', 'mark_false_positive'];
+      if (agentTools.length !== 12 || !expectedAgentNames.every(n => agentTools.some(t => t.name === n)) || agentTools.some(t => t.name === 'guard_unmask_args')) {
+        throw new Error(`Default agent toolset expected 12 exact tools (without guard_unmask_args), got ${agentTools.length}: ${agentTools.map(t => t.name).join(', ')}`);
       }
       if (agentJsonBytes >= 15 * 1024) {
         throw new Error(`Default agent tools/list JSON exceeded 15KB limit: ${agentJsonBytes} bytes`);
@@ -1392,9 +1392,9 @@ async function runMcpSession() {
       if (agentZtdsCall.error || agentZtdsCall.result?.isError || !agentZtdsCall.result?.structuredContent?.zeroEgressAttested) {
         throw new Error(`ztds_sanitize failed backward-compat call under default agent toolset: ${JSON.stringify(agentZtdsCall)}`);
       }
-      console.log(`[PASS] Wave 3 default agent toolset verified (9 tools, ${agentJsonBytes} bytes < 15KB, full dispatch compat).`);
+      console.log(`[PASS] Wave 3 default agent toolset verified (12 tools, ${agentJsonBytes} bytes < 15KB, full dispatch compat).`);
 
-      // 15b. --toolset=core (5), PRIVACYSCRUBBER_TOOLSET=ztds (5), PLUGIN_ROOT -> full (27), plus --unsafe-expose-unmask-rpc (10 / 28)
+      // 15b. --toolset=core (5), PRIVACYSCRUBBER_TOOLSET=ztds (5), PLUGIN_ROOT -> full (27), plus --unsafe-expose-unmask-rpc (13 / 28)
       const [coreToolsRes] = await runMcpOneOff(['--toolset=core'], { HOME: tempWave3Home, USERPROFILE: tempWave3Home }, [{ method: 'tools/list' }]);
       const [ztdsToolsRes] = await runMcpOneOff([], { HOME: tempWave3Home, USERPROFILE: tempWave3Home, PRIVACYSCRUBBER_TOOLSET: 'ztds' }, [{ method: 'tools/list' }]);
       const [pluginToolsRes] = await runMcpOneOff([], { HOME: tempWave3Home, USERPROFILE: tempWave3Home, PLUGIN_ROOT: '/tmp/fake-plugin' }, [{ method: 'tools/list' }]);
@@ -1403,15 +1403,15 @@ async function runMcpSession() {
       if ((coreToolsRes.result?.tools || []).length !== 5 ||
           (ztdsToolsRes.result?.tools || []).length !== 5 ||
           (pluginToolsRes.result?.tools || []).length !== 27 ||
-          (optInAgentToolsRes.result?.tools || []).length !== 10 ||
+          (optInAgentToolsRes.result?.tools || []).length !== 13 ||
           (optInFullToolsRes.result?.tools || []).length !== 28) {
         throw new Error(`Toolset counts mismatch: core=${coreToolsRes.result?.tools?.length}, ztds=${ztdsToolsRes.result?.tools?.length}, plugin=${pluginToolsRes.result?.tools?.length}, optInAgent=${optInAgentToolsRes.result?.tools?.length}, optInFull=${optInFullToolsRes.result?.tools?.length}`);
       }
-      console.log("[PASS] Wave 3 toolset variants (--toolset=core=5, ztds=5, PLUGIN_ROOT=27, opt-in agent=10, opt-in full=28) verified.");
+      console.log("[PASS] Wave 3 toolset variants (--toolset=core=5, ztds=5, PLUGIN_ROOT=27, opt-in agent=13, opt-in full=28) verified.");
 
       // 15b.1 Verify --help accuracy and opt-in initialize.instructions
       const helpOut = execFileSync(process.execPath, [indexScript, '--help'], { encoding: 'utf8' });
-      if (!helpOut.includes('core (5), agent (9, default), ztds (5), full (27)') || !helpOut.includes('--unsafe-expose-unmask-rpc')) {
+      if (!helpOut.includes('core (5), agent (12, default), ztds (5), full (27)') || !helpOut.includes('--unsafe-expose-unmask-rpc')) {
         throw new Error(`--help output inaccurate: ${helpOut}`);
       }
       const optInInitInstructions = await new Promise((resolve, reject) => {
@@ -1483,7 +1483,7 @@ async function runMcpSession() {
     // 15c. Daily limit 100 (ZTDS_GUARD_LOCAL=1 no longer bypasses), zero prompt injection/emojis, guard_apply_patch unblocked
     const tempHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ps-w3-limit-home-'));
     const todayStr = new Date().toISOString().split('T')[0];
-    fs.writeFileSync(path.join(tempHomeDir, '.privacyscrubber-usage.json'), JSON.stringify({ date: todayStr, count: 99 }), 'utf8');
+    fs.writeFileSync(path.join(tempHomeDir, '.privacyscrubber-usage.json'), JSON.stringify({ date: todayStr, count: 100 }), 'utf8');
     const tempPatchW3 = path.resolve(__dirname, `_temp_w3_patch_${Date.now()}.txt`);
     try {
       const [blockedSanitize, allowedPatch] = await runMcpOneOff([], {
@@ -1589,12 +1589,12 @@ async function runMcpSession() {
         ['ztds_audit metered', {}, { name: 'ztds_audit', arguments: { text: 'Contact a@b.com' } }]
       ];
       for (const [label, extra, callArgs] of testTools) {
-        fs.writeFileSync(w4UsagePath, JSON.stringify({ date: todayStr, count: 99, evalCount: 0 }), 'utf8');
+        fs.writeFileSync(w4UsagePath, JSON.stringify({ date: todayStr, count: 100, evalCount: 0 }), 'utf8');
         const [r] = await runMcpOneOff(['--toolset=full'], { HOME: w4EnvHome, USERPROFILE: w4EnvHome, ...extra }, [
           { method: 'tools/call', params: callArgs }
         ]);
         if (!r.result?.isError) {
-          throw new Error(`Wave 4 Test 16a (${label}) failed to block at count=99: ${JSON.stringify(r)}`);
+          throw new Error(`Wave 4 Test 16a (${label}) failed to block at count=100: ${JSON.stringify(r)}`);
         }
       }
       console.log("[PASS] Wave 4 Test 16a: Env-var quota bypasses blocked and all audit/RAG tools metered.");
@@ -1641,14 +1641,14 @@ async function runMcpSession() {
 
       const w4RaceHome = path.join(w4TmpRoot, 'home-race');
       fs.mkdirSync(w4RaceHome, { recursive: true });
-      fs.writeFileSync(path.join(w4RaceHome, '.privacyscrubber-usage.json'), JSON.stringify({ date: todayStr, count: 96, evalCount: 0 }), 'utf8');
+      fs.writeFileSync(path.join(w4RaceHome, '.privacyscrubber-usage.json'), JSON.stringify({ date: todayStr, count: 97, evalCount: 0 }), 'utf8');
       const raceCalls = Array.from({ length: 5 }, () => runMcpOneOff([], { HOME: w4RaceHome, USERPROFILE: w4RaceHome }, [
         { method: 'tools/call', params: { name: 'sanitize_text', arguments: { text: 'Email x@y.com' } } }
       ]));
       const raceResults = await Promise.all(raceCalls);
       const raceAllowed = raceResults.filter(([r]) => !r.result?.isError).length;
       if (raceAllowed > 3) {
-        throw new Error(`Wave 4 Test 16b parallel usage race allowed ${raceAllowed} requests from count=96 (expected <=3)`);
+        throw new Error(`Wave 4 Test 16b parallel usage race allowed ${raceAllowed} requests from count=97 (expected <=3)`);
       }
       console.log("[PASS] Wave 4 Test 16b: Usage symlink, tamper, chmod 0444, and concurrency race defenses verified.");
 
@@ -1668,7 +1668,7 @@ async function runMcpSession() {
 
       const w4EvalHome = path.join(w4TmpRoot, 'home-eval');
       fs.mkdirSync(w4EvalHome, { recursive: true });
-      fs.writeFileSync(path.join(w4EvalHome, '.privacyscrubber-usage.json'), JSON.stringify({ date: todayStr, count: 0, evalCount: 249 }), 'utf8');
+      fs.writeFileSync(path.join(w4EvalHome, '.privacyscrubber-usage.json'), JSON.stringify({ date: todayStr, count: 0, evalCount: 250 }), 'utf8');
       const [evalStatus, evalMedErr, evalLimitErr] = await runMcpOneOff(['--toolset=full'], {
         HOME: w4EvalHome,
         USERPROFILE: w4EvalHome,

@@ -112,6 +112,26 @@
     {
       "name": "generate_procurement_memo",
       "description": "Zero-Trust Enterprise Procurement: Generates an executive-ready Procurement & ROI Memorandum for CISOs, DPOs, and VP of Engineering."
+    },
+    {
+      "name": "ztds_sanitize",
+      "description": "ZTDS RFC v1.0 Conformance Alias: Sanitizes text in local volatile RAM with deterministic [TYPE_N] surrogate tokens."
+    },
+    {
+      "name": "ztds_restore",
+      "description": "ZTDS RFC v1.0 Conformance Alias: Restores [TYPE_N] surrogate tokens from the volatile in-memory session map."
+    },
+    {
+      "name": "ztds_audit",
+      "description": "ZTDS RFC v1.0 Conformance Alias: Audits text, files, or directories locally for PII and secrets and produces SHA-256 compliance telemetry."
+    },
+    {
+      "name": "ztds_info",
+      "description": "ZTDS RFC v1.0 Conformance Alias: Returns session diagnostics, license status, and volatile memory metrics."
+    },
+    {
+      "name": "ztds_reset_session",
+      "description": "ZTDS RFC v1.0 Conformance Alias: Zeroizes active volatile in-memory surrogate maps."
     }
   ],
   "prompts": [

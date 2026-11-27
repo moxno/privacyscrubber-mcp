@@ -6,6 +6,7 @@ Compatible with Cursor, Windsurf, Claude Desktop, Claude Code, and AI agent fram
 import base64
 import fcntl
 import hashlib
+import hmac
 import io
 import json
 import os
@@ -370,10 +371,12 @@ def validate_license_offline(raw_key: str) -> dict:
         except Exception:
             return {"valid": False, "is_pro": False, "is_eval": False, "tier": None, "allowed_profiles": None, "reason": "RSA key decryption failed"}
 
-    # 4. Delegate legacy PS-* keys ONLY if local ps-license-manager.cjs + node exist
+    # 4. Delegate PS-* keys if bundled or local ps-license-manager.cjs + node exist
+    bundled_lm = os.path.abspath(os.path.join(os.path.dirname(__file__), "_runtime", "ps-license-manager.cjs"))
     local_lm = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "ps-license-manager.cjs"))
+    lm_target = bundled_lm if os.path.isfile(bundled_lm) else (local_lm if os.path.isfile(local_lm) else "")
     node_bin = shutil.which("node")
-    if node_bin and os.path.isfile(local_lm) and upper_key.startswith("PS-"):
+    if node_bin and lm_target and upper_key.startswith("PS-"):
         try:
             script = (
                 "const lm = require(process.argv[1]);"
@@ -382,10 +385,12 @@ def validate_license_offline(raw_key: str) -> dict:
             )
             env_sub = os.environ.copy()
             env_sub["_PS_CHECK_KEY"] = key
-            out = subprocess.check_output([node_bin, "-e", script, local_lm], env=env_sub, timeout=3, stderr=subprocess.DEVNULL)
+            out = subprocess.check_output([node_bin, "-e", script, lm_target], env=env_sub, timeout=3, stderr=subprocess.DEVNULL)
             r = json.loads(out.decode("utf-8"))
             if isinstance(r, dict) and r.get("valid"):
                 tier = str(r.get("tier") or "PRO").upper().strip()
+                if tier == "ENT":
+                    tier = "ENTERPRISE"
                 is_eval = tier in ("EVAL", "EVALUATION")
                 is_pro = not is_eval and tier in PRO_ELIGIBLE_TIERS
                 if is_eval or is_pro:
@@ -398,6 +403,29 @@ def validate_license_offline(raw_key: str) -> dict:
                     return {"valid": True, "is_pro": is_pro, "is_eval": is_eval, "tier": tier, "allowed_profiles": allowed_profiles, "reason": None}
         except Exception:
             pass
+
+    # 5. Pure-Python offline V2 SHA-256 MAC + Sealed V1 verification (for Node-less air-gapped hosts)
+    parts = upper_key.split("-")
+    v2_tiers = {"PRO", "TEAMS", "SDK", "SDK_INTERNAL", "SDK_OEM", "OEM", "ENTERPRISE", "ENT", "ENTERPRISE_AIRGAP"}
+    if len(parts) == 4 and parts[0] == "PS" and parts[1] in v2_tiers:
+        raw_tier = parts[1]
+        canon_tier = "ENTERPRISE" if raw_tier == "ENT" else raw_tier
+        core = parts[2]
+        checksum = parts[3]
+        if len(core) == 8 and re.match(r"^[A-Z0-9]{8}$", core) and re.match(r"^\d{4}$", checksum):
+            alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+            seal_mask = [9, 50, 61, 223, 192, 228, 247, 135, 160, 187, 72, 123, 122, 11, 30, 47, 177, 166, 155, 138, 144, 193, 205, 77, 47, 108, 120, 21, 86, 62, 186, 227, 128, 128]
+            mac_secret = "".join(chr(b ^ ((idx * 19 + 0x53) & 0xFF)) for idx, b in enumerate(seal_mask))
+            core6 = core[:6]
+            mac_hex = hashlib.sha256(f"{mac_secret}:{raw_tier}:{core6}".encode("utf-8")).hexdigest()
+            c6 = alphabet[int(mac_hex[0:4], 16) % 32]
+            c7 = alphabet[int(mac_hex[4:8], 16) % 32]
+            expected_core = core6 + c6 + c7
+            if hmac.compare_digest(expected_core, core):
+                tag_hex = hashlib.sha256(f"{mac_secret}:TAG:{raw_tier}:{expected_core}".encode("utf-8")).hexdigest()
+                expected_checksum = str((int(tag_hex[0:8], 16) & 0xFFFFFFFF) % 9999).zfill(4)
+                if hmac.compare_digest(expected_checksum, checksum) and canon_tier in PRO_ELIGIBLE_TIERS:
+                    return {"valid": True, "is_pro": True, "is_eval": False, "tier": canon_tier, "allowed_profiles": None, "reason": None}
 
     return {"valid": False, "is_pro": False, "is_eval": False, "tier": None, "allowed_profiles": None, "reason": "Invalid or unverified license key"}
 
@@ -498,9 +526,9 @@ def _check_and_increment_usage(is_pro: bool, is_eval: bool) -> dict:
             os.close(tfd)
         os.replace(tmp_path, usage_path)
 
-        if is_eval and eval_val >= EVAL_TIER_DAILY_LIMIT:
+        if is_eval and eval_val > EVAL_TIER_DAILY_LIMIT:
             return {"blocked": True, "count": eval_val, "eval_exhausted": True}
-        if (not is_eval) and count_val >= FREE_TIER_DAILY_LIMIT:
+        if (not is_eval) and count_val > FREE_TIER_DAILY_LIMIT:
             return {"blocked": True, "count": count_val}
         return {"blocked": False, "count": eval_val if is_eval else count_val}
     except Exception as err:
@@ -614,6 +642,13 @@ PATTERNS = {
     "SSN": re.compile(r'\b\d{3}-\d{2}-\d{4}\b'),
     "FINANCIAL": re.compile(r'\b(?:\d{4}[-\s]?){3}\d{4}\b|\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b'),
     "IP": re.compile(r'\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b'),
+    "NAME": re.compile(r'\b(?:Patient|Client|Customer|Employee|Candidate|Applicant|Contact|Author|Sender|Recipient|Dr\.|Mr\.|Mrs\.|Ms\.|Prof\.)\s+([A-Z][a-z]{1,24}(?:\s+[A-Z][a-z]{1,24}){1,2})\b'),
+}
+
+NATIVE_VERTICAL_PATTERNS = {
+    "medical": [("HEALTH_MRN", re.compile(r'\bMRN[-:\s#]*[A-Z0-9]{4,16}\b', re.IGNORECASE))],
+    "legal": [("LEGAL_DOCKET", re.compile(r'\bDocket\s*(?:No\.?|#)?\s*[A-Z0-9-]{4,20}\b', re.IGNORECASE))],
+    "hr": [("EMPLOYEE_ID", re.compile(r'\bEMP[-_][A-Z0-9]{4,14}\b', re.IGNORECASE))],
 }
 
 TOKEN_RE = re.compile(r'(?:\[[A-Za-z0-9_]+_\d+\]|<[A-Za-z0-9_]+_\d+>|\{\{[A-Za-z0-9_]+_\d+\}\}|__[A-Za-z0-9_]+_\d+__)')
@@ -626,7 +661,7 @@ class NativeZtdsEngine:
         self.counters = {}
         self.ignore_list = set()
 
-    def sanitize(self, text: str) -> tuple:
+    def sanitize(self, text: str, profile: str = "general") -> tuple:
         if not text:
             return "", {}
 
@@ -634,21 +669,30 @@ class NativeZtdsEngine:
         tokens_created = {}
 
         def replacer(match, entity_type: str):
-            val = match.group(0)
+            has_group = bool(match.lastindex and match.lastindex >= 1)
+            val = match.group(1) if has_group else match.group(0)
             if val.lower() in self.ignore_list:
-                return val
+                return match.group(0)
             if val in reverse_map:
                 tok = reverse_map[val]
                 tokens_created[tok] = val
-                return tok
-            self.counters[entity_type] = self.counters.get(entity_type, 0) + 1
-            tok = f"[{entity_type}_{self.counters[entity_type]}]"
-            self.session_map[tok] = val
-            reverse_map[val] = tok
-            tokens_created[tok] = val
+            else:
+                self.counters[entity_type] = self.counters.get(entity_type, 0) + 1
+                tok = f"[{entity_type}_{self.counters[entity_type]}]"
+                self.session_map[tok] = val
+                reverse_map[val] = tok
+                tokens_created[tok] = val
+            if has_group:
+                full = match.group(0)
+                rel_start = match.start(1) - match.start(0)
+                rel_end = match.end(1) - match.start(0)
+                return full[:rel_start] + tok + full[rel_end:]
             return tok
 
         scrubbed = text
+        norm_prof = _canonical_profile_slug(profile)
+        for entity_type, pat in NATIVE_VERTICAL_PATTERNS.get(norm_prof, []):
+            scrubbed = pat.sub(lambda m, et=entity_type: replacer(m, et), scrubbed)
         for entity_type, pat in PATTERNS.items():
             if entity_type == "EMAIL" and "@" not in scrubbed:
                 continue
@@ -1006,7 +1050,7 @@ def run_native_mcp_loop():
                             was_trunc = (not lic["is_pro"]) and len(raw_text) > char_lim
                             audit_input = raw_text[:char_lim] if was_trunc else raw_text
                             dry_eng = NativeZtdsEngine()
-                            _, tokens = dry_eng.sanitize(audit_input)
+                            _, tokens = dry_eng.sanitize(audit_input, p_chk["normalized_profile"])
                             total_masked, counts, risk_level, _ = _build_telemetry(tokens)
                             if tool_name == "ztds_audit":
                                 payload = {
@@ -1041,7 +1085,7 @@ def run_native_mcp_loop():
                             char_lim = 5000 if (p_chk["normalized_profile"] != "general" and not lic["is_pro"]) else 15000
                             was_trunc = (not lic["is_pro"]) and len(raw_text) > char_lim
                             text_in = raw_text[:char_lim] if was_trunc else raw_text
-                            scrubbed, tokens = eng.sanitize(text_in)
+                            scrubbed, tokens = eng.sanitize(text_in, p_chk["normalized_profile"])
                             total_masked, counts, risk_level, breakdown = _build_telemetry(tokens)
                             footer = _format_footer(total_masked, risk_level, breakdown, compact, verbose_receipt)
                             if was_trunc:
@@ -1244,16 +1288,18 @@ def main():
         run_native_mcp_loop()
         return
 
-    # 1. Check for local index.js (e.g. in cloned repository or npm bundle)
+    # 1. Check for local index.js (e.g. in cloned repository or npm bundle) or wheel-bundled _runtime
+    bundled_runtime = os.path.abspath(os.path.join(os.path.dirname(__file__), "_runtime", "mcp-runtime.cjs"))
     local_index = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "index.js"))
-    if os.path.exists(local_index):
-        node_bin = shutil.which("node")
-        if node_bin:
-            try:
-                os.environ["_PS_MCP_EXEC_GUARD"] = "1"
-                os.execvp(node_bin, [node_bin, local_index] + args)
-            except Exception:
-                pass
+    node_bin = shutil.which("node")
+    if node_bin:
+        for js_entry in (local_index, bundled_runtime):
+            if os.path.isfile(js_entry):
+                try:
+                    os.environ["_PS_MCP_EXEC_GUARD"] = "1"
+                    os.execvp(node_bin, [node_bin, js_entry] + args)
+                except Exception:
+                    pass
 
     # 2. Check for locally installed non-Python privacyscrubber-mcp binary in PATH (0 network egress)
     mcp_bin = shutil.which("privacyscrubber-mcp")

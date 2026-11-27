@@ -18,8 +18,12 @@ const OBFUSCATED_ENGINES = [
   "ps-pii-engine.cjs",
   "ps-license-manager.cjs",
   "scrubber-core.cjs",
+  "src/privacyscrubber_mcp/_runtime/ps-pii-engine.cjs",
+  "src/privacyscrubber_mcp/_runtime/ps-license-manager.cjs",
+  "src/privacyscrubber_mcp/_runtime/scrubber-core.cjs",
 ];
 const ANTIGRAVITY_RUNTIME = "scripts/antigravity-mcp-server.cjs";
+const PYPI_WHEEL_RUNTIME = "src/privacyscrubber_mcp/_runtime/mcp-runtime.cjs";
 const EXPECTED_WATERMARK = "PS_CANARY_AGY_WM_9F4C2E7A1B8D";
 const FORBIDDEN_SALT_SHA256 = "af4301c0f8b52504c37d952edf2cd098f1db66a21cbc10b45e1928d0d5efee7c";
 
@@ -90,7 +94,7 @@ function main() {
   } else {
     const runtimeSrc = fs.readFileSync(runtimeAbs, "utf8");
     const runtimeLines = runtimeSrc.split("\n").length;
-    if (!runtimeSrc.includes(EXPECTED_WATERMARK) || runtimeSrc.length > 460 * 1024 || runtimeSrc.length / runtimeLines < 300) {
+    if (!runtimeSrc.includes(EXPECTED_WATERMARK) || runtimeSrc.length > 520 * 1024 || runtimeSrc.length / runtimeLines < 300) {
       violations.push({
         file: ANTIGRAVITY_RUNTIME,
         issue: `Runtime bundle missing integrity watermark or minification (size=${runtimeSrc.length}, lines=${runtimeLines})`,
@@ -98,7 +102,7 @@ function main() {
     }
   }
 
-  const skipTextScan = new Set(["package-lock.json", ANTIGRAVITY_RUNTIME, ...OBFUSCATED_ENGINES]);
+  const skipTextScan = new Set(["package-lock.json", ANTIGRAVITY_RUNTIME, PYPI_WHEEL_RUNTIME, ...OBFUSCATED_ENGINES]);
   const targetFiles = resolveTargetFiles(scanAll);
 
   for (const relPath of targetFiles) {

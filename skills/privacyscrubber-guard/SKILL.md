@@ -24,7 +24,7 @@ Enforces in-RAM Zero-Trust Data Sanitization (ZTDS) with zero external network e
 The community baseline runs immediately on install (up to 15,000 chars on general PII and 5,000 chars trial quota across 30 specialized industry profiles). To unlock unlimited throughput across all 30 regulated verticals (`Medical`, `Finance`, `Legal`, `Compliance`, `HR`, `Security`, etc.), activate a commercial or evaluation key locally:
 
 ```bash
-node scripts/activate-license.cjs "<PRIVACYSCRUBBER_KEY>"
+node skills/privacyscrubber-guard/scripts/activate-license.cjs "<PRIVACYSCRUBBER_KEY>"
 ```
 
 This validates the cryptographic Ed25519 signature offline and stores the key with `0600` permissions in `${PLUGIN_DATA}/license.key` and `~/.privacyscrubber/license.key`.

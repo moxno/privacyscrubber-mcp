@@ -9,13 +9,12 @@
 [![NPM SDK](https://img.shields.io/npm/v/@privacyscrubber/sdk?label=%40privacyscrubber%2Fsdk&color=10b981)](https://www.npmjs.com/package/@privacyscrubber/sdk)
 [![Presidio Alternative](https://img.shields.io/badge/Presidio%20Alternative-Node.js%20%26%20TS-0078D4.svg)](https://www.npmjs.com/package/@privacyscrubber/sdk)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](https://www.npmjs.com/package/@privacyscrubber/sdk)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Dual Community & Commercial](https://img.shields.io/badge/License-Dual%20Community%20%26%20Commercial-blue.svg)](./LICENSE)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22058770.svg)](https://zenodo.org/records/22058770)
 [![OSF DOI](https://img.shields.io/badge/OSF%20DOI-10.17605%2FOSF.IO%2F5BYJF-blue.svg)](https://osf.io/5byjf/)
 [![SSRN](https://img.shields.io/badge/SSRN-7335581-darkred.svg)](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7335581)
 [![IETF Specification](https://img.shields.io/badge/IETF-ZTDS--Protocol-0284c7.svg)](https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/)
 [![ZTDS Verified](https://ztds.ai/badge/privacyscrubber-sdk.svg)](https://ztds.ai/registry/#privacyscrubber-mcp)
-[![smithery badge](https://smithery.ai/badge/privacyscrubber/pii-masking-mcp)](https://smithery.ai/servers/privacyscrubber/pii-masking-mcp)
 [![Cursor Directory](https://img.shields.io/badge/Cursor%20Directory-Verified%20Plugin-000000.svg)](https://cursor.directory/plugins/privacyscrubber-mcp)
 [![Glama.ai](https://glama.ai/mcp/servers/moxno/privacyscrubber-mcp/badge)](https://glama.ai/mcp/servers/moxno/privacyscrubber-mcp)
 [![TensorBlock MCP Index](https://img.shields.io/badge/TensorBlock-Indexed%20MCP-FF6B6B.svg)](https://github.com/TensorBlock/awesome-mcp-servers)
@@ -31,7 +30,7 @@
 **Airplane-Mode-Verified Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Windsurf, and Claude Desktop.**
 Locally scrubs PII, secrets, credentials, and custom regex rules from files and text contexts before they reach remote LLM providers to prevent API leaks and support technical risk minimization under GDPR Art. 32, HIPAA, and SOC 2 at the developer endpoint.
 
-> **Support Zero-Trust Open Source:** If PrivacyScrubber protects your API keys, source code, and developer credentials from model leaks, please **[Star this repository on GitHub](https://github.com/moxno/privacyscrubber-mcp)** or execute `gh repo star moxno/privacyscrubber-mcp`.
+> **Support Local Zero-Trust Engineering:** If PrivacyScrubber protects your API keys, source code, and developer credentials from model leaks, please **[Star this repository on GitHub](https://github.com/moxno/privacyscrubber-mcp)** or execute `gh repo star moxno/privacyscrubber-mcp`.
 
 > **Direct Commercial Licensing & Production Infrastructure:**  
 > Looking to automate zero-trust PII redaction inside backend microservices, ETL pipelines, or LangChain/LlamaIndex agents?  
@@ -92,10 +91,10 @@ agy plugin install https://github.com/moxno/privacyscrubber-mcp
 node skills/privacyscrubber-guard/scripts/activate-license.cjs "<PRIVACYSCRUBBER_KEY>"
 ```
 
-### 2. Install via Smithery
-To automatically configure and run with your preferred client, install using Smithery:
+### 2. Official Anthropic MCP Registry (`io.github.moxno/privacyscrubber-mcp`)
+Discoverable in MCP-compatible registries under `io.github.moxno/privacyscrubber-mcp`, or run the universal auto-configurator directly:
 ```bash
-npx -y @smithery/cli install @privacyscrubber/mcp-server --write-to-clients
+npx -y @privacyscrubber/mcp-server install --all
 ```
 
 ### 3. Instant Run with NPX
@@ -155,7 +154,7 @@ Microsoft Presidio is the Python standard, but deploying it in a Node.js / TypeS
 | **DevOps Secrets Interception**| **Built-in (AWS, JWT, DB URIs, GitHub PAT)**| Custom regex recognizers needed | Cloud-specific classifiers |
 | **Streaming Rehydration** | **Built-in (`wrapAiStream`, `TransformStream`)**| Buffering / chunk split failures | Not supported in real-time streams |
 
-👉 [View @privacyscrubber/sdk on NPM](https://www.npmjs.com/package/@privacyscrubber/sdk) | Full documentation, Express middleware, LangChain transforms, and 25 compliance profiles.
+👉 [View @privacyscrubber/sdk on NPM](https://www.npmjs.com/package/@privacyscrubber/sdk) | Full documentation, Express middleware, LangChain transforms, and 30 compliance profiles.
 
 #### 🤖 AI Orchestrator Recipes: LangChain, LlamaIndex, CrewAI & AutoGPT
 

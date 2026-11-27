@@ -512,9 +512,9 @@ export async function runInstaller(rawArgs = process.argv.slice(2)) {
     console.log(`
 PrivacyScrubber MCP Universal Auto-Configurator
 Usage:
-  npx @privacyscrubber/mcp-server init [options]
-  npx @privacyscrubber/mcp-server doctor [--json]
-  npx @privacyscrubber/mcp-server-install [options]
+  npx -y @privacyscrubber/mcp-server install [options]
+  npx -y @privacyscrubber/mcp-server init [options]
+  npx -y @privacyscrubber/mcp-server doctor [--json]
 
 Options:
   --all           Configure all detected and standard client paths

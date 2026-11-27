@@ -112,7 +112,7 @@ function validateComponents() {
   assert(runtimeRaw.includes("PS_CANARY_AGY_WM_9F4C2E7A1B8D"), "antigravity-mcp-server.cjs missing integrity watermark");
   const runtimeLines = runtimeRaw.split("\n").length;
   assert(
-    runtimeRaw.length <= 460 * 1024 && runtimeRaw.length / runtimeLines >= 300,
+    runtimeRaw.length <= 520 * 1024 && runtimeRaw.length / runtimeLines >= 300,
     `antigravity-mcp-server.cjs must be minified (size=${runtimeRaw.length}, lines=${runtimeLines})`
   );
 

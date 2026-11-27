@@ -56,7 +56,7 @@ function writeKeyFile(targetPath, key) {
 function main() {
   const rawArg = (process.argv[2] || process.env.PRIVACYSCRUBBER_KEY || "").trim();
   if (!rawArg || rawArg === "-h" || rawArg === "--help") {
-    console.error("Usage: node scripts/activate-license.cjs <PRIVACYSCRUBBER_LICENSE_KEY>");
+    console.error("Usage: node skills/privacyscrubber-guard/scripts/activate-license.cjs <PRIVACYSCRUBBER_LICENSE_KEY>");
     process.exit(rawArg ? 0 : 1);
   }
 

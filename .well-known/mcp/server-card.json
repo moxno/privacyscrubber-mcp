@@ -1,9 +1,19 @@
 {
   "serverInfo": {
     "name": "privacyscrubber/pii-masking-mcp",
-    "version": "2.5.3",
+    "version": "2.5.5",
     "websiteUrl": "https://privacyscrubber.com/pii-mcp/",
-    "standardSpecificationUrl": "https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/"
+    "standardSpecificationUrl": "https://datatracker.ietf.org/doc/draft-sibiryakov-ztds-protocol/",
+    "standardDraft": "draft-sibiryakov-ztds-protocol-02",
+    "toolCount": 28,
+    "conformanceCertificateId": "ZTDS-CERT-2026-PRIVACYSCRUBBER-WEB-D02DC6",
+    "mcpConformanceCertificateId": "ZTDS-CERT-2026-PRIVACYSCRUBBER-MCP-B28CE2",
+    "pricing": {
+      "free": "$0 (15,000 chars General / 5,000 chars across 30 Specialized Profiles)",
+      "pro": "$15/mo or $110 Lifetime",
+      "teams": "$99/mo flat (unlimited company seats)",
+      "developerSdk": "$299/mo or $2,990/yr (unlimited backend nodes)"
+    }
   },
   "tools": [
     {
@@ -244,7 +254,7 @@
     },
     {
       "name": "generate_compliance_report",
-      "description": "Generates an official Zero-Trust Compliance Audit Certificate (GDPR, HIPAA, EU AI Act, SOC 2) for the current MCP session. Returns cryptographic session hash, masked entities breakdown, and compliance certification.",
+      "description": "Generates a tamper-evident Zero-Trust SHA-256 Compliance Audit Receipt supporting GDPR Art. 25 & 32, HIPAA Safe Harbor 45 CFR § 164.514(b), SOC 2 CC6.1/CC6.7, ISO/IEC 27001:2022 Annex A.8.11, EU AI Act Art. 10, and Israel PPL Amendment 13 Sec. 17 for the current MCP session. Returns cryptographic session hash, masked entities breakdown, and technical safe harbor telemetry.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -652,7 +662,7 @@
     },
     {
       "name": "generate_procurement_memo",
-      "description": "Zero-Trust Enterprise Procurement: Generates an executive-ready Procurement & ROI Memorandum for Chief Information Security Officers (CISO), Data Protection Officers (DPO), and VP of Engineering. Compares TCO of traditional Cloud DLP ($1.5k–$4k/mo) vs PrivacyScrubber TEAMS ($99/mo flat) or Developer SDK ($299/mo flat), citing statutory frameworks (GDPR Art. 4/28, HIPAA §164.514, SOC 2 Type II, PCI DSS v4.0, NIST SP 800-53, EU AI Act Art. 50).",
+      "description": "Zero-Trust Enterprise Procurement: Generates an executive-ready Procurement & ROI Memorandum for Chief Information Security Officers (CISO), Data Protection Officers (DPO), and VP of Engineering. Compares TCO of traditional Cloud DLP ($1.5k–$4k/mo) vs PrivacyScrubber TEAMS ($99/mo flat, unlimited seats) or Developer SDK ($299/mo or $2,990/yr flat), citing technical safe harbor controls (GDPR Art. 25 & 32, HIPAA Safe Harbor 45 CFR § 164.514(b), SOC 2 CC6.1/CC6.7, ISO/IEC 27001:2022 Annex A.8.11, PCI DSS v4.0, NIST SP 800-53, EU AI Act Art. 10 & 50, Israel PPL Amendment 13 Sec. 17).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -663,7 +673,7 @@
               "sdk",
               "both"
             ],
-            "description": "Target license tier: 'teams' ($99/mo flat, for Cursor/Claude/Windsurf/IDE agents), 'sdk' ($299/mo flat, for backend microservices/RAG pipelines), or 'both'. Defaults to 'teams'."
+            "description": "Target license tier: 'teams' ($99/mo flat unlimited seats, for Cursor/Claude/Windsurf/IDE agents), 'sdk' ($299/mo or $2,990/yr flat, for backend microservices/RAG pipelines), or 'both'. Defaults to 'teams'."
           },
           "app_name": {
             "type": "string",

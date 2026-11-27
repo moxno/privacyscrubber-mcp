@@ -1,8 +1,8 @@
-# @privacyscrubber/mcp-server (v2.5.3)
+# @privacyscrubber/mcp-server (v2.5.5)
 
-> CISO-Approved Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Claude Desktop, Claude Code, Windsurf, VS Code, Cline, Zed, and Google Antigravity. Implements ZTDS RFC v1.0 (`draft-sibiryakov-ztds-protocol`) 100% locally in ephemeral RAM with zero outbound network egress.
+> Airplane-Mode-Verified Zero-Trust PII & Secrets Redaction MCP Server for Cursor, Claude Desktop, Claude Code, Windsurf, VS Code, Cline, Zed, and Google Antigravity. Implements ZTDS RFC v1.0 (`draft-sibiryakov-ztds-protocol-02`) 100% locally in ephemeral RAM with zero outbound network egress.
 
-- **Package Version (SSOT):** `v2.5.3` (`npm`: `@privacyscrubber/mcp-server`, `pypi`: `privacyscrubber-mcp`, MCP Registry: `io.github.moxno/privacyscrubber-mcp`)
+- **Package Version (SSOT):** `v2.5.5` (`npm`: `@privacyscrubber/mcp-server`, `pypi`: `privacyscrubber-mcp`, MCP Registry: `io.github.moxno/privacyscrubber-mcp`)
 - **Homepage & Docs:** https://privacyscrubber.com/pii-mcp/
 - **Markdown Docs Mirror:** https://privacyscrubber.com/pii-mcp.md
 - **Public Repository:** https://github.com/moxno/privacyscrubber-mcp

@@ -58,6 +58,9 @@ export const TOOLSET_NAMES = {
   agent: new Set([
     'sanitize_text',
     'reveal_text',
+    'sanitize_file',
+    'audit_context',
+    'check_status',
     'guard_read_file',
     'guard_exec',
     'guard_git_diff',
@@ -109,8 +112,8 @@ if (rawCliArgs.includes('--help') || rawCliArgs.includes('-h') || rawCliArgs.inc
   console.log(`PrivacyScrubber MCP Server v${MCP_VERSION} — Zero-Trust Data Sanitization (ZTDS)`);
   console.log('\nUsage:');
   console.log('  npx @privacyscrubber/mcp-server                  Start MCP stdio server (default toolset: agent)');
-  console.log('  npx @privacyscrubber/mcp-server --toolset=<mode> Select exposed tools: core (5), agent (9, default), ztds (5), full (27)');
-  console.log('  npx @privacyscrubber/mcp-server --unsafe-expose-unmask-rpc  Expose guard_unmask_args (agent: 10, full: 28)');
+  console.log('  npx @privacyscrubber/mcp-server --toolset=<mode> Select exposed tools: core (5), agent (12, default), ztds (5), full (27)');
+  console.log('  npx @privacyscrubber/mcp-server --unsafe-expose-unmask-rpc  Expose guard_unmask_args (agent: 13, full: 28)');
   console.log('  npx @privacyscrubber/mcp-server doctor           Run diagnostics (Node, engine, MCP RPC, hooks, license, IDE configs)');
   console.log('  npx @privacyscrubber/mcp-server --wrap <cmd>     Transparent ZTDS proxy for any 3rd-party MCP server');
   console.log('  npx @privacyscrubber/mcp-server init             Auto-configure Claude, Cursor, Windsurf, Cline, Codex');
@@ -1472,7 +1475,7 @@ function checkFreeTierLimit(isPro, isEval = false) {
   }
 
   if (isEval) {
-    if (update.evalCount >= EVAL_TIER_DAILY_LIMIT) {
+    if (update.alreadyAtLimit || update.evalCount > EVAL_TIER_DAILY_LIMIT) {
       mcpLog(`${colors.redBold}[PrivacyScrubber] Evaluation license daily limit exhausted (${EVAL_TIER_DAILY_LIMIT} requests). Request BLOCKED.${colors.reset}\n`);
       return { blocked: true, count: update.evalCount, evalLimitExhausted: true };
     }
@@ -1491,7 +1494,7 @@ function checkFreeTierLimit(isPro, isEval = false) {
     mcpLog(`${colors.yellowBold}[PrivacyScrubber] Running locally in RAM (0 bytes egress). Repository: https://github.com/moxno/privacyscrubber-mcp${colors.reset}\n`);
   }
 
-  if (count >= FREE_TIER_DAILY_LIMIT) {
+  if (update.alreadyAtLimit || count > FREE_TIER_DAILY_LIMIT) {
     mcpLog(`${colors.redBold}[PrivacyScrubber] Free tier daily limit exhausted (${FREE_TIER_DAILY_LIMIT} requests). Request BLOCKED.${colors.reset}\n${colors.cyan}7-Day Free B2B Trial (TEAMS/SDK): https://privacyscrubber.com/pricing/?tier=teams&trial=true&utm_source=mcp&utm_medium=daily_limit&utm_campaign=b2b_trial${colors.reset}\n${colors.cyan}TEAMS ($99/mo flat) / PRO ($15/mo or $110 Lifetime): https://privacyscrubber.com/pricing/?tier=pro&utm_source=mcp&utm_medium=daily_limit&utm_campaign=pro_upgrade${colors.reset}\n`);
     return { blocked: true, count };
   }
@@ -5874,7 +5877,7 @@ Before reading sensitive files, running terminal commands that may print credent
       };
     }
 
-    if (name === "guard_session_info") {
+    if (name === "guard_session_info" || name === "get_session_stats") {
       const { session_id } = args || {};
       const memUsage = process.memoryUsage();
 
@@ -5947,7 +5950,7 @@ Before reading sensitive files, running terminal commands that may print credent
       };
     }
 
-    if (name === "guard_session_reset") {
+    if (name === "guard_session_reset" || name === "clear_session" || name === "reset_session") {
       const { session_id, all = false, reset_all = false } = args || {};
       if (all || reset_all) {
         const count = agentSessions.size;
